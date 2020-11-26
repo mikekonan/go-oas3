@@ -1,0 +1,204 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ChangeListManager">
+    <list default="true" id="5366d4b2-fc45-44d6-babf-2000f9f00665" name="Default Changelist" comment="">
+      <change afterPath="$PROJECT_DIR$/application/application.go" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/configurator/configurator.go" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/loader/loader.go" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/main.go" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/swagger.yaml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/test/example.go" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/transformer/transformer.go" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/types/types.go" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Go Application" />
+        <option value="Go File" />
+      </list>
+    </option>
+  </component>
+  <component name="GOROOT" path="$USER_HOME$/.gvm/gos/go1.15.2" />
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="GoLibraries">
+    <option name="indexEntireGoPath" value="false" />
+  </component>
+  <component name="ProjectId" id="1kk2tkjgEUTjVHqQrlqBTvAYGUM" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent">
+    <property name="DefaultGoTemplateProperty" value="Go File" />
+    <property name="RunOnceActivity.OpenProjectViewOnStart" value="true" />
+    <property name="WebServerToolWindowFactoryState" value="false" />
+    <property name="go.import.settings.migrated" value="true" />
+    <property name="go.sdk.automatically.set" value="true" />
+    <property name="go.tried.to.enable.integration.vgo.integrator" value="true" />
+    <property name="ignore_missing_gitignore" value="true" />
+    <property name="last_opened_file_path" value="$PROJECT_DIR$" />
+    <property name="settings.editor.selected.configurable" value="goland.project.structure" />
+    <property name="vue.rearranger.settings.migration" value="true" />
+  </component>
+  <component name="RunManager" selected="Go Build.go build main.go">
+    <configuration name="go build main.go" type="GoApplicationRunConfiguration" factoryName="Go Application" temporary="true" nameIsGenerated="true">
+      <module name="go-oas3" />
+      <working_directory value="$PROJECT_DIR$" />
+      <parameters value="-package kek" />
+      <kind value="FILE" />
+      <filePath value="$PROJECT_DIR$/main.go" />
+      <directory value="$PROJECT_DIR$" />
+      <method v="2" />
+    </configuration>
+    <configuration name="go build oapi-codegen.go" type="GoApplicationRunConfiguration" factoryName="Go Application" temporary="true" nameIsGenerated="true">
+      <module name="go-oas3" />
+      <working_directory value="$PROJECT_DIR$/../oapi-codegen" />
+      <parameters value="-generate types,skip-fmt,chi-server,spec -package v1 $PROJECT_DIR$/swagger.yaml" />
+      <kind value="FILE" />
+      <filePath value="$PROJECT_DIR$/../oapi-codegen/cmd/oapi-codegen/oapi-codegen.go" />
+      <directory value="$PROJECT_DIR$" />
+      <method v="2" />
+    </configuration>
+    <configuration default="true" type="SwaggerCodegen">
+      <option name="activeConfigurationType" value="FILE" />
+      <option name="configurationPath" value="" />
+      <option name="customJreEnabled" value="false" />
+      <option name="customTemplatesPath" value="" />
+      <option name="enableDebugLogging" value="false" />
+      <option name="generateToPath" value="" />
+      <option name="generationParameters">
+        <list />
+      </option>
+      <option name="generatorPath" value="" />
+      <option name="jdkPath" value="" />
+      <option name="language" value="" />
+      <option name="specificationPath" value="$PROJECT_DIR$/swagger.yaml" />
+      <method v="2" />
+    </configuration>
+    <list>
+      <item itemvalue="Go Build.go build main.go" />
+      <item itemvalue="Go Build.go build oapi-codegen.go" />
+    </list>
+    <recent_temporary>
+      <list>
+        <item itemvalue="Go Build.go build main.go" />
+        <item itemvalue="Go Build.go build oapi-codegen.go" />
+      </list>
+    </recent_temporary>
+  </component>
+  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+  <component name="VgoProject">
+    <integration-enabled>true</integration-enabled>
+  </component>
+  <component name="WindowStateProjectService">
+    <state x="231" y="152" key="#com.intellij.execution.impl.EditConfigurationsDialog" timestamp="1606245907731">
+      <screen x="0" y="23" width="1536" height="937" />
+    </state>
+    <state x="231" y="152" key="#com.intellij.execution.impl.EditConfigurationsDialog/0.23.1536.937@0.23.1536.937" timestamp="1606245907731" />
+    <state x="768" y="23" width="768" height="937" key="#xdebugger.evaluate" timestamp="1606415566630">
+      <screen x="0" y="23" width="1536" height="937" />
+    </state>
+    <state x="768" y="23" width="768" height="937" key="#xdebugger.evaluate/0.23.1536.937@0.23.1536.937" timestamp="1606415566630" />
+    <state width="778" height="466" key="DebuggerActiveHint" timestamp="1606318937750">
+      <screen x="0" y="23" width="1536" height="937" />
+    </state>
+    <state width="778" height="466" key="DebuggerActiveHint/0.23.1536.937@0.23.1536.937" timestamp="1606318937750" />
+    <state width="1492" height="364" key="GridCell.Tab.0.bottom" timestamp="1606424422056">
+      <screen x="0" y="23" width="1536" height="937" />
+    </state>
+    <state width="1492" height="364" key="GridCell.Tab.0.bottom/0.23.1536.937@0.23.1536.937" timestamp="1606424422056" />
+    <state width="1492" height="364" key="GridCell.Tab.0.bottom/0.23.2560.1417@0.23.2560.1417" timestamp="1606326871813" />
+    <state width="1492" height="364" key="GridCell.Tab.0.center" timestamp="1606424422056">
+      <screen x="0" y="23" width="1536" height="937" />
+    </state>
+    <state width="1492" height="364" key="GridCell.Tab.0.center/0.23.1536.937@0.23.1536.937" timestamp="1606424422056" />
+    <state width="1492" height="364" key="GridCell.Tab.0.center/0.23.2560.1417@0.23.2560.1417" timestamp="1606326871812" />
+    <state width="1492" height="364" key="GridCell.Tab.0.left" timestamp="1606424422055">
+      <screen x="0" y="23" width="1536" height="937" />
+    </state>
+    <state width="1492" height="364" key="GridCell.Tab.0.left/0.23.1536.937@0.23.1536.937" timestamp="1606424422055" />
+    <state width="1492" height="364" key="GridCell.Tab.0.left/0.23.2560.1417@0.23.2560.1417" timestamp="1606326871812" />
+    <state width="1492" height="364" key="GridCell.Tab.0.right" timestamp="1606424422056">
+      <screen x="0" y="23" width="1536" height="937" />
+    </state>
+    <state width="1492" height="364" key="GridCell.Tab.0.right/0.23.1536.937@0.23.1536.937" timestamp="1606424422056" />
+    <state width="1492" height="364" key="GridCell.Tab.0.right/0.23.2560.1417@0.23.2560.1417" timestamp="1606326871812" />
+    <state width="1492" height="364" key="GridCell.Tab.1.bottom" timestamp="1606424422387">
+      <screen x="0" y="23" width="1536" height="937" />
+    </state>
+    <state width="1492" height="364" key="GridCell.Tab.1.bottom/0.23.1536.937@0.23.1536.937" timestamp="1606424422387" />
+    <state width="1492" height="364" key="GridCell.Tab.1.bottom/0.23.2560.1417@0.23.2560.1417" timestamp="1606326871813" />
+    <state width="1492" height="364" key="GridCell.Tab.1.center" timestamp="1606424422386">
+      <screen x="0" y="23" width="1536" height="937" />
+    </state>
+    <state width="1492" height="364" key="GridCell.Tab.1.center/0.23.1536.937@0.23.1536.937" timestamp="1606424422386" />
+    <state width="1492" height="364" key="GridCell.Tab.1.center/0.23.2560.1417@0.23.2560.1417" timestamp="1606326871813" />
+    <state width="1492" height="364" key="GridCell.Tab.1.left" timestamp="1606424422386">
+      <screen x="0" y="23" width="1536" height="937" />
+    </state>
+    <state width="1492" height="364" key="GridCell.Tab.1.left/0.23.1536.937@0.23.1536.937" timestamp="1606424422386" />
+    <state width="1492" height="364" key="GridCell.Tab.1.left/0.23.2560.1417@0.23.2560.1417" timestamp="1606326871813" />
+    <state width="1492" height="364" key="GridCell.Tab.1.right" timestamp="1606424422386">
+      <screen x="0" y="23" width="1536" height="937" />
+    </state>
+    <state width="1492" height="364" key="GridCell.Tab.1.right/0.23.1536.937@0.23.1536.937" timestamp="1606424422386" />
+    <state width="1492" height="364" key="GridCell.Tab.1.right/0.23.2560.1417@0.23.2560.1417" timestamp="1606326871813" />
+    <state x="268" y="130" key="SettingsEditor" timestamp="1606230671943">
+      <screen x="0" y="23" width="1536" height="937" />
+    </state>
+    <state x="268" y="130" key="SettingsEditor/0.23.1536.937@0.23.1536.937" timestamp="1606230671943" />
+    <state width="768" height="468" key="XDebugger.FullValuePopup" timestamp="1606424427108">
+      <screen x="0" y="23" width="1536" height="937" />
+    </state>
+    <state width="768" height="468" key="XDebugger.FullValuePopup/0.23.1536.937@0.23.1536.937" timestamp="1606424427108" />
+    <state x="468" y="246" width="600" height="490" key="find.popup" timestamp="1606396827118">
+      <screen x="0" y="23" width="1536" height="937" />
+    </state>
+    <state x="468" y="246" width="600" height="490" key="find.popup/0.23.1536.937@0.23.1536.937" timestamp="1606396827118" />
+    <state x="610" y="264" key="refactoring.ChangeSignatureDialog" timestamp="1606312405441">
+      <screen x="0" y="23" width="1536" height="937" />
+    </state>
+    <state x="610" y="264" key="refactoring.ChangeSignatureDialog/0.23.1536.937@0.23.1536.937" timestamp="1606312405441" />
+    <state x="431" y="226" width="672" height="678" key="search.everywhere.popup" timestamp="1606233759683">
+      <screen x="0" y="23" width="1536" height="937" />
+    </state>
+    <state x="431" y="226" width="672" height="678" key="search.everywhere.popup/0.23.1536.937@0.23.1536.937" timestamp="1606233759683" />
+  </component>
+  <component name="XDebuggerManager">
+    <breakpoint-manager>
+      <breakpoints>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/../oapi-codegen/pkg/codegen/operations.go</url>
+          <line>510</line>
+          <option name="timeStamp" value="69" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/../oapi-codegen/pkg/codegen/schema.go</url>
+          <line>174</line>
+          <option name="timeStamp" value="72" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/transformer/transformer.go</url>
+          <line>31</line>
+          <option name="timeStamp" value="140" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/transformer/transformer.go</url>
+          <line>182</line>
+          <option name="timeStamp" value="144" />
+        </line-breakpoint>
+      </breakpoints>
+    </breakpoint-manager>
+  </component>
+</project>
