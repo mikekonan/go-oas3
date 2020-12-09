@@ -63,13 +63,25 @@ func (normalizer *Normalizer) normalizeOperationName(path string, method string)
 	return normalizer.normalizeName(strings.ReplaceAll(strings.ToLower(method)+path, "/", "-"))
 }
 
-func (normalizer *Normalizer) lineAfterEachCodeElement(from ...jen.Code) (result []jen.Code) {
+func (normalizer *Normalizer) doubleLineAfterEachElement(from ...jen.Code) (result []jen.Code) {
 	linq.From(from).SelectManyT(func(code jen.Code) linq.Query {
 		if reflect.DeepEqual(code, jen.Null()) || reflect.DeepEqual(code, jen.Line()) {
 			return linq.From([]jen.Code{})
 		}
 
 		return linq.From([]jen.Code{code, jen.Line(), jen.Line()})
+	}).ToSlice(&result)
+
+	return
+}
+
+func (normalizer *Normalizer) lineAfterEachElement(from ...jen.Code) (result []jen.Code) {
+	linq.From(from).SelectManyT(func(code jen.Code) linq.Query {
+		if reflect.DeepEqual(code, jen.Null()) || reflect.DeepEqual(code, jen.Line()) {
+			return linq.From([]jen.Code{})
+		}
+
+		return linq.From([]jen.Code{code, jen.Line()})
 	}).ToSlice(&result)
 
 	return

@@ -15,6 +15,19 @@ type InterfaceGenerator struct {
 	filler     *TypeFiller `di.inject:"typeFiller"`
 }
 
+func (iGenerator *InterfaceGenerator) Generate(swagger *openapi3.Swagger) *jen.Statement {
+	result := []jen.Code{
+		iGenerator.responseStruct(),
+		iGenerator.handlersTypes(swagger),
+		iGenerator.builders(swagger),
+		iGenerator.handlersInterfaces(swagger),
+	}
+
+	result = iGenerator.normalizer.doubleLineAfterEachElement(result...)
+
+	return jen.Null().Add(result...)
+}
+
 type operationResponse struct {
 	ContentTypeBodyNameMap map[string]string
 	Headers                map[string]*openapi3.HeaderRef
@@ -101,17 +114,17 @@ func (iGenerator *InterfaceGenerator) handlersTypes(swagger *openapi3.Swagger) j
 					name := iGenerator.normalizer.normalizeOperationName(path, cast.ToString(kv.Key))
 					//operation := kv.Value.(*openapi3.Operation)
 
-					result := iGenerator.normalizer.lineAfterEachCodeElement(iGenerator.responseType(name))
+					result := iGenerator.normalizer.doubleLineAfterEachElement(iGenerator.responseType(name))
 
 					return jen.Null().Add(result...)
 				}).ToSlice(&result)
 
-			result = iGenerator.normalizer.lineAfterEachCodeElement(result...)
+			result = iGenerator.normalizer.doubleLineAfterEachElement(result...)
 
 			return jen.Null().Add(result...)
 		}).ToSlice(&result)
 
-	result = iGenerator.normalizer.lineAfterEachCodeElement(result...)
+	result = iGenerator.normalizer.doubleLineAfterEachElement(result...)
 	return jen.Null().Add(result...)
 }
 
@@ -169,20 +182,7 @@ func (iGenerator *InterfaceGenerator) handlersInterfaces(swagger *openapi3.Swagg
 		}).
 		ToSlice(&result)
 
-	return jen.Null().Add(iGenerator.normalizer.lineAfterEachCodeElement(result...)...)
-}
-
-func (iGenerator *InterfaceGenerator) Generate(swagger *openapi3.Swagger) *jen.Statement {
-	result := []jen.Code{
-		iGenerator.responseStruct(),
-		iGenerator.handlersTypes(swagger),
-		iGenerator.builders(swagger),
-		iGenerator.handlersInterfaces(swagger),
-	}
-
-	result = iGenerator.normalizer.lineAfterEachCodeElement(result...)
-
-	return jen.Null().Add(result...)
+	return jen.Null().Add(iGenerator.normalizer.doubleLineAfterEachElement(result...)...)
 }
 
 func (iGenerator *InterfaceGenerator) responseStruct() jen.Code {
@@ -208,7 +208,7 @@ func (iGenerator *InterfaceGenerator) responseType(name string) jen.Code {
 	declaration := jen.Type().Id(decapicalizedName + "Response").Struct(jen.Id("response"))
 	interfaceImplementation := jen.Func().Params(jen.Id(decapicalizedName + "Response")).Id(decapicalizedName + "Response").Params().Block()
 
-	return jen.Null().Add(iGenerator.normalizer.lineAfterEachCodeElement(interfaceDeclaration, declaration, interfaceImplementation)...)
+	return jen.Null().Add(iGenerator.normalizer.doubleLineAfterEachElement(interfaceDeclaration, declaration, interfaceImplementation)...)
 }
 
 func (iGenerator *InterfaceGenerator) responseImplementationFunc(name string) jen.Code {
@@ -369,10 +369,10 @@ func (iGenerator *InterfaceGenerator) responseBuilders(operationStruct operation
 							jen.Return().Id(operationStruct.ResponseName).Values(jen.Id("response").Op(":").Id("builder").Dot("response"))),
 						)
 
-						return jen.Null().Add(iGenerator.normalizer.lineAfterEachCodeElement(result...)...)
+						return jen.Null().Add(iGenerator.normalizer.doubleLineAfterEachElement(result...)...)
 					}).ToSlice(&contentTypeBodyBuild)
 
-				results = iGenerator.normalizer.lineAfterEachCodeElement(append(results, contentTypeBodyBuild...)...)
+				results = iGenerator.normalizer.doubleLineAfterEachElement(append(results, contentTypeBodyBuild...)...)
 
 				return
 			}
@@ -452,17 +452,17 @@ func (iGenerator *InterfaceGenerator) responseBuilders(operationStruct operation
 							jen.Return().Id(operationStruct.ResponseName).Values(jen.Id("response").Op(":").Id("builder").Dot("response"))),
 						)
 
-						return jen.Null().Add(iGenerator.normalizer.lineAfterEachCodeElement(result...)...)
+						return jen.Null().Add(iGenerator.normalizer.doubleLineAfterEachElement(result...)...)
 					}).ToSlice(&contentTypeBodyBuild)
 
-				results = iGenerator.normalizer.lineAfterEachCodeElement(append(results, contentTypeBodyBuild...)...)
+				results = iGenerator.normalizer.doubleLineAfterEachElement(append(results, contentTypeBodyBuild...)...)
 			}
 			return
 		}).
 		SelectManyT(func(builders []jen.Code) linq.Query { return linq.From(builders) }).
 		ToSlice(&results)
 
-	return jen.Null().Add(iGenerator.normalizer.lineAfterEachCodeElement(append([]jen.Code{structBuilder, structConstructor}, results...)...)...)
+	return jen.Null().Add(iGenerator.normalizer.doubleLineAfterEachElement(append([]jen.Code{structBuilder, structConstructor}, results...)...)...)
 }
 
 func (iGenerator *InterfaceGenerator) headersStruct(name string, headers map[string]*openapi3.HeaderRef) jen.Code {
@@ -476,7 +476,7 @@ func (iGenerator *InterfaceGenerator) headersStruct(name string, headers map[str
 		name := iGenerator.normalizer.normalizeName(cast.ToString(kv.Key))
 		field := jen.Id(name)
 
-		iGenerator.filler.fillGoType(field, kv.Value.(*openapi3.HeaderRef).Value.Schema)
+		iGenerator.filler.fillGoType(field, name, kv.Value.(*openapi3.HeaderRef).Value.Schema)
 
 		return field
 	}).ToSlice(&headersCode)
@@ -496,7 +496,7 @@ func (iGenerator *InterfaceGenerator) headersStruct(name string, headers map[str
 		jen.Return().Map(jen.Id("string")).Id("string").
 			Values(headersMapCode...))
 
-	return jen.Null().Add(iGenerator.normalizer.lineAfterEachCodeElement(headersStruct, headersToMap)...)
+	return jen.Null().Add(iGenerator.normalizer.doubleLineAfterEachElement(headersStruct, headersToMap)...)
 }
 
 func (*InterfaceGenerator) builderConstructorName(name string) string {

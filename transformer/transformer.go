@@ -34,14 +34,16 @@ func (transformer *Transformer) Transform(swagger *openapi3.Swagger) {
 	requestParameters := transformer.generator.requestParameters(swagger.Paths)
 
 	pathsCode := linq.From(requestParameters).AggregateWithSeedT("",
-		func(accumulator string, kv linq.KeyValue) string { return accumulator + jen.Null().Add(transformer.normalizer.lineAfterEachCodeElement(kv.Value.([]jen.Code)...)...).GoString() })
+		func(accumulator string, kv linq.KeyValue) string { return accumulator + jen.Null().Add(transformer.normalizer.doubleLineAfterEachElement(kv.Value.([]jen.Code)...)...).GoString() })
 
 	componentsCode := linq.From(components).
 		AggregateWithSeedT("",
-			func(accumulator string, kv linq.KeyValue) string { return accumulator + jen.Null().Add(transformer.normalizer.lineAfterEachCodeElement(kv.Value.(jen.Code))...).GoString() })
+			func(accumulator string, kv linq.KeyValue) string { return accumulator + jen.Null().Add(transformer.normalizer.doubleLineAfterEachElement(kv.Value.(jen.Code))...).GoString() })
+
+	enums := jen.Null().Add(transformer.generator.enums(swagger)).GoString()
 
 	builders := transformer.interfaceGenerator.Generate(swagger).GoString()
-	fmt.Println(requestParameters, components, componentsCode, pathsCode, builders)
+	fmt.Println(requestParameters, components, componentsCode, pathsCode, builders, enums)
 }
 
 ////todo: move it to output module

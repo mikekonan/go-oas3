@@ -1,6 +1,7 @@
 package transformer
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/dave/jennifer/jen"
@@ -15,11 +16,20 @@ func (filler *TypeFiller) fillJsonTag(into *jen.Statement, name string) {
 	into.Tag(map[string]string{"json": strings.ToLower(name[:1]) + name[1:]})
 }
 
-func (filler *TypeFiller) fillGoType(into *jen.Statement, schemaRef *openapi3.SchemaRef) {
+func (filler *TypeFiller) fillGoType(into *jen.Statement, typeName string, schemaRef *openapi3.SchemaRef) {
 	schema := schemaRef.Value
+
+	if typeName == "PostCallbacksIntegrationTypeApplicationKekRequestBody"{
+		fmt.Println("kek")
+	}
 
 	if schema.AnyOf != nil || schema.OneOf != nil || schema.AllOf != nil {
 		into.Interface()
+		return
+	}
+
+	if len(schema.Enum) > 0 {
+		into.Id(typeName)
 		return
 	}
 
@@ -38,7 +48,7 @@ func (filler *TypeFiller) fillGoType(into *jen.Statement, schemaRef *openapi3.Sc
 		return
 	case "array":
 		into.Index()
-		filler.fillGoType(into, schema.Items)
+		filler.fillGoType(into, typeName, schema.Items)
 		return
 	case "integer":
 		into.Int()
