@@ -3,6 +3,7 @@ package writer
 import (
 	"fmt"
 	"os"
+	"path"
 
 	"github.com/dave/jennifer/jen"
 
@@ -19,11 +20,11 @@ func (writer *Writer) Write(result *generator.Result) error {
 		return err
 	}
 
-	if err := writer.write(writer.config.Path, result.RouterCode); err != nil {
+	if err := writer.write(path.Join(writer.config.Path, "routes_gen.go"), result.RouterCode); err != nil {
 		return err
 	}
 
-	if err := writer.write(writer.config.ComponentsPath, result.ComponentsCode); err != nil {
+	if err := writer.write(path.Join(writer.config.ComponentsPath, "routes_gen.go"), result.ComponentsCode); err != nil {
 		return err
 	}
 
