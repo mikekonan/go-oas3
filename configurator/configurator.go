@@ -9,10 +9,10 @@ import (
 
 type Config struct {
 	SwaggerAddr string `config:"swagger-addr,required"`
-	PackageName string `config:"package,required"`
+	PackagePath string `config:"package,required"`
 	Path        string `config:"path,required"`
 
-	ComponentsPackageName string `config:"componentsPackage"`
+	ComponentsPackagePath string `config:"componentsPackage"`
 	ComponentsPath        string `config:"componentsPath"`
 }
 
@@ -31,8 +31,8 @@ func (configurator *Configurator) PostConstruct() (err error) {
 		return err
 	}
 
-	if configurator.config.ComponentsPackageName == "" {
-		configurator.config.ComponentsPackageName = configurator.config.PackageName
+	if configurator.config.ComponentsPackagePath == "" {
+		configurator.config.ComponentsPackagePath = configurator.config.PackagePath
 	}
 
 	if configurator.config.ComponentsPath == "" {
