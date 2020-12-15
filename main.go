@@ -8,19 +8,19 @@ import (
 
 	"github.com/mikekonan/go-oas3/application"
 	"github.com/mikekonan/go-oas3/configurator"
+	"github.com/mikekonan/go-oas3/generator"
 	"github.com/mikekonan/go-oas3/loader"
-	"github.com/mikekonan/go-oas3/transformer"
+	"github.com/mikekonan/go-oas3/writer"
 )
 
 func main() {
 	di.RegisterBeanInstance("config", new(configurator.Config).Defaults())
 	di.RegisterBean("loader", reflect.TypeOf((*loader.Loader)(nil)))
 	di.RegisterBean("configurator", reflect.TypeOf((*configurator.Configurator)(nil)))
-	di.RegisterBean("transformer", reflect.TypeOf((*transformer.Transformer)(nil)))
-	di.RegisterBean("generator", reflect.TypeOf((*transformer.Generator)(nil)))
-	di.RegisterBean("typeFiller", reflect.TypeOf((*transformer.TypeFiller)(nil)))
-	di.RegisterBean("normalizer", reflect.TypeOf((*transformer.Normalizer)(nil)))
-	di.RegisterBean("interfaceGenerator", reflect.TypeOf((*transformer.InterfaceGenerator)(nil)))
+	di.RegisterBean("generator", reflect.TypeOf((*generator.Generator)(nil)))
+	di.RegisterBean("typeFiller", reflect.TypeOf((*generator.TypeFiller)(nil)))
+	di.RegisterBean("normalizer", reflect.TypeOf((*generator.Normalizer)(nil)))
+	di.RegisterBean("writer", reflect.TypeOf((*writer.Writer)(nil)))
 
 	_, _ = di.RegisterBean("app", reflect.TypeOf((*application.Application)(nil)))
 

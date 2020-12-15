@@ -1,4 +1,4 @@
-package transformer
+package generator
 
 import (
 	"reflect"
@@ -84,14 +84,22 @@ func (normalizer *Normalizer) lineAfterEachElement(from ...jen.Code) (result []j
 		return linq.From([]jen.Code{code, jen.Line()})
 	}).ToSlice(&result)
 
-	return
+	return result
 }
 
 func (normalizer *Normalizer) extractNameFromRef(str string) string {
+	if str == "" {
+		return ""
+	}
+
 	return normalizer.normalizeName(str[strings.LastIndex(str, "/")+1:])
 }
 
 func (normalizer *Normalizer) contentType(str string) string {
+	if str == "" {
+		return ""
+	}
+
 	return cast.ToString(linq.From(strings.Split(str, "/")).
 		AggregateWithSeedT("", func(accumulator, str string) string { return accumulator + strings.Title(str) }))
 }

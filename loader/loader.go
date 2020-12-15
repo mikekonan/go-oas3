@@ -4,22 +4,26 @@ import (
 	"net/url"
 
 	"github.com/getkin/kin-openapi/openapi3"
+
+	"github.com/mikekonan/go-oas3/configurator"
 )
 
-type Loader struct{}
+type Loader struct {
+	config *configurator.Config `di.inject:"config"`
+}
 
-func (*Loader) Load(path string) (*openapi3.Swagger, error) {
-	loader := openapi3.NewSwaggerLoader()
-	loader.IsExternalRefsAllowed = true
+func (loader *Loader) Load() (*openapi3.Swagger, error) {
+	swaggerLoader := openapi3.NewSwaggerLoader()
+	swaggerLoader.IsExternalRefsAllowed = true
 
-	u, err := url.Parse(path)
+	u, err := url.Parse(loader.config.SwaggerAddr)
 	if err != nil {
 		return nil, err
 	}
 
 	if u.Scheme != "" && u.Host != "" {
-		return loader.LoadSwaggerFromURI(u)
+		return swaggerLoader.LoadSwaggerFromURI(u)
 	}
 
-	return loader.LoadSwaggerFromFile(path)
+	return swaggerLoader.LoadSwaggerFromFile(loader.config.SwaggerAddr)
 }

@@ -1,7 +1,6 @@
-package transformer
+package generator
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/dave/jennifer/jen"
@@ -18,10 +17,6 @@ func (filler *TypeFiller) fillJsonTag(into *jen.Statement, name string) {
 
 func (filler *TypeFiller) fillGoType(into *jen.Statement, typeName string, schemaRef *openapi3.SchemaRef) {
 	schema := schemaRef.Value
-
-	if typeName == "PostCallbacksIntegrationTypeApplicationKekRequestBody"{
-		fmt.Println("kek")
-	}
 
 	if schema.AnyOf != nil || schema.OneOf != nil || schema.AllOf != nil {
 		into.Interface()
@@ -74,7 +69,7 @@ func (filler *TypeFiller) fillGoType(into *jen.Statement, typeName string, schem
 			into.String()
 			return
 		case "uuid":
-			into.Id("uuid").Dot("UUID")
+			into.Qual("github.com/google/uuid", "UUID")
 			return
 		case "json":
 			into.Id("json").Dot("RawMessage")
