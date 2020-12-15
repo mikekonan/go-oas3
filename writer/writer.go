@@ -32,7 +32,7 @@ func (writer *Writer) Write(result *generator.Result) error {
 }
 
 func (writer *Writer) write(into string, code *jen.File) error {
-	file, err := os.OpenFile(writer.config.Path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
+	file, err := os.OpenFile(into, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
 
 	if err != nil {
 		return fmt.Errorf("failed opening file '%s': %v", into, err)
