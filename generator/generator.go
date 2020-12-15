@@ -185,7 +185,7 @@ func (generator *Generator) components(swagger *openapi3.Swagger) jen.Code {
 								func(kv linq.KeyValue) string { return name + generator.normalizer.contentType(cast.ToString(kv.Key)+"RequestBody") },
 								func(kv linq.KeyValue) jen.Code {
 									meType := kv.Value.(*openapi3.MediaType)
-									
+
 									objName := name + generator.normalizer.contentType(cast.ToString(kv.Key)+"RequestBody")
 									return generator.objectFromSchema(objName, meType.Schema)
 								})
