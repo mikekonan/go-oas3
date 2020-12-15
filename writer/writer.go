@@ -24,7 +24,7 @@ func (writer *Writer) Write(result *generator.Result) error {
 		return err
 	}
 
-	if err := writer.write(path.Join(writer.config.ComponentsPath, "routes_gen.go"), result.ComponentsCode); err != nil {
+	if err := writer.write(path.Join(writer.config.ComponentsPath, "components_gen.go"), result.ComponentsCode); err != nil {
 		return err
 	}
 
