@@ -21,8 +21,7 @@ func main() {
 	di.RegisterBean("typeFiller", reflect.TypeOf((*generator.Type)(nil)))
 	di.RegisterBean("normalizer", reflect.TypeOf((*generator.Normalizer)(nil)))
 	di.RegisterBean("writer", reflect.TypeOf((*writer.Writer)(nil)))
-
-	_, _ = di.RegisterBean("app", reflect.TypeOf((*application.Application)(nil)))
+	di.RegisterBean("app", reflect.TypeOf((*application.Application)(nil)))
 
 	if err := di.InitializeContainer(); err != nil {
 		log.Fatal(err.Error())
