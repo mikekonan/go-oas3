@@ -14,7 +14,7 @@ import (
 
 type Generator struct {
 	normalizer *Normalizer          `di.inject:"normalizer"`
-	filler     *TypeFiller          `di.inject:"typeFiller"`
+	filler     *Type                `di.inject:"typeFiller"`
 	config     *configurator.Config `di.inject:"config"`
 }
 
@@ -210,8 +210,8 @@ func (generator *Generator) components(swagger *openapi3.Swagger) jen.Code {
 		}).
 		ToSlice(&componentsFromPathsResult)
 
-	componentsResult = generator.normalizer.lineAfterEachElement(componentsResult...)
-	componentsFromPathsResult = generator.normalizer.lineAfterEachElement(componentsFromPathsResult...)
+	componentsResult = generator.normalizer.doubleLineAfterEachElement(componentsResult...)
+	componentsFromPathsResult = generator.normalizer.doubleLineAfterEachElement(componentsFromPathsResult...)
 
 	return jen.Null().
 		Add(componentsResult...).
@@ -343,6 +343,7 @@ func (generator *Generator) enumFromSchema(name string, schema *openapi3.SchemaR
 
 func (generator *Generator) objectFromSchema(name string, schema *openapi3.SchemaRef) *jen.Statement {
 	name = generator.normalizer.normalizeName(name)
+
 	typeDeclaration := jen.Type().Id(name)
 
 	if len(schema.Value.Properties) == 0 {
@@ -351,7 +352,8 @@ func (generator *Generator) objectFromSchema(name string, schema *openapi3.Schem
 			return typeDeclaration
 		}
 
-		typeDeclaration.Interface()
+		generator.filler.fillGoType(typeDeclaration, name, schema)
+
 		return typeDeclaration
 	}
 
@@ -367,7 +369,11 @@ func (generator *Generator) typeProperties(typeName string, schema *openapi3.Sch
 			parameter := jen.Id(name)
 			schemaRef := kv.Value.(*openapi3.SchemaRef)
 			if len(schemaRef.Value.Enum) > 0 {
-				name = typeName + strings.Title(name) + "Enum"
+				if schemaRef.Ref != "" {
+					name = generator.normalizer.extractNameFromRef(schemaRef.Ref)
+				} else {
+					name = typeName + strings.Title(name) + "Enum"
+				}
 			}
 
 			generator.filler.fillGoType(parameter, name, schemaRef)
@@ -670,7 +676,7 @@ func (generator *Generator) router(routerName string, serviceName string) jen.Co
 	)
 }
 
-func (generator *Generator) wrapperPathParsers(wrapperName string, operation *openapi3.Operation) (result []jen.Code) {
+func (generator *Generator) wrapperRequestParsers(wrapperName string, operation *openapi3.Operation) (result []jen.Code) {
 	linq.From(operation.Parameters).
 		GroupByT(
 			func(parameter *openapi3.ParameterRef) string { return parameter.Value.In },
@@ -731,11 +737,11 @@ func (generator *Generator) wrapperEnum(in string, enumType string, name string,
 
 	switch in {
 	case "header":
-		result = result.Add(jen.Id(paramName).Op(":=").Id(enumType).Call(jen.Id("r").Dot("Header").Dot("Get").Call(jen.Lit(parameter.Value.Name))))
+		result = result.Add(jen.Id(paramName).Op(":=").Qual(generator.config.ComponentsPackagePath, enumType).Call(jen.Id("r").Dot("Header").Dot("Get").Call(jen.Lit(parameter.Value.Name))))
 	case "query":
-		result = result.Add(jen.Id(paramName).Op(":=").Id(enumType).Call(jen.Id("r").Dot("URL").Dot("Query").Call().Dot("Get").Call(jen.Lit(parameter.Value.Name))))
+		result = result.Add(jen.Id(paramName).Op(":=").Qual(generator.config.ComponentsPackagePath, enumType).Call(jen.Id("r").Dot("URL").Dot("Query").Call().Dot("Get").Call(jen.Lit(parameter.Value.Name))))
 	case "path":
-		result = result.Add(jen.Id(paramName).Op(":=").Id(enumType).Call(jen.Id("chi").Dot("URLParam").Call(jen.Id("r"), jen.Lit(parameter.Value.Name))))
+		result = result.Add(jen.Id(paramName).Op(":=").Qual(generator.config.ComponentsPackagePath, enumType).Call(jen.Id("chi").Dot("URLParam").Call(jen.Id("r"), jen.Lit(parameter.Value.Name))))
 	default:
 		panic("unsupported " + in + " type")
 	}
@@ -805,7 +811,7 @@ func (generator *Generator) wrapperBody(method string, path string, contentType 
 	}
 
 	return result.
-		Add(jen.Var().Id("body").Id(name)).
+		Add(jen.Var().Id("body").Qual(generator.config.ComponentsPackagePath, name)).
 		Add(jen.Line()).
 		Add(jen.If(jen.Id("err").Op(":=").Qual("encoding/json",
 			"NewDecoder").Call(jen.Id("r").Dot("Body")).Dot("Decode").Call(jen.Op("&").Id("body")),
@@ -827,7 +833,7 @@ func (generator *Generator) wrapperFunc(name string, requestName string, routerN
 		jen.Id("request").Op(":=").Id(requestName).Values(),
 	}
 
-	funcCode = append(funcCode, generator.wrapperPathParsers(name, operation)...)
+	funcCode = append(funcCode, generator.wrapperRequestParsers(name, operation)...)
 	funcCode = append(funcCode, generator.wrapperBody(method, path, contentType, name, operation, requestBody)) //TODO: support different content-types
 
 	funcCode = append(funcCode, jen.Id("response").Op(":=").Id("router").Dot("service").Dot(name).Call(jen.Id("r").Dot("Context").Call(),

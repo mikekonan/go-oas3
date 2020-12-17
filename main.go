@@ -18,7 +18,7 @@ func main() {
 	di.RegisterBean("loader", reflect.TypeOf((*loader.Loader)(nil)))
 	di.RegisterBean("configurator", reflect.TypeOf((*configurator.Configurator)(nil)))
 	di.RegisterBean("generator", reflect.TypeOf((*generator.Generator)(nil)))
-	di.RegisterBean("typeFiller", reflect.TypeOf((*generator.TypeFiller)(nil)))
+	di.RegisterBean("typeFiller", reflect.TypeOf((*generator.Type)(nil)))
 	di.RegisterBean("normalizer", reflect.TypeOf((*generator.Normalizer)(nil)))
 	di.RegisterBean("writer", reflect.TypeOf((*writer.Writer)(nil)))
 

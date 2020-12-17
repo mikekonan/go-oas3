@@ -5,17 +5,25 @@ import (
 
 	"github.com/dave/jennifer/jen"
 	"github.com/getkin/kin-openapi/openapi3"
+
+	"github.com/mikekonan/go-oas3/configurator"
 )
 
-type TypeFiller struct {
-	normalizer *Normalizer `di.inject:"normalizer"`
+type Type struct {
+	normalizer *Normalizer          `di.inject:"normalizer"`
+	config     *configurator.Config `di.inject:"config"`
 }
 
-func (filler *TypeFiller) fillJsonTag(into *jen.Statement, name string) {
+func (typ *Type) fillJsonTag(into *jen.Statement, name string) {
 	into.Tag(map[string]string{"json": strings.ToLower(name[:1]) + name[1:]})
 }
 
-func (filler *TypeFiller) fillGoType(into *jen.Statement, typeName string, schemaRef *openapi3.SchemaRef) {
+func (typ *Type) fillGoType(into *jen.Statement, typeName string, schemaRef *openapi3.SchemaRef) {
+	if schemaRef.Ref != "" {
+		into.Qual(typ.config.ComponentsPackagePath, typ.normalizer.extractNameFromRef(schemaRef.Ref))
+		return
+	}
+
 	schema := schemaRef.Value
 
 	if schema.AnyOf != nil || schema.OneOf != nil || schema.AllOf != nil {
@@ -24,15 +32,15 @@ func (filler *TypeFiller) fillGoType(into *jen.Statement, typeName string, schem
 	}
 
 	if len(schema.Enum) > 0 {
-		into.Id(typeName)
+		into.Qual(typ.config.ComponentsPackagePath, typeName)
 		return
 	}
 
 	switch schema.Type {
 	case "object":
 		if schemaRef.Ref != "" {
-			typeName := filler.normalizer.normalizeName(filler.normalizer.extractNameFromRef(schemaRef.Ref))
-			into.Id(typeName)
+			typeName := typ.normalizer.normalizeName(typ.normalizer.extractNameFromRef(schemaRef.Ref))
+			into.Qual(typ.config.ComponentsPackagePath, typeName)
 			return
 		}
 
@@ -43,7 +51,7 @@ func (filler *TypeFiller) fillGoType(into *jen.Statement, typeName string, schem
 		return
 	case "array":
 		into.Index()
-		filler.fillGoType(into, typeName, schema.Items)
+		typ.fillGoType(into, typeName, schema.Items)
 		return
 	case "integer":
 		into.Int()
@@ -68,11 +76,20 @@ func (filler *TypeFiller) fillGoType(into *jen.Statement, typeName string, schem
 		case "date-time":
 			into.String()
 			return
+		case "iso4217-currency-code":
+			into.Qual("github.com/mikekonan/go-currencies", "Code")
+			return
+		case "iso3166-alpha-2":
+			into.Qual("github.com/mikekonan/go-countries", "Alpha2Code")
+			return
+		case "iso3166-alpha-3":
+			into.Qual("github.com/mikekonan/go-countries", "Alpha3Code")
+			return
 		case "uuid":
 			into.Qual("github.com/google/uuid", "UUID")
 			return
 		case "json":
-			into.Id("json").Dot("RawMessage")
+			into.Qual("encoding/json", "RawMessage")
 			return
 		default:
 			into.String()

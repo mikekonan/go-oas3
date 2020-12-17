@@ -2,6 +2,8 @@ package configurator
 
 import (
 	"context"
+	"os"
+	"path"
 
 	"github.com/heetch/confita"
 	"github.com/heetch/confita/backend/flags"
@@ -22,12 +24,37 @@ func (config *Config) Defaults() *Config {
 	return config
 }
 
+func (config *Config) IsComponentsPathDiffersFromWrappersPath() bool {
+	return config.ComponentsPackagePath != config.PackagePath
+}
+
 type Configurator struct {
 	config *Config `di.inject:"config"`
 }
 
+func (configurator *Configurator) concatPaths(filePath string) (string, error) {
+	if filePath[0] == '.' {
+		wd, err := os.Getwd()
+		if err != nil {
+			return "", err
+		}
+
+		return path.Join(wd, filePath), nil
+	}
+
+	return filePath, nil
+}
+
 func (configurator *Configurator) PostConstruct() (err error) {
 	if err := confita.NewLoader(flags.NewBackend()).Load(context.Background(), configurator.config); err != nil {
+		return err
+	}
+
+	if configurator.config.Path, err = configurator.concatPaths(configurator.config.Path); err != nil {
+		return err
+	}
+
+	if configurator.config.PackagePath, err = configurator.concatPaths(configurator.config.Path); err != nil {
 		return err
 	}
 
