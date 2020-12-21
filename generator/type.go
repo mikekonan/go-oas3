@@ -99,3 +99,7 @@ func (typ *Type) fillGoType(into *jen.Statement, typeName string, schemaRef *ope
 
 	into.Interface()
 }
+
+func (typ *Type) isCustomType(ref *openapi3.Schema) bool {
+	return ref.Type == "string" && ref.Format != ""
+}
