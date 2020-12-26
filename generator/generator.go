@@ -95,19 +95,19 @@ func (generator *Generator) requestParameters(paths map[string]*openapi3.PathIte
 						name := generator.normalizer.normalizeOperationName(path, cast.ToString(kv.Key))
 						operation := kv.Value.(*openapi3.Operation)
 						if operation.RequestBody == nil {
-							result = append(result, generator.requestParameterStruct(name, "", false, operation))
+							result = append(result, generator.requestParameterStruct2(name, "", false, operation))
 							return
 						}
 
 						if operation.RequestBody != nil && len(operation.RequestBody.Value.Content) == 1 {
 							contentType := cast.ToString(linq.From(operation.RequestBody.Value.Content).SelectT(func(kv linq.KeyValue) string { return cast.ToString(kv.Key) }).First())
-							result = append(result, generator.requestParameterStruct(name, contentType, false, operation))
+							result = append(result, generator.requestParameterStruct2(name, contentType, false, operation))
 							return
 						}
 
 						var contentTypeResult []jen.Code
 						linq.From(operation.RequestBody.Value.Content).
-							SelectT(func(kv linq.KeyValue) jen.Code { return generator.requestParameterStruct(name, cast.ToString(kv.Key), true, operation) }).
+							SelectT(func(kv linq.KeyValue) jen.Code { return generator.requestParameterStruct2(name, cast.ToString(kv.Key), true, operation) }).
 							ToSlice(&contentTypeResult)
 
 						result = append(result, contentTypeResult...)
@@ -289,6 +289,139 @@ func (generator *Generator) requestParameterStruct(name string, contentType stri
 		append(parameters, jen.Id("ProcessingResult").Id("RequestProcessingResult"))...)
 
 	return jen.Type().Id(name + "Request").Struct(parameters...)
+}
+
+func (generator *Generator) requestParameterStruct2(name string, contentType string, appendContentTypeToName bool, operation *openapi3.Operation) jen.Code {
+	type parameter struct {
+		In   string
+		Code jen.Code
+	}
+
+	var additionalParameters []parameter
+
+	if contentType != "" {
+		if appendContentTypeToName {
+			name += generator.normalizer.contentType(contentType)
+		}
+
+		bodyTypeName := generator.normalizer.extractNameFromRef(operation.RequestBody.Value.Content[contentType].Schema.Ref)
+		if bodyTypeName == "" {
+			bodyTypeName = name + "RequestBody"
+		}
+
+		additionalParameters = append(additionalParameters,
+			parameter{In: "Body", Code: jen.Id("Body").Qual(generator.config.ComponentsPackagePath, bodyTypeName)})
+	}
+
+	var parameterStructs []jen.Code
+
+	linq.From(operation.Parameters).
+		GroupByT(
+			func(parameter *openapi3.ParameterRef) string { return parameter.Value.In },
+			func(parameter *openapi3.ParameterRef) *openapi3.ParameterRef { return parameter }).
+		SelectT(
+			func(group linq.Group) jen.Code {
+				var structFields []jen.Code
+				linq.From(group.Group).
+					OrderByT(func(parameter *openapi3.ParameterRef) string { return parameter.Value.Name }).
+					SelectT(func(parameter *openapi3.ParameterRef) (result jen.Code) {
+						name := generator.normalizer.normalizeName(parameter.Value.Name)
+						var statement = jen.Id(name)
+
+						if len(parameter.Value.Schema.Value.Enum) > 0 {
+							if len(parameter.Value.Schema.Ref) > 0 {
+								generator.typee.fillGoType(statement, generator.normalizer.extractNameFromRef(parameter.Value.Schema.Ref), parameter.Value.Schema)
+								return statement
+							}
+
+							//todo: generate enum for anonymous type
+						}
+
+						generator.typee.fillGoType(statement, name, parameter.Value.Schema)
+						return statement
+					}).
+					ToSlice(&structFields)
+
+				var getters []jen.Code
+
+				typeName := name + "Request" + strings.Title(cast.ToString(group.Key))
+
+				linq.From(group.Group).
+					OrderByT(func(parameter *openapi3.ParameterRef) string { return parameter.Value.Name }).
+					SelectT(func(parameter *openapi3.ParameterRef) (result jen.Code) {
+						name := generator.normalizer.normalizeName(parameter.Value.Name)
+						var statement = jen.Func().Params(jen.Id(parameter.Value.In).Id(typeName)).Id("Get" + name).Params()
+
+						if len(parameter.Value.Schema.Value.Enum) > 0 {
+							if len(parameter.Value.Schema.Ref) > 0 {
+								var returnType = jen.Null()
+								generator.typee.fillGoType(returnType, generator.normalizer.extractNameFromRef(parameter.Value.Schema.Ref), parameter.Value.Schema)
+								statement = statement.Params(returnType).Block(jen.Return().Id(parameter.Value.In).Dot(name))
+								return statement
+							}
+
+							//todo: generate enum for anonymous type
+						}
+
+						var returnType = jen.Null()
+						generator.typee.fillGoType(returnType, name, parameter.Value.Schema)
+						statement = statement.Params(returnType).Block(jen.Return().Id(parameter.Value.In).Dot(name))
+						return statement
+					}).
+					ToSlice(&getters)
+
+				return jen.Type().Id(typeName).Struct(structFields...).
+					Line().Line().
+					Add(generator.normalizer.doubleLineAfterEachElement(getters...)...)
+			}).
+		ToSlice(&parameterStructs)
+
+	var parameters []jen.Code
+
+	linq.From(operation.Parameters).
+		GroupByT(
+			func(parameter *openapi3.ParameterRef) string { return parameter.Value.In },
+			func(parameter *openapi3.ParameterRef) *openapi3.ParameterRef { return parameter }).
+		SelectT(
+			func(group linq.Group) (parameter parameter) {
+				var structFields []jen.Code
+				linq.From(group.Group).
+					OrderByT(func(parameter *openapi3.ParameterRef) string { return parameter.Value.Name }).
+					SelectT(func(parameter *openapi3.ParameterRef) (result jen.Code) {
+						name := generator.normalizer.normalizeName(parameter.Value.Name)
+						var statement = jen.Id(name)
+
+						if len(parameter.Value.Schema.Value.Enum) > 0 {
+							if len(parameter.Value.Schema.Ref) > 0 {
+								generator.typee.fillGoType(statement, generator.normalizer.extractNameFromRef(parameter.Value.Schema.Ref), parameter.Value.Schema)
+								return statement
+							}
+
+							//todo: generate enum for anonymous type
+						}
+
+						generator.typee.fillGoType(statement, name, parameter.Value.Schema)
+						return statement
+					}).
+					ToSlice(&structFields)
+
+				parameter.In = cast.ToString(group.Key)
+				parameter.Code = jen.Id(strings.Title(cast.ToString(group.Key))).Id(name + "Request" + strings.Title(cast.ToString(group.Key)))
+
+				return
+			}).
+		Concat(linq.From(additionalParameters)).
+		OrderByT(func(parameter parameter) string { return parameter.In }).
+		SelectT(func(parameter parameter) jen.Code { return parameter.Code }).
+		ToSlice(&parameters)
+
+	parameters = append(parameters, jen.Id("ProcessingResult").Id("RequestProcessingResult"))
+
+	return jen.Null().
+		Add(generator.normalizer.doubleLineAfterEachElement(parameterStructs...)...).
+		Line().Line().
+		Add(jen.Type().Id(name + "Request").Struct(parameters...)).
+		Line().Line()
 }
 
 func (generator *Generator) enumFromSchema(name string, schema *openapi3.SchemaRef) jen.Code {
@@ -487,44 +620,27 @@ func (generator *Generator) enums(swagger *openapi3.Swagger) jen.Code {
 	return jen.Null().Add(generator.normalizer.lineAfterEachElement(pathsResult...)...).Add(generator.normalizer.lineAfterEachElement(componentsResult...)...)
 }
 
-//type Hooks struct {
-//	RequestBodyUnmarshalFailed  func(*http.Request, string, error)
-//	RequestHeaderParseFailed    func(*http.Request, string, string, error)
-//	RequestPathParseFailed      func(*http.Request, string, string, error)
-//	RequestQueryParseFailed     func(*http.Request, string, string, error)
-//	RequestBodyUnmarshalSucceed func(*http.Request, string)
-//	RequestHeaderParseSucceed   func(*http.Request, string)
-//	RequestPathParseSucceed     func(*http.Request, string)
-//	RequestQueryParseSucceed    func(*http.Request, string)
-//	RequestParseSucceed         func(*http.Request, string)
-//	ResponseBodyMarshalSucceed  func(*http.Request, string)
-//	ResponseBodyWriteSucceed    func(*http.Request, int, string)
-//	ResponseMarshalFailed       func(*http.Request, string, error)
-//	ResponseBodyWriteFailed     func(*http.Request, string, int, error)
-//	RequestServiceCompleted     func(*http.Request, string)
-//}
-
 func (generator *Generator) hooksStruct() jen.Code {
 	return jen.Type().Id("Hooks").Struct(
 		jen.Id("RequestBodyUnmarshalFailed").Func().Params(jen.Op("*").Qual("net/http",
 			"Request"),
 			jen.Id("string"),
-			jen.Id("error")),
+			jen.Id("RequestProcessingResult")),
 		jen.Id("RequestHeaderParseFailed").Func().Params(jen.Op("*").Qual("net/http",
 			"Request"),
 			jen.Id("string"),
 			jen.Id("string"),
-			jen.Id("error")),
+			jen.Id("RequestProcessingResult")),
 		jen.Id("RequestPathParseFailed").Func().Params(jen.Op("*").Qual("net/http",
 			"Request"),
 			jen.Id("string"),
 			jen.Id("string"),
-			jen.Id("error")),
+			jen.Id("RequestProcessingResult")),
 		jen.Id("RequestQueryParseFailed").Func().Params(jen.Op("*").Qual("net/http",
 			"Request"),
 			jen.Id("string"),
 			jen.Id("string"),
-			jen.Id("error")),
+			jen.Id("RequestProcessingResult")),
 		jen.Id("RequestBodyUnmarshalCompleted").Func().Params(jen.Op("*").Qual("net/http",
 			"Request"),
 			jen.Id("string")),
@@ -549,8 +665,9 @@ func (generator *Generator) hooksStruct() jen.Code {
 		jen.Id("ResponseBodyWriteCompleted").Func().Params(jen.Op("*").Qual("net/http",
 			"Request"),
 			jen.Id("string"), jen.Id("int")),
-		jen.Id("ResponseBodyMarshalFailed").Func().Params(jen.Op("*").Qual("net/http",
-			"Request"),
+		jen.Id("ResponseBodyMarshalFailed").Func().Params(
+			jen.Qual("net/http", "ResponseWriter"),
+			jen.Op("*").Qual("net/http", "Request"),
 			jen.Id("string"),
 			jen.Id("error")),
 		jen.Id("ResponseBodyWriteFailed").Func().Params(jen.Op("*").Qual("net/http",
@@ -564,17 +681,32 @@ func (generator *Generator) hooksStruct() jen.Code {
 	)
 }
 
-func (generator *Generator) requestProcessingResultEnum() jen.Code {
-	return jen.Type().Id("RequestProcessingResult").Id("uint8").
+func (generator *Generator) requestProcessingResultType() jen.Code {
+	return jen.Type().Id("requestProcessingResultType").Id("uint8").
 		Add(jen.Line(), jen.Line()).
 		Add(jen.Const().Defs(
-			jen.Id("BodyUnmarshalFailed").Id("RequestProcessingResult").Op("=").Id("iota").Op("+").Lit(1),
+			jen.Id("BodyUnmarshalFailed").Id("requestProcessingResultType").Op("=").Id("iota").Op("+").Lit(1),
 			jen.Id("HeaderParseFailed"),
 			jen.Id("QueryParseFailed"),
 			jen.Id("PathParseFailed"),
 			jen.Id("ParseSucceed"),
 		)).
-		Add(jen.Line())
+		Add(jen.Line(), jen.Line()).
+		Add(jen.Type().Id("RequestProcessingResult").Struct(
+			jen.Id("error").Id("error"),
+			jen.Id("typee").Id("requestProcessingResultType"),
+		)).
+		Add(jen.Line(), jen.Line()).
+		Add(jen.Func().Params(
+			jen.Id("r").Id("RequestProcessingResult")).Id("Type").Params().Params(
+			jen.Id("requestProcessingResultType")).Block(
+			jen.Return().Id("r").Dot("typee"))).
+		Add(jen.Line(), jen.Line()).
+		Add(jen.Func().Params(
+			jen.Id("r").Id("RequestProcessingResult")).Id("Err").Params().Params(
+			jen.Id("error")).Block(
+			jen.Return().Id("r").Dot("error"),
+		))
 }
 
 func (generator *Generator) wrappers(swagger *openapi3.Swagger) jen.Code {
@@ -651,7 +783,7 @@ func (generator *Generator) wrappers(swagger *openapi3.Swagger) jen.Code {
 	return jen.Null().
 		Add(generator.hooksStruct()).
 		Add(jen.Line(), jen.Line()).
-		Add(generator.requestProcessingResultEnum()).
+		Add(generator.requestProcessingResultType()).
 		Add(jen.Line(), jen.Line()).
 		Add(generator.normalizer.lineAfterEachElement(results...)...).
 		Add(jen.Line(), jen.Line())
@@ -775,12 +907,14 @@ func (generator *Generator) wrapperCustomType(in string, name string, paramName 
 	}
 
 	parseFailed := []jen.Code{
-		jen.Id("request").Dot("ProcessingResult").Op("=").Id(strings.Title(in) + "ParseFailed"),
-		jen.Id("router").Dot("hooks").Dot("Request"+strings.Title(in)+"ParseFailed").
-			Call(jen.Id("r"),
+		jen.Id("request").Dot("ProcessingResult").Op("=").Id("RequestProcessingResult").Values(jen.Id("error").Op(":").Id("err"),
+			jen.Id("typee").Op(":").Id(strings.Title(in)+"ParseFailed")),
+		jen.If(jen.Id("router").Dot("hooks").Dot("Request" + strings.Title(in) + "ParseFailed").Op("!=").Id("nil")).Block(
+			jen.Id("router").Dot("hooks").Dot("Request"+strings.Title(in)+"ParseFailed").Call(
+				jen.Id("r"),
 				jen.Lit(wrapperName),
 				jen.Lit(parameter.Value.Name),
-				jen.Id("err")),
+				jen.Id("request").Dot("ProcessingResult"))),
 		jen.Line().Return(),
 	}
 
@@ -833,13 +967,14 @@ func (generator *Generator) wrapperEnum(in string, enumType string, name string,
 		Add(jen.Line()).
 		Add(jen.If(jen.Id("err").Op(":=").Id(paramName).Dot("Check").Call(),
 			jen.Id("err").Op("!=").Id("nil")).Block(
-			jen.Id("request").Dot("ProcessingResult").Op("=").Id(strings.Title(in)+"ParseFailed").Line(),
+			jen.Id("request").Dot("ProcessingResult").Op("=").Id("RequestProcessingResult").Values(jen.Id("error").Op(":").Id("err"),
+				jen.Id("typee").Op(":").Id(strings.Title(in)+"ParseFailed")),
 			jen.If(jen.Id("router").Dot("hooks").Dot("Request"+strings.Title(in)+"ParseFailed").Op("!=").Id("nil")).Block(
 				jen.Id("router").Dot("hooks").Dot("Request"+strings.Title(in)+"ParseFailed").Call(
 					jen.Id("r"),
 					jen.Lit(wrapperName),
 					jen.Lit(parameter.Value.Name),
-					jen.Id("err"))),
+					jen.Id("request").Dot("ProcessingResult"))),
 			jen.Line().Return())).
 		Add(jen.Line(), jen.Line()).
 		Add(jen.Id("request").Dot(strings.Title(parameter.Value.In)).Dot(name).Op("=").Id(paramName)).
@@ -864,13 +999,15 @@ func (generator *Generator) wrapperStr(in string, name string, paramName string,
 		result = result.
 			Add(jen.Line()).
 			Add(jen.If(jen.Id(paramName).Op("==").Lit("")).Block(
-				jen.Id("request").Dot("ProcessingResult").Op("=").Id(strings.Title(in)+"ParseFailed").Line(),
+				jen.Id("err").Op(":=").Qual("fmt", "Errorf").Call(jen.Lit(fmt.Sprintf("%s is empty", parameter.Value.Name))).Line(),
+				jen.Id("request").Dot("ProcessingResult").Op("=").Id("RequestProcessingResult").Values(jen.Id("error").Op(":").Id("err"),
+					jen.Id("typee").Op(":").Id(strings.Title(in)+"ParseFailed")),
 				jen.If(jen.Id("router").Dot("hooks").Dot("Request"+strings.Title(in)+"ParseFailed").Op("!=").Id("nil")).Block(
 					jen.Id("router").Dot("hooks").Dot("Request"+strings.Title(in)+"ParseFailed").Call(
 						jen.Id("r"),
 						jen.Lit(wrapperName),
 						jen.Lit(parameter.Value.Name),
-						jen.Qual("fmt", "Errorf").Call(jen.Lit(fmt.Sprintf("%s is empty", parameter.Value.Name))))),
+						jen.Id("request").Dot("ProcessingResult"))),
 				jen.Line().Return())).
 			Add(jen.Line())
 	}
@@ -900,12 +1037,13 @@ func (generator *Generator) wrapperBody(method string, path string, contentType 
 		Add(jen.If(jen.Id("err").Op(":=").Qual("encoding/json",
 			"NewDecoder").Call(jen.Id("r").Dot("Body")).Dot("Decode").Call(jen.Op("&").Id("body")),
 			jen.Id("err").Op("!=").Id("nil")).Block(
-			jen.Id("request").Dot("ProcessingResult").Op("=").Id("BodyUnmarshalFailed").Line(),
+			jen.Id("request").Dot("ProcessingResult").Op("=").Id("RequestProcessingResult").Values(jen.Id("error").Op(":").Id("err"),
+				jen.Id("typee").Op(":").Id("BodyUnmarshalFailed")),
 			jen.If(jen.Id("router").Dot("hooks").Dot("RequestBodyUnmarshalFailed").Op("!=").Id("nil")).Block(
 				jen.Id("router").Dot("hooks").Dot("RequestBodyUnmarshalFailed").Call(
 					jen.Id("r"),
 					jen.Lit(wrapperName),
-					jen.Id("err")),
+					jen.Id("request").Dot("ProcessingResult")),
 				jen.Line().Return()),
 			jen.Line().Return())).
 		Add(jen.Line(), jen.Line()).
@@ -920,7 +1058,7 @@ func (generator *Generator) wrapperBody(method string, path string, contentType 
 
 func (generator *Generator) wrapperRequestParser(name string, requestName string, routerName, method string, path string, operation *openapi3.Operation, requestBody *openapi3.SchemaRef, contentType string) jen.Code {
 	funcCode := []jen.Code{
-		jen.Id("request").Dot("ProcessingResult").Op("=").Id("ParseSucceed").Add(jen.Line()),
+		jen.Id("request").Dot("ProcessingResult").Op("=").Id("RequestProcessingResult").Values(jen.Id("typee").Op(":").Id("ParseSucceed")).Line(),
 	}
 
 	funcCode = append(funcCode, generator.wrapperRequestParsers(name, operation)...)
@@ -955,6 +1093,8 @@ func (generator *Generator) wrapper(name string, requestName string, routerName,
 				jen.Id("r"),
 				jen.Lit(name)))).Line().Line())
 
+	funcCode = append(funcCode, jen.Id("w").Dot("WriteHeader").Call(jen.Id("response").Dot("statusCode").Call()).Line().Line())
+
 	if len(operation.Responses) > 0 && linq.From(operation.Responses).AnyWithT(func(kv linq.KeyValue) bool { return len(kv.Value.(*openapi3.ResponseRef).Value.Content) > 0 }) {
 		funcCode = append(funcCode, jen.If(jen.Id("len").Call(jen.Id("response").Dot("contentType").Call()).Op(">").Lit(0)).Block(
 			jen.Id("w").Dot("Header").Call().Dot("Set").Call(jen.Lit("content-type"),
@@ -967,6 +1107,7 @@ func (generator *Generator) wrapper(name string, requestName string, routerName,
 			jen.If(jen.Id("err").Op("!=").Id("nil")).Block(
 				jen.If(jen.Id("router").Dot("hooks").Dot("ResponseBodyMarshalFailed").Op("!=").Id("nil")).Block(
 					jen.Id("router").Dot("hooks").Dot("ResponseBodyMarshalFailed").Call(
+						jen.Id("w"),
 						jen.Id("r"),
 						jen.Lit(name),
 						jen.Id("err"))),
@@ -989,8 +1130,6 @@ func (generator *Generator) wrapper(name string, requestName string, routerName,
 					jen.Id("r"),
 					jen.Lit(name), jen.Id("count")))).Line().Line())
 	}
-
-	funcCode = append(funcCode, jen.Id("w").Dot("WriteHeader").Call(jen.Id("response").Dot("statusCode").Call()).Line().Line())
 
 	funcCode = append(funcCode, jen.If(jen.Id("router").Dot("hooks").Dot("ServiceCompleted").Op("!=").Id("nil")).
 		Block(jen.Id("router").Dot("hooks").Dot("ServiceCompleted").Call(jen.Id("r"), jen.Lit(name))))
