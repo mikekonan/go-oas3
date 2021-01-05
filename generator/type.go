@@ -1,6 +1,7 @@
 package generator
 
 import (
+	"encoding/json"
 	"strings"
 
 	"github.com/dave/jennifer/jen"
@@ -8,6 +9,8 @@ import (
 
 	"github.com/mikekonan/go-oas3/configurator"
 )
+
+const goType = "x-go-type"
 
 type Type struct {
 	normalizer *Normalizer          `di.inject:"normalizer"`
@@ -21,6 +24,16 @@ func (typ *Type) fillJsonTag(into *jen.Statement, name string) {
 func (typ *Type) fillGoType(into *jen.Statement, typeName string, schemaRef *openapi3.SchemaRef) {
 	if schemaRef.Ref != "" {
 		into.Qual(typ.config.ComponentsPackagePath, typ.normalizer.extractNameFromRef(schemaRef.Ref))
+		return
+	}
+
+	if len(schemaRef.Value.Extensions) > 0 && schemaRef.Value.Extensions[goType] != "" {
+		var customType string
+		if err := json.Unmarshal(schemaRef.Value.Extensions[goType].(json.RawMessage), &customType); err != nil {
+			panic(err)
+		}
+
+		into.Qual(strings.Split(customType, ".")[0], strings.Split(customType, ".")[1])
 		return
 	}
 

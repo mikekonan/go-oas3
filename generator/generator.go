@@ -659,6 +659,9 @@ func (generator *Generator) hooksStruct() jen.Code {
 		jen.Id("RequestProcessingCompleted").Func().Params(jen.Op("*").Qual("net/http",
 			"Request"),
 			jen.Id("string")),
+		jen.Id("RequestRedirectStarted").Func().Params(jen.Op("*").Qual("net/http",
+			"Request"),
+			jen.Id("string")),
 		jen.Id("ResponseBodyMarshalCompleted").Func().Params(jen.Op("*").Qual("net/http",
 			"Request"),
 			jen.Id("string")),
@@ -1082,6 +1085,21 @@ func (generator *Generator) wrapper(name string, requestName string, routerName,
 
 	funcCode = append(funcCode, jen.Id("response").Op(":=").Id("router").Dot("service").Dot(name).Call(jen.Id("r").Dot("Context").Call(),
 		jen.Id("router").Dot("parse"+name+"Request").Call(jen.Id("r"))),
+		jen.Line().Line(),
+		jen.If(jen.Id("response").Dot("statusCode").Call().Op("==").Lit(302).Op("&&").Id("response").Dot("redirectURL").Call().Op("!=").Lit("")).Block(
+			jen.If(jen.Id("router").Dot("hooks").Dot("RequestRedirectStarted").Op("!=").Id("nil")).Block(
+				jen.Id("router").Dot("hooks").Dot("RequestRedirectStarted").Call(jen.Id("r"),
+					jen.Lit(name))),
+			jen.Line().Line(),
+			jen.Qual("net/http",
+				"Redirect").Call(jen.Id("w"),
+				jen.Id("r"),
+				jen.Id("response").Dot("redirectURL").Call(),
+				jen.Lit(302)),
+			jen.Line().Line(),
+			jen.Return(),
+		),
+		jen.Line().Line(),
 		jen.For(jen.List(jen.Id("header"),
 			jen.Id("value")).Op(":=").Range().Id("response").Dot("headers").Call()).Block(
 			jen.Id("w").Dot("Header").Call().Dot("Set").Call(jen.Id("header"),
@@ -1316,12 +1334,14 @@ func (generator *Generator) responseStruct() jen.Code {
 		jen.Id("statusCode").Id("int"),
 		jen.Id("body").Interface(),
 		jen.Id("contentType").Id("string"),
+		jen.Id("redirectURL").Id("string"),
 		jen.Id("headers").Map(jen.Id("string")).Id("string"),
 	).Add(jen.Line()).
 		Add(jen.Type().Id("responseInterface").Interface(
 			jen.Id("statusCode").Params().Id("int"),
 			jen.Id("body").Params().Interface(),
 			jen.Id("contentType").Params().Id("string"),
+			jen.Id("redirectURL").Params().Id("string"),
 			jen.Id("headers").Params().Map(jen.Id("string")).Id("string")))
 }
 
@@ -1358,6 +1378,12 @@ func (generator *Generator) responseType(name string) jen.Code {
 			jen.Id("response").Id(decapicalizedName+"Response")).Id("contentType").Params().Params(
 			jen.Id("string")).Block(
 			jen.Return().Id("response").Dot("response").Dot("contentType"),
+		)).
+		Add(jen.Line(), jen.Line()).
+		Add(jen.Func().Params(
+			jen.Id("response").Id(decapicalizedName+"Response")).Id("redirectURL").Params().Params(
+			jen.Id("string")).Block(
+			jen.Return().Id("response").Dot("response").Dot("redirectURL"),
 		)).
 		Add(jen.Line(), jen.Line()).
 		Add(jen.Func().Params(
@@ -1400,6 +1426,7 @@ func (generator *Generator) responseBuilders(operationStruct operationStruct) je
 		SelectT(func(resp operationResponse) (results []jen.Code) {
 			hasHeaders := len(resp.Headers) > 0
 			hasContentTypes := len(resp.ContentTypeBodyNameMap) > 0
+			isRedirect := resp.StatusCode == "302"
 
 			//OK
 			if !hasHeaders && !hasContentTypes {
@@ -1408,12 +1435,22 @@ func (generator *Generator) responseBuilders(operationStruct operationStruct) je
 				results = append(results, jen.Type().Id(assemblerName).Struct(jen.Id("response")))
 
 				//statusCode -> assembler
-				results = append(results, jen.Func().Params(
-					jen.Id("builder").Op("*").Id(statusCodesBuilderName)).Id("StatusCode"+resp.StatusCode).Params().Params(
-					jen.Op("*").Id(assemblerName)).Block(
-					jen.Id("builder").Dot("response").Dot("statusCode").Op("=").Lit(cast.ToInt(resp.StatusCode)),
-					jen.Line().Return().Op("&").Id(assemblerName).Values(jen.Id("response").Op(":").Id("builder").Dot("response")),
-				))
+				if isRedirect {
+					results = append(results, jen.Func().Params(
+						jen.Id("builder").Op("*").Id(statusCodesBuilderName)).Id("StatusCode"+resp.StatusCode).Params(jen.Id("redirectURL").String()).Params(
+						jen.Op("*").Id(assemblerName)).Block(
+						jen.Id("builder").Dot("response").Dot("statusCode").Op("=").Lit(cast.ToInt(resp.StatusCode)),
+						jen.Id("builder").Dot("response").Dot("redirectURL").Op("=").Id("redirectURL"),
+						jen.Line().Return().Op("&").Id(assemblerName).Values(jen.Id("response").Op(":").Id("builder").Dot("response")),
+					))
+				} else {
+					results = append(results, jen.Func().Params(
+						jen.Id("builder").Op("*").Id(statusCodesBuilderName)).Id("StatusCode"+resp.StatusCode).Params().Params(
+						jen.Op("*").Id(assemblerName)).Block(
+						jen.Id("builder").Dot("response").Dot("statusCode").Op("=").Lit(cast.ToInt(resp.StatusCode)),
+						jen.Line().Return().Op("&").Id(assemblerName).Values(jen.Id("response").Op(":").Id("builder").Dot("response")),
+					))
+				}
 
 				//build
 				results = append(results, jen.Func().Params(
