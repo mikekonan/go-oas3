@@ -36,11 +36,11 @@ func (generator *Generator) file(from jen.Code, packagePath string) *jen.File {
 
 func (generator *Generator) Generate(swagger *openapi3.Swagger) *Result {
 	return &Result{
-		ComponentsCode: generator.file(generator.components(swagger), generator.config.ComponentsPackagePath),
+		ComponentsCode: generator.file(generator.components(swagger), generator.config.ComponentsPackage),
 		RouterCode: generator.file(jen.Null().
 			Add(generator.wrappers(swagger)).
 			Add(jen.Line()).
-			Add(generator.requestResponseBuilders(swagger)), generator.config.PackagePath),
+			Add(generator.requestResponseBuilders(swagger)), generator.config.Package),
 	}
 }
 
@@ -243,7 +243,7 @@ func (generator *Generator) requestParameterStruct(name string, contentType stri
 		}
 
 		additionalParameters = append(additionalParameters,
-			parameter{In: "Body", Code: jen.Id("Body").Qual(generator.config.ComponentsPackagePath, bodyTypeName)})
+			parameter{In: "Body", Code: jen.Id("Body").Qual(generator.config.ComponentsPackage, bodyTypeName)})
 	}
 
 	var parameters []jen.Code
@@ -310,7 +310,7 @@ func (generator *Generator) requestParameterStruct2(name string, contentType str
 		}
 
 		additionalParameters = append(additionalParameters,
-			parameter{In: "Body", Code: jen.Id("Body").Qual(generator.config.ComponentsPackagePath, bodyTypeName)})
+			parameter{In: "Body", Code: jen.Id("Body").Qual(generator.config.ComponentsPackage, bodyTypeName)})
 	}
 
 	var parameterStructs []jen.Code
@@ -661,7 +661,7 @@ func (generator *Generator) hooksStruct() jen.Code {
 			jen.Id("string")),
 		jen.Id("RequestRedirectStarted").Func().Params(jen.Op("*").Qual("net/http",
 			"Request"),
-			jen.Id("string")),
+			jen.Id("string"), jen.Id("string")),
 		jen.Id("ResponseBodyMarshalCompleted").Func().Params(jen.Op("*").Qual("net/http",
 			"Request"),
 			jen.Id("string")),
@@ -772,9 +772,9 @@ func (generator *Generator) wrappers(swagger *openapi3.Swagger) jen.Code {
 				}).ToSlice(&wrappers)
 
 			return jen.Null().
-				Add(generator.handler(tag+"Handler", tag+"Service", strings.ToLower(tag)+"Router")).
+				Add(generator.handler(strings.Title(tag)+"Handler", strings.Title(tag)+"Service", strings.ToLower(tag)+"Router")).
 				Add(jen.Line()).
-				Add(generator.router(strings.ToLower(tag)+"Router", tag+"Service")).
+				Add(generator.router(strings.ToLower(tag)+"Router", strings.Title(tag)+"Service")).
 				Add(jen.Line()).
 				Add(jen.Func().Params(jen.Id("router").Op("*").Id(strings.ToLower(tag)+"Router")).Id("mount").Params().Block(routes...)).
 				Add(jen.Line(), jen.Line()).
@@ -877,9 +877,14 @@ func (generator *Generator) wrapperRequestParsers(wrapperName string, operation 
 				if generator.typee.isCustomType(parameter.Value.Schema.Value) {
 					return generator.wrapperCustomType(in, name, paramName, wrapperName, parameter)
 				}
+
 				if len(parameter.Value.Schema.Value.Enum) > 0 { //TODO: support anonymous enum types
 					enumType := generator.normalizer.extractNameFromRef(parameter.Value.Schema.Ref)
 					return generator.wrapperEnum(in, enumType, name, paramName, wrapperName, parameter)
+				}
+
+				if parameter.Value.Schema.Value.Type == "integer" {
+					return generator.wrapperInteger(in, name, paramName, wrapperName, parameter)
 				}
 
 				return generator.wrapperStr(in, name, paramName, wrapperName, parameter)
@@ -957,11 +962,11 @@ func (generator *Generator) wrapperEnum(in string, enumType string, name string,
 
 	switch in {
 	case "header":
-		result = result.Add(jen.Id(paramName).Op(":=").Qual(generator.config.ComponentsPackagePath, enumType).Call(jen.Id("r").Dot("Header").Dot("Get").Call(jen.Lit(parameter.Value.Name))))
+		result = result.Add(jen.Id(paramName).Op(":=").Qual(generator.config.ComponentsPackage, enumType).Call(jen.Id("r").Dot("Header").Dot("Get").Call(jen.Lit(parameter.Value.Name))))
 	case "query":
-		result = result.Add(jen.Id(paramName).Op(":=").Qual(generator.config.ComponentsPackagePath, enumType).Call(jen.Id("r").Dot("URL").Dot("Query").Call().Dot("Get").Call(jen.Lit(parameter.Value.Name))))
+		result = result.Add(jen.Id(paramName).Op(":=").Qual(generator.config.ComponentsPackage, enumType).Call(jen.Id("r").Dot("URL").Dot("Query").Call().Dot("Get").Call(jen.Lit(parameter.Value.Name))))
 	case "path":
-		result = result.Add(jen.Id(paramName).Op(":=").Qual(generator.config.ComponentsPackagePath, enumType).Call(jen.Id("chi").Dot("URLParam").Call(jen.Id("r"), jen.Lit(parameter.Value.Name))))
+		result = result.Add(jen.Id(paramName).Op(":=").Qual(generator.config.ComponentsPackage, enumType).Call(jen.Id("chi").Dot("URLParam").Call(jen.Id("r"), jen.Lit(parameter.Value.Name))))
 	default:
 		panic("unsupported " + in + " type")
 	}
@@ -1021,6 +1026,43 @@ func (generator *Generator) wrapperStr(in string, name string, paramName string,
 		Add(jen.Line())
 }
 
+func (generator *Generator) wrapperInteger(in string, name string, paramName string, wrapperName string, parameter *openapi3.ParameterRef) jen.Code {
+	result := jen.Null()
+
+	switch in {
+	case "header":
+		result = result.Add(jen.Id(paramName).Op(":=").Id("r").Dot("Header").Dot("Get").Call(jen.Lit(parameter.Value.Name)))
+	case "query":
+		result = result.Add(jen.Id(paramName).Op(":=").Id("r").Dot("URL").Dot("Query").Call().Dot("Get").Call(jen.Lit(parameter.Value.Name)))
+	case "path":
+		result = result.Add(jen.Id(paramName).Op(":=").Id("chi").Dot("URLParam").Call(jen.Id("r"), jen.Lit(parameter.Value.Name)))
+	default:
+		panic("unsupported " + in + " type")
+	}
+
+	if parameter.Value.Required {
+		result = result.
+			Add(jen.Line()).
+			Add(jen.If(jen.Id(paramName).Op("==").Lit("")).Block(
+				jen.Id("err").Op(":=").Qual("fmt", "Errorf").Call(jen.Lit(fmt.Sprintf("%s is empty", parameter.Value.Name))).Line(),
+				jen.Id("request").Dot("ProcessingResult").Op("=").Id("RequestProcessingResult").Values(jen.Id("error").Op(":").Id("err"),
+					jen.Id("typee").Op(":").Id(strings.Title(in)+"ParseFailed")),
+				jen.If(jen.Id("router").Dot("hooks").Dot("Request"+strings.Title(in)+"ParseFailed").Op("!=").Id("nil")).Block(
+					jen.Id("router").Dot("hooks").Dot("Request"+strings.Title(in)+"ParseFailed").Call(
+						jen.Id("r"),
+						jen.Lit(wrapperName),
+						jen.Lit(parameter.Value.Name),
+						jen.Id("request").Dot("ProcessingResult"))),
+				jen.Line().Return())).
+			Add(jen.Line())
+	}
+
+	return result.
+		Add(jen.Line()).
+		Add(jen.Id("request").Dot(strings.Title(parameter.Value.In)).Dot(name).Op("=").Qual("github.com/spf13/cast", "ToInt").Call(jen.Id(paramName))).
+		Add(jen.Line())
+}
+
 func (generator *Generator) wrapperBody(method string, path string, contentType string, wrapperName string, operation *openapi3.Operation, body *openapi3.SchemaRef) jen.Code {
 	result := jen.Null()
 
@@ -1035,7 +1077,7 @@ func (generator *Generator) wrapperBody(method string, path string, contentType 
 	}
 
 	return result.
-		Add(jen.Var().Id("body").Qual(generator.config.ComponentsPackagePath, name)).
+		Add(jen.Var().Id("body").Qual(generator.config.ComponentsPackage, name)).
 		Add(jen.Line()).
 		Add(jen.If(jen.Id("err").Op(":=").Qual("encoding/json",
 			"NewDecoder").Call(jen.Id("r").Dot("Body")).Dot("Decode").Call(jen.Op("&").Id("body")),
@@ -1089,7 +1131,7 @@ func (generator *Generator) wrapper(name string, requestName string, routerName,
 		jen.If(jen.Id("response").Dot("statusCode").Call().Op("==").Lit(302).Op("&&").Id("response").Dot("redirectURL").Call().Op("!=").Lit("")).Block(
 			jen.If(jen.Id("router").Dot("hooks").Dot("RequestRedirectStarted").Op("!=").Id("nil")).Block(
 				jen.Id("router").Dot("hooks").Dot("RequestRedirectStarted").Call(jen.Id("r"),
-					jen.Lit(name))),
+					jen.Lit(name), jen.Id("response").Dot("redirectURL").Call())),
 			jen.Line().Line(),
 			jen.Qual("net/http",
 				"Redirect").Call(jen.Id("w"),
@@ -1322,7 +1364,7 @@ func (generator *Generator) handlersInterfaces(swagger *openapi3.Swagger) jen.Co
 		SelectT(func(kv linq.Group) jen.Code {
 			var grouped []jen.Code
 			linq.From(kv.Group).SelectMany(func(i interface{}) linq.Query { return linq.From(i) }).ToSlice(&grouped)
-			return jen.Type().Id(cast.ToString(kv.Key) + "Service").Interface(grouped...)
+			return jen.Type().Id(strings.Title(cast.ToString(kv.Key)) + "Service").Interface(grouped...)
 		}).
 		ToSlice(&result)
 
@@ -1336,7 +1378,7 @@ func (generator *Generator) responseStruct() jen.Code {
 		jen.Id("contentType").Id("string"),
 		jen.Id("redirectURL").Id("string"),
 		jen.Id("headers").Map(jen.Id("string")).Id("string"),
-	).Add(jen.Line()).
+	).Add(jen.Line().Line()).
 		Add(jen.Type().Id("responseInterface").Interface(
 			jen.Id("statusCode").Params().Id("int"),
 			jen.Id("body").Params().Interface(),
@@ -1547,7 +1589,7 @@ func (generator *Generator) responseBuilders(operationStruct operationStruct) je
 						//body builder
 						result = append(result, jen.Func().Params(
 							jen.Id("builder").Op("*").Id(bodyBuilderName)).Id("Body").Params(
-							jen.Id("body").Qual(generator.config.ComponentsPackagePath, cast.ToString(kv.Value))).Params(
+							jen.Id("body").Qual(generator.config.ComponentsPackage, cast.ToString(kv.Value))).Params(
 							jen.Op("*").Id(assemblerName)).Block(
 							jen.Id("builder").Dot("response").Dot("body").Op("=").Id("body"),
 							jen.Line().Return().Op("&").Id(assemblerName).Values(jen.Id("response").Op(":").Id("builder").Dot("response")),
@@ -1630,7 +1672,7 @@ func (generator *Generator) responseBuilders(operationStruct operationStruct) je
 						//body builder
 						result = append(result, jen.Func().Params(
 							jen.Id("builder").Op("*").Id(bodyBuilderName)).Id("Body").Params(
-							jen.Id("body").Qual(generator.config.ComponentsPackagePath, cast.ToString(kv.Value))).Params(
+							jen.Id("body").Qual(generator.config.ComponentsPackage, cast.ToString(kv.Value))).Params(
 							jen.Op("*").Id(assemblerName)).Block(
 							jen.Id("builder").Dot("response").Dot("body").Op("=").Id("body"),
 							jen.Line().Return().Op("&").Id(assemblerName).Values(jen.Id("response").Op(":").Id("builder").Dot("response")),

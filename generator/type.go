@@ -23,7 +23,7 @@ func (typ *Type) fillJsonTag(into *jen.Statement, name string) {
 
 func (typ *Type) fillGoType(into *jen.Statement, typeName string, schemaRef *openapi3.SchemaRef) {
 	if schemaRef.Ref != "" {
-		into.Qual(typ.config.ComponentsPackagePath, typ.normalizer.extractNameFromRef(schemaRef.Ref))
+		into.Qual(typ.config.ComponentsPackage, typ.normalizer.extractNameFromRef(schemaRef.Ref))
 		return
 	}
 
@@ -45,7 +45,7 @@ func (typ *Type) fillGoType(into *jen.Statement, typeName string, schemaRef *ope
 	}
 
 	if len(schema.Enum) > 0 {
-		into.Qual(typ.config.ComponentsPackagePath, typeName)
+		into.Qual(typ.config.ComponentsPackage, typeName)
 		return
 	}
 
@@ -53,7 +53,7 @@ func (typ *Type) fillGoType(into *jen.Statement, typeName string, schemaRef *ope
 	case "object":
 		if schemaRef.Ref != "" {
 			typeName := typ.normalizer.normalizeName(typ.normalizer.extractNameFromRef(schemaRef.Ref))
-			into.Qual(typ.config.ComponentsPackagePath, typeName)
+			into.Qual(typ.config.ComponentsPackage, typeName)
 			return
 		}
 

@@ -11,21 +11,17 @@ import (
 
 type Config struct {
 	SwaggerAddr string `config:"swagger-addr,required"`
-	PackagePath string `config:"package,required"`
+	Package     string `config:"package,required"`
 	Path        string `config:"path,required"`
 
-	ComponentsPackagePath string `config:"componentsPackage"`
-	ComponentsPath        string `config:"componentsPath"`
+	ComponentsPackage string `config:"componentsPackage"`
+	ComponentsPath    string `config:"componentsPath"`
 }
 
 func (config *Config) Defaults() *Config {
 	config.SwaggerAddr = "swagger.yaml"
 
 	return config
-}
-
-func (config *Config) IsComponentsPathDiffersFromWrappersPath() bool {
-	return config.ComponentsPackagePath != config.PackagePath
 }
 
 type Configurator struct {
@@ -54,12 +50,12 @@ func (configurator *Configurator) PostConstruct() (err error) {
 		return err
 	}
 
-	if configurator.config.PackagePath, err = configurator.concatPaths(configurator.config.Path); err != nil {
+	if configurator.config.Package, err = configurator.concatPaths(configurator.config.Path); err != nil {
 		return err
 	}
 
-	if configurator.config.ComponentsPackagePath == "" {
-		configurator.config.ComponentsPackagePath = configurator.config.PackagePath
+	if configurator.config.ComponentsPackage == "" {
+		configurator.config.ComponentsPackage = configurator.config.Package
 	}
 
 	if configurator.config.ComponentsPath == "" {
