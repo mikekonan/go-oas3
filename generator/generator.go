@@ -437,7 +437,7 @@ func (generator *Generator) enumFromSchema(name string, schema *openapi3.SchemaR
 			jen.Case(enumSwitchCases...).Block(
 				jen.Line().Return().Id("nil"))),
 		jen.Line().Return().Qual("fmt",
-			"Errorf").Call(jen.Lit("invalid Color enum value")),
+			"Errorf").Call(jen.Lit(fmt.Sprintf("invalid %s enum value", name))),
 	).Add(jen.Line()))
 
 	result = append(result, jen.Func().Params(
