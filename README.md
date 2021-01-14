@@ -45,7 +45,9 @@ Also, you have an option to specify a go type with:
 ```
 ## Plans
 Support more types.
+
 Support security schemas.
+
 Create a better example.
 
 ## Have a question or need some functionality?
