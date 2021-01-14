@@ -22,7 +22,11 @@ Usage of go-oas3:
 Run with: ```go-oas3 -swagger-addr https://raw.githubusercontent.com/OAI/OpenAPI-Specification/master/examples/v3.0/petstore.yaml -package example -path ./example```
 The result generated boilerplate and its client you can see at ./example.
 
-## Custom types
+# OpenAPI features
+### Required fields
+Path, query, component, header required fields are supported. 
+
+### Custom types
 Generator supports few swagger types for components. 
 |openapi type|go type|
 |---|---|
@@ -39,6 +43,10 @@ Also, you have an option to specify a go type with:
           type: object
           x-go-type: encoding/json.RawMessage
 ```
+## Plans
+Support more types.
+Support security schemas.
+Create a better example.
 
 ## Have a question or need some functionality?
 Feel free to discuss it or do a PR.
