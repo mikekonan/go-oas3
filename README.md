@@ -50,5 +50,7 @@ Support security schemas.
 
 Create a better example.
 
+Remove cast dependency from generated code.
+
 ## Have a question or need some functionality?
 Feel free to discuss it or do a PR.
