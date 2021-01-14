@@ -44,22 +44,6 @@ func (generator *Generator) Generate(swagger *openapi3.Swagger) *Result {
 	}
 }
 
-func (generator *Generator) requestBody(name string, requestBody *openapi3.RequestBodyRef) (result jen.Code) {
-	if requestBody == nil {
-		return jen.Null()
-	}
-
-	requestBodyName := name + "RequestBody"
-	result = jen.Type().Id(requestBodyName)
-
-	if requestBody.Value != nil && len(requestBody.Value.Content) > 0 && requestBody.Value.Content["application/json"].Schema != nil {
-		var schema = requestBody.Value.Content["application/json"].Schema
-		generator.typee.fillGoType(result.(*jen.Statement), requestBodyName, schema)
-	}
-
-	return
-}
-
 func (generator *Generator) responsesBodies(name string, suffix string, responsesBody map[string]*openapi3.ResponseRef) (result []jen.Code) {
 	linq.From(responsesBody).
 		SelectT(func(kv linq.KeyValue) jen.Code {
@@ -71,7 +55,7 @@ func (generator *Generator) responsesBodies(name string, suffix string, response
 			bodyName := name + cast.ToString(kv.Key) + suffix
 			result := jen.Type().Id(bodyName)
 			var schema = responseBody.Value.Content["application/json"].Schema
-			generator.typee.fillGoType(result, bodyName, schema)
+			generator.typee.fillGoType(result, bodyName, schema, false)
 
 			return result
 		}).
@@ -150,7 +134,7 @@ func (generator *Generator) components(swagger *openapi3.Swagger) jen.Code {
 		WhereT(func(kv linq.KeyValue) bool { return len(kv.Value.(*openapi3.SchemaRef).Value.Enum) == 0 }). //filter enums
 		SelectT(func(kv linq.KeyValue) jen.Code {
 			schemaRef := kv.Value.(*openapi3.SchemaRef)
-			return generator.objectFromSchema(cast.ToString(kv.Key), schemaRef)
+			return generator.componentFromSchema(cast.ToString(kv.Key), schemaRef)
 		},
 		).ToSlice(&componentsResult)
 
@@ -178,7 +162,7 @@ func (generator *Generator) components(swagger *openapi3.Swagger) jen.Code {
 							name += "RequestBody"
 							obj := linq.From(operation.RequestBody.Value.Content).SelectT(func(kv linq.KeyValue) interface{} { return kv.Value }).First().(*openapi3.MediaType)
 
-							result[name] = generator.objectFromSchema(name, obj.Schema)
+							result[name] = generator.componentFromSchema(name, obj.Schema)
 							return linq.From(result)
 						}
 
@@ -189,7 +173,7 @@ func (generator *Generator) components(swagger *openapi3.Swagger) jen.Code {
 									meType := kv.Value.(*openapi3.MediaType)
 
 									objName := name + generator.normalizer.contentType(cast.ToString(kv.Key)+"RequestBody")
-									return generator.objectFromSchema(objName, meType.Schema)
+									return generator.componentFromSchema(objName, meType.Schema)
 								})
 
 						return linq.From(result)
@@ -263,14 +247,14 @@ func (generator *Generator) requestParameterStruct(name string, contentType stri
 
 						if len(parameter.Value.Schema.Value.Enum) > 0 {
 							if len(parameter.Value.Schema.Ref) > 0 {
-								generator.typee.fillGoType(statement, generator.normalizer.extractNameFromRef(parameter.Value.Schema.Ref), parameter.Value.Schema)
+								generator.typee.fillGoType(statement, generator.normalizer.extractNameFromRef(parameter.Value.Schema.Ref), parameter.Value.Schema, false)
 								return statement
 							}
 
 							//todo: generate enum for anonymous type
 						}
 
-						generator.typee.fillGoType(statement, name, parameter.Value.Schema)
+						generator.typee.fillGoType(statement, name, parameter.Value.Schema, false)
 						return statement
 					}).
 					ToSlice(&structFields)
@@ -330,14 +314,14 @@ func (generator *Generator) requestParameterStruct2(name string, contentType str
 
 						if len(parameter.Value.Schema.Value.Enum) > 0 {
 							if len(parameter.Value.Schema.Ref) > 0 {
-								generator.typee.fillGoType(statement, generator.normalizer.extractNameFromRef(parameter.Value.Schema.Ref), parameter.Value.Schema)
+								generator.typee.fillGoType(statement, generator.normalizer.extractNameFromRef(parameter.Value.Schema.Ref), parameter.Value.Schema, false)
 								return statement
 							}
 
 							//todo: generate enum for anonymous type
 						}
 
-						generator.typee.fillGoType(statement, name, parameter.Value.Schema)
+						generator.typee.fillGoType(statement, name, parameter.Value.Schema, false)
 						return statement
 					}).
 					ToSlice(&structFields)
@@ -355,7 +339,7 @@ func (generator *Generator) requestParameterStruct2(name string, contentType str
 						if len(parameter.Value.Schema.Value.Enum) > 0 {
 							if len(parameter.Value.Schema.Ref) > 0 {
 								var returnType = jen.Null()
-								generator.typee.fillGoType(returnType, generator.normalizer.extractNameFromRef(parameter.Value.Schema.Ref), parameter.Value.Schema)
+								generator.typee.fillGoType(returnType, generator.normalizer.extractNameFromRef(parameter.Value.Schema.Ref), parameter.Value.Schema, false)
 								statement = statement.Params(returnType).Block(jen.Return().Id(parameter.Value.In).Dot(name))
 								return statement
 							}
@@ -364,7 +348,7 @@ func (generator *Generator) requestParameterStruct2(name string, contentType str
 						}
 
 						var returnType = jen.Null()
-						generator.typee.fillGoType(returnType, name, parameter.Value.Schema)
+						generator.typee.fillGoType(returnType, name, parameter.Value.Schema, false)
 						statement = statement.Params(returnType).Block(jen.Return().Id(parameter.Value.In).Dot(name))
 						return statement
 					}).
@@ -393,14 +377,14 @@ func (generator *Generator) requestParameterStruct2(name string, contentType str
 
 						if len(parameter.Value.Schema.Value.Enum) > 0 {
 							if len(parameter.Value.Schema.Ref) > 0 {
-								generator.typee.fillGoType(statement, generator.normalizer.extractNameFromRef(parameter.Value.Schema.Ref), parameter.Value.Schema)
+								generator.typee.fillGoType(statement, generator.normalizer.extractNameFromRef(parameter.Value.Schema.Ref), parameter.Value.Schema, false)
 								return statement
 							}
 
 							//todo: generate enum for anonymous type
 						}
 
-						generator.typee.fillGoType(statement, name, parameter.Value.Schema)
+						generator.typee.fillGoType(statement, name, parameter.Value.Schema, false)
 						return statement
 					}).
 					ToSlice(&structFields)
@@ -479,26 +463,68 @@ func (generator *Generator) enumFromSchema(name string, schema *openapi3.SchemaR
 	return jen.Null().Add(result...).Add(jen.Line())
 }
 
-func (generator *Generator) objectFromSchema(name string, schema *openapi3.SchemaRef) *jen.Statement {
+func (generator *Generator) componentFromSchema(name string, schema *openapi3.SchemaRef) jen.Code {
 	name = generator.normalizer.normalizeName(name)
 
 	typeDeclaration := jen.Type().Id(name)
 
 	if len(schema.Value.Properties) == 0 {
 		if len(schema.Value.Enum) > 0 {
-			generator.typee.fillGoType(typeDeclaration, name+"Enum", schema)
+			generator.typee.fillGoType(typeDeclaration, name+"Enum", schema, false)
 			return typeDeclaration
 		}
 
-		generator.typee.fillGoType(typeDeclaration, name, schema)
+		generator.typee.fillGoType(typeDeclaration, name, schema, false)
 
 		return typeDeclaration
 	}
 
-	return typeDeclaration.Struct(generator.typeProperties(name, schema.Value)...)
+	componentStruct := typeDeclaration.Struct(generator.typeProperties(name, schema.Value, false)...)
+	helperName := generator.normalizer.decapitalize(name)
+	componentHelperStruct := jen.Type().Id(helperName).Struct(generator.typeProperties(helperName, schema.Value, true)...)
+
+	var unmarshalNonRequiredAssignments []jen.Code
+	linq.From(schema.Value.Properties).
+		WhereT(func(kv linq.KeyValue) bool { return !linq.From(schema.Value.Required).Contains(kv.Key) }).
+		SelectT(func(kv linq.KeyValue) jen.Code {
+			propertyName := strings.Title(generator.normalizer.normalizeName(cast.ToString(kv.Key)))
+			return jen.Id("body").Dot(propertyName).Op("=").Id("value").Dot(propertyName).Line()
+		}).
+		ToSlice(&unmarshalNonRequiredAssignments)
+
+	var unmarshalRequiredAssignments []jen.Code
+	linq.From(schema.Value.Required).SelectT(func(property string) jen.Code {
+		propertyName := strings.Title(generator.normalizer.normalizeName(property))
+
+		return jen.If(jen.Id("value").Dot(propertyName).Op("==").Id("nil")).
+			Block(jen.Return().Qual("fmt", "Errorf").Call(jen.Lit(fmt.Sprintf("%s is required", property)))).
+			Line().Line().
+			Id("body").Dot(propertyName).Op("=").Op("*").Id("value").Dot(propertyName).
+			Line().Line()
+	}).ToSlice(&unmarshalRequiredAssignments)
+
+	unmarshalFunc := jen.Func().Params(
+		jen.Id("body").Op("*").Id(name)).Id("UnmarshalJSON").Params(
+		jen.Id("data").Index().Id("byte")).Params(
+		jen.Id("error")).Block(
+		jen.Var().Id("value").Id(helperName),
+		jen.If(jen.Id("err").Op(":=").Qual("encoding/json",
+			"Unmarshal").Call(jen.Id("data"),
+			jen.Op("&").Id("value")),
+			jen.Id("err").Op("!=").Id("nil")).Block(
+			jen.Return().Id("err")).Line().Line().
+			Add(unmarshalNonRequiredAssignments...).Line().Line().
+			Add(unmarshalRequiredAssignments...).Line().Line().
+			Add(jen.Return().Id("nil")))
+
+	return jen.Add(componentHelperStruct).
+		Add(jen.Line().Line()).
+		Add(componentStruct).
+		Add(jen.Line().Line()).
+		Add(unmarshalFunc)
 }
 
-func (generator *Generator) typeProperties(typeName string, schema *openapi3.Schema) (parameters []jen.Code) {
+func (generator *Generator) typeProperties(typeName string, schema *openapi3.Schema, pointersForRequired bool) (parameters []jen.Code) {
 	linq.From(schema.Properties).
 		OrderByT(func(kv linq.KeyValue) interface{} { return kv.Key }).
 		SelectT(func(kv linq.KeyValue) interface{} {
@@ -514,7 +540,9 @@ func (generator *Generator) typeProperties(typeName string, schema *openapi3.Sch
 				}
 			}
 
-			generator.typee.fillGoType(parameter, name, schemaRef)
+			asPointer := pointersForRequired && linq.From(schema.Required).Contains(originName)
+
+			generator.typee.fillGoType(parameter, name, schemaRef, asPointer)
 			generator.typee.fillJsonTag(parameter, originName)
 			return parameter
 		}).ToSlice(&parameters)
@@ -1712,7 +1740,7 @@ func (generator *Generator) headersStruct(name string, headers map[string]*opena
 		name := generator.normalizer.normalizeName(cast.ToString(kv.Key))
 		field := jen.Id(name)
 
-		generator.typee.fillGoType(field, name, kv.Value.(*openapi3.HeaderRef).Value.Schema)
+		generator.typee.fillGoType(field, name, kv.Value.(*openapi3.HeaderRef).Value.Schema, false)
 
 		return field
 	}).ToSlice(&headersCode)

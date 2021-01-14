@@ -416,62 +416,6 @@ func (response getPetsPetIDResponse) headers() map[string]string {
 	return response.response.headers
 }
 
-type postPetsStatusCodeResponseBuilder struct {
-	response
-}
-
-func PostPetsResponseBuilder() *postPetsStatusCodeResponseBuilder {
-	return new(postPetsStatusCodeResponseBuilder)
-}
-
-func (builder *postPetsStatusCodeResponseBuilder) StatusCodedefault() *postPetsdefaultContentTypeBuilder {
-	builder.response.statusCode = 0
-
-	return &postPetsdefaultContentTypeBuilder{response: builder.response}
-}
-
-type postPetsdefaultContentTypeBuilder struct {
-	response
-}
-
-type PostPetsdefaultApplicationJsonResponseBuilder struct {
-	response
-}
-
-func (builder *PostPetsdefaultApplicationJsonResponseBuilder) Build() PostPetsResponse {
-	return postPetsResponse{response: builder.response}
-}
-
-func (builder *postPetsdefaultContentTypeBuilder) ApplicationJson() *postPetsdefaultApplicationJsonBodyBuilder {
-	builder.response.contentType = "application/json"
-
-	return &postPetsdefaultApplicationJsonBodyBuilder{response: builder.response}
-}
-
-type postPetsdefaultApplicationJsonBodyBuilder struct {
-	response
-}
-
-func (builder *postPetsdefaultApplicationJsonBodyBuilder) Body(body Error) *PostPetsdefaultApplicationJsonResponseBuilder {
-	builder.response.body = body
-
-	return &PostPetsdefaultApplicationJsonResponseBuilder{response: builder.response}
-}
-
-type PostPets201ResponseBuilder struct {
-	response
-}
-
-func (builder *postPetsStatusCodeResponseBuilder) StatusCode201() *PostPets201ResponseBuilder {
-	builder.response.statusCode = 201
-
-	return &PostPets201ResponseBuilder{response: builder.response}
-}
-
-func (builder *PostPets201ResponseBuilder) Build() PostPetsResponse {
-	return postPetsResponse{response: builder.response}
-}
-
 type getPetsStatusCodeResponseBuilder struct {
 	response
 }
@@ -565,6 +509,62 @@ func (builder *getPetsdefaultApplicationJsonBodyBuilder) Body(body Error) *GetPe
 	builder.response.body = body
 
 	return &GetPetsdefaultApplicationJsonResponseBuilder{response: builder.response}
+}
+
+type postPetsStatusCodeResponseBuilder struct {
+	response
+}
+
+func PostPetsResponseBuilder() *postPetsStatusCodeResponseBuilder {
+	return new(postPetsStatusCodeResponseBuilder)
+}
+
+func (builder *postPetsStatusCodeResponseBuilder) StatusCodedefault() *postPetsdefaultContentTypeBuilder {
+	builder.response.statusCode = 0
+
+	return &postPetsdefaultContentTypeBuilder{response: builder.response}
+}
+
+type postPetsdefaultContentTypeBuilder struct {
+	response
+}
+
+type PostPetsdefaultApplicationJsonResponseBuilder struct {
+	response
+}
+
+func (builder *PostPetsdefaultApplicationJsonResponseBuilder) Build() PostPetsResponse {
+	return postPetsResponse{response: builder.response}
+}
+
+func (builder *postPetsdefaultContentTypeBuilder) ApplicationJson() *postPetsdefaultApplicationJsonBodyBuilder {
+	builder.response.contentType = "application/json"
+
+	return &postPetsdefaultApplicationJsonBodyBuilder{response: builder.response}
+}
+
+type postPetsdefaultApplicationJsonBodyBuilder struct {
+	response
+}
+
+func (builder *postPetsdefaultApplicationJsonBodyBuilder) Body(body Error) *PostPetsdefaultApplicationJsonResponseBuilder {
+	builder.response.body = body
+
+	return &PostPetsdefaultApplicationJsonResponseBuilder{response: builder.response}
+}
+
+type PostPets201ResponseBuilder struct {
+	response
+}
+
+func (builder *postPetsStatusCodeResponseBuilder) StatusCode201() *PostPets201ResponseBuilder {
+	builder.response.statusCode = 201
+
+	return &PostPets201ResponseBuilder{response: builder.response}
+}
+
+func (builder *PostPets201ResponseBuilder) Build() PostPetsResponse {
+	return postPetsResponse{response: builder.response}
 }
 
 type getPetsPetIDStatusCodeResponseBuilder struct {

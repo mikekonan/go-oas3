@@ -21,7 +21,11 @@ func (typ *Type) fillJsonTag(into *jen.Statement, name string) {
 	into.Tag(map[string]string{"json": strings.ToLower(name[:1]) + name[1:]})
 }
 
-func (typ *Type) fillGoType(into *jen.Statement, typeName string, schemaRef *openapi3.SchemaRef) {
+func (typ *Type) fillGoType(into *jen.Statement, typeName string, schemaRef *openapi3.SchemaRef, asPointer bool) {
+	if asPointer {
+		into.Op("*")
+	}
+
 	if schemaRef.Ref != "" {
 		into.Qual(typ.config.ComponentsPackage, typ.normalizer.extractNameFromRef(schemaRef.Ref))
 		return
@@ -64,7 +68,7 @@ func (typ *Type) fillGoType(into *jen.Statement, typeName string, schemaRef *ope
 		return
 	case "array":
 		into.Index()
-		typ.fillGoType(into, typeName, schema.Items)
+		typ.fillGoType(into, typeName, schema.Items, asPointer)
 		return
 	case "integer":
 		into.Int()
