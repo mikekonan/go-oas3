@@ -928,6 +928,14 @@ func (generator *Generator) wrapperRequestParsers(wrapperName string, operation 
 	return generator.normalizer.lineAfterEachElement(result...)
 }
 
+func (generator *Generator) wrapRequired(name string, isRequired bool, code jen.Code) jen.Code {
+	if !isRequired {
+		return jen.If(jen.Id(name).Op("!=").Lit("")).Block(code).Line()
+	}
+
+	return code
+}
+
 func (generator *Generator) wrapperCustomType(in string, name string, paramName string, wrapperName string, parameter *openapi3.ParameterRef) jen.Code {
 	result := jen.Null()
 
@@ -942,6 +950,8 @@ func (generator *Generator) wrapperCustomType(in string, name string, paramName 
 		panic("unsupported " + in + " type")
 	}
 
+	result = result.Add(jen.Line())
+
 	parseFailed := []jen.Code{
 		jen.Id("request").Dot("ProcessingResult").Op("=").Id("RequestProcessingResult").Values(jen.Id("error").Op(":").Id("err"),
 			jen.Id("typee").Op(":").Id(strings.Title(in)+"ParseFailed")),
@@ -954,30 +964,34 @@ func (generator *Generator) wrapperCustomType(in string, name string, paramName 
 		jen.Line().Return(),
 	}
 
-	result = result.Add(jen.Line())
-
 	switch parameter.Value.Schema.Value.Format {
 	case "uuid":
-		result = result.
+		parameterCode := jen.Null().
 			Add(jen.List(jen.Id(paramName), jen.Id("err")).Op(":=").Id("uuid").Dot("Parse").Call(jen.Id(paramName+"Str"))).
 			Add(jen.Line()).
 			Add(jen.If(jen.Id("err").Op("!=").Id("nil")).Block(parseFailed...)).
 			Add(jen.Line(), jen.Line()).
 			Add(jen.Id("request").Dot(strings.Title(in)).Dot(name).Op("=").Id(paramName))
+
+		result.Add(generator.wrapRequired(paramName+"Str", parameter.Value.Required, parameterCode))
 	case "iso4217-currency-code":
-		result = result.
+		parameterCode := jen.Null().
 			Add(jen.List(jen.Id(paramName), jen.Id("err")).Op(":=").Qual("github.com/mikekonan/go-currencies", "ByCodeStrErr").Call(jen.Id(paramName+"Str"))).
 			Add(jen.Line()).
 			Add(jen.If(jen.Id("err").Op("!=").Id("nil")).Block(parseFailed...)).
 			Add(jen.Line(), jen.Line()).
 			Add(jen.Id("request").Dot(strings.Title(in)).Dot(name).Op("=").Id(paramName).Dot("Code").Call())
+
+		result.Add(generator.wrapRequired(paramName+"Str", parameter.Value.Required, parameterCode))
 	case "iso3166-alpha-2":
-		result = result.
+		parameterCode := jen.Null().
 			Add(jen.List(jen.Id(paramName), jen.Id("err")).Op(":=").Qual("github.com/mikekonan/go-countries", "ByAlpha2CodeStrErr").Call(jen.Id(paramName+"Str"))).
 			Add(jen.Line()).
 			Add(jen.If(jen.Id("err").Op("!=").Id("nil")).Block(parseFailed...)).
 			Add(jen.Line(), jen.Line()).
 			Add(jen.Id("request").Dot(strings.Title(in)).Dot(name).Op("=").Id(paramName).Dot("Alpha2Code").Call())
+
+		result.Add(generator.wrapRequired(paramName+"Str", parameter.Value.Required, parameterCode))
 	default:
 		panic("unsupported " + parameter.Value.Schema.Value.Format + " custom format")
 	}
@@ -999,7 +1013,7 @@ func (generator *Generator) wrapperEnum(in string, enumType string, name string,
 		panic("unsupported " + in + " type")
 	}
 
-	return result.
+	result = result.
 		Add(jen.Line()).
 		Add(jen.If(jen.Id("err").Op(":=").Id(paramName).Dot("Check").Call(),
 			jen.Id("err").Op("!=").Id("nil")).Block(
@@ -1015,6 +1029,8 @@ func (generator *Generator) wrapperEnum(in string, enumType string, name string,
 		Add(jen.Line(), jen.Line()).
 		Add(jen.Id("request").Dot(strings.Title(parameter.Value.In)).Dot(name).Op("=").Id(paramName)).
 		Add(jen.Line())
+
+	return jen.Null().Add(generator.wrapRequired(paramName, parameter.Value.Required, result)).Line()
 }
 
 func (generator *Generator) wrapperStr(in string, name string, paramName string, wrapperName string, parameter *openapi3.ParameterRef) jen.Code {
