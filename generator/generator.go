@@ -545,9 +545,10 @@ func (generator *Generator) componentFromSchema(name string, parentSchema *opena
 			regex := generator.getXGoRegex(schema)
 			if regex != "" {
 				regexVarName := generator.normalizer.decapitalize(name) + strings.Title(property) + "Regex"
-				additionalValidationCode = append(additionalValidationCode, jen.If(jen.Op("!").Id(regexVarName).Dot("MatchString").Call(jen.Id("body").Dot(propertyName))).Block(
-					jen.Return().Qual("fmt",
-						"Errorf").Call(jen.Lit(fmt.Sprintf(`%s not matched by the '%s' regex`, property, html.EscapeString(regex))))))
+				additionalValidationCode = append(additionalValidationCode,
+					jen.If(jen.Op("!").Id(regexVarName).Dot("MatchString").Call(jen.Id("body").Dot(propertyName))).Block(
+						jen.Return().Qual("fmt",
+							"Errorf").Call(jen.Lit(fmt.Sprintf(`%s not matched by the '%s' regex`, property, html.EscapeString(regex))))))
 			}
 
 			return jen.Line().
@@ -571,9 +572,10 @@ func (generator *Generator) componentFromSchema(name string, parentSchema *opena
 			regex := generator.getXGoRegex(schema)
 			if regex != "" {
 				regexVarName := generator.normalizer.decapitalize(name) + strings.Title(property) + "Regex"
-				additionalValidationCode = append(additionalValidationCode, jen.If(jen.Op("!").Id(regexVarName).Dot("MatchString").Call(jen.Id("body").Dot(propertyName))).Block(
-					jen.Return().Qual("fmt",
-						"Errorf").Call(jen.Lit(fmt.Sprintf(`%s not matched by the '%s' regex`, property, html.EscapeString(regex))))))
+				additionalValidationCode = append(additionalValidationCode,
+					jen.If(jen.Op("!").Id(regexVarName).Dot("MatchString").Call(jen.Op("*").Id("value").Dot(propertyName))).Block(
+						jen.Return().Qual("fmt",
+							"Errorf").Call(jen.Lit(fmt.Sprintf(`%s not matched by the '%s' regex`, property, html.EscapeString(regex))))))
 			}
 
 			code := jen.If(jen.Id("value").Dot(propertyName).Op("==").Id("nil")).
