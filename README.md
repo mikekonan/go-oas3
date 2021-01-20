@@ -35,7 +35,8 @@ Generator supports few swagger types for components.
 |iso3166-alpha-2|github.com/mikekonan/go-countries.Alpha2Code|
 |iso3166-alpha-3|github.com/mikekonan/go-countries.Alpha3Code|
 
-Also, you have an option to specify a go type with:
+#### Extentions:
+Specify a go type with:
 ```
     Component:
       properties:
@@ -43,6 +44,19 @@ Also, you have an option to specify a go type with:
           type: object
           x-go-type: encoding/json.RawMessage
 ```
+
+Specify a regex to match a string:
+```
+    Parameter:
+      description: Parameter
+      in: header
+      name: parameter name
+      required: true
+      schema:
+        type: string
+        x-go-regex: ^[.?\d]+$
+```
+
 ## Plans
 Support more types.
 
