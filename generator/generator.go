@@ -1,7 +1,9 @@
 package generator
 
 import (
+	"encoding/json"
 	"fmt"
+	"html"
 	"strings"
 
 	"github.com/ahmetb/go-linq"
@@ -35,12 +37,17 @@ func (generator *Generator) file(from jen.Code, packagePath string) *jen.File {
 }
 
 func (generator *Generator) Generate(swagger *openapi3.Swagger) *Result {
+	componentsAdditionalVars, parametersAdditionalVars := generator.additionalConstants(swagger)
+
+	componentsCode := jen.Null().Add(componentsAdditionalVars, generator.components(swagger))
+	routerCode := jen.Null().
+		Add(parametersAdditionalVars...).Line().
+		Add(generator.wrappers(swagger)).Line().
+		Add(generator.requestResponseBuilders(swagger))
+
 	return &Result{
-		ComponentsCode: generator.file(generator.components(swagger), generator.config.ComponentsPackage),
-		RouterCode: generator.file(jen.Null().
-			Add(generator.wrappers(swagger)).
-			Add(jen.Line()).
-			Add(generator.requestResponseBuilders(swagger)), generator.config.Package),
+		ComponentsCode: generator.file(componentsCode, generator.config.ComponentsPackage),
+		RouterCode:     generator.file(routerCode, generator.config.Package),
 	}
 }
 
@@ -79,19 +86,19 @@ func (generator *Generator) requestParameters(paths map[string]*openapi3.PathIte
 						name := generator.normalizer.normalizeOperationName(path, cast.ToString(kv.Key))
 						operation := kv.Value.(*openapi3.Operation)
 						if operation.RequestBody == nil {
-							result = append(result, generator.requestParameterStruct2(name, "", false, operation))
+							result = append(result, generator.requestParameterStruct(name, "", false, operation))
 							return
 						}
 
 						if operation.RequestBody != nil && len(operation.RequestBody.Value.Content) == 1 {
 							contentType := cast.ToString(linq.From(operation.RequestBody.Value.Content).SelectT(func(kv linq.KeyValue) string { return cast.ToString(kv.Key) }).First())
-							result = append(result, generator.requestParameterStruct2(name, contentType, false, operation))
+							result = append(result, generator.requestParameterStruct(name, contentType, false, operation))
 							return
 						}
 
 						var contentTypeResult []jen.Code
 						linq.From(operation.RequestBody.Value.Content).
-							SelectT(func(kv linq.KeyValue) jen.Code { return generator.requestParameterStruct2(name, cast.ToString(kv.Key), true, operation) }).
+							SelectT(func(kv linq.KeyValue) jen.Code { return generator.requestParameterStruct(name, cast.ToString(kv.Key), true, operation) }).
 							ToSlice(&contentTypeResult)
 
 						result = append(result, contentTypeResult...)
@@ -208,74 +215,104 @@ func (generator *Generator) components(swagger *openapi3.Swagger) jen.Code {
 		Add(jen.Line())
 }
 
-func (generator *Generator) requestParameterStruct(name string, contentType string, appendContentTypeToName bool, operation *openapi3.Operation) jen.Code {
-	type parameter struct {
-		In   string
-		Code jen.Code
+func (generator *Generator) variableForRegex(name string, schema *openapi3.SchemaRef) jen.Code {
+	hasGoRegexExtension := len(schema.Value.Extensions) > 0 && schema.Value.Extensions[goRegex] != nil
+
+	if !hasGoRegexExtension || schema.Value.Type != "string" {
+		return jen.Null()
 	}
 
-	var additionalParameters []parameter
-
-	if contentType != "" {
-		if appendContentTypeToName {
-			name += generator.normalizer.contentType(contentType)
-		}
-
-		bodyTypeName := generator.normalizer.extractNameFromRef(operation.RequestBody.Value.Content[contentType].Schema.Ref)
-		if bodyTypeName == "" {
-			bodyTypeName = name + "RequestBody"
-		}
-
-		additionalParameters = append(additionalParameters,
-			parameter{In: "Body", Code: jen.Id("Body").Qual(generator.config.ComponentsPackage, bodyTypeName)})
+	var regex string
+	if err := json.Unmarshal(schema.Value.Extensions[goRegex].(json.RawMessage), &regex); err != nil {
+		panic(err)
 	}
 
-	var parameters []jen.Code
-
-	linq.From(operation.Parameters).
-		GroupByT(
-			func(parameter *openapi3.ParameterRef) string { return parameter.Value.In },
-			func(parameter *openapi3.ParameterRef) *openapi3.ParameterRef { return parameter }).
-		SelectT(
-			func(group linq.Group) (parameter parameter) {
-				var structFields []jen.Code
-				linq.From(group.Group).
-					OrderByT(func(parameter *openapi3.ParameterRef) string { return parameter.Value.Name }).
-					SelectT(func(parameter *openapi3.ParameterRef) (result jen.Code) {
-						name := generator.normalizer.normalizeName(parameter.Value.Name)
-						var statement = jen.Id(name)
-
-						if len(parameter.Value.Schema.Value.Enum) > 0 {
-							if len(parameter.Value.Schema.Ref) > 0 {
-								generator.typee.fillGoType(statement, generator.normalizer.extractNameFromRef(parameter.Value.Schema.Ref), parameter.Value.Schema, false)
-								return statement
-							}
-
-							//todo: generate enum for anonymous type
-						}
-
-						generator.typee.fillGoType(statement, name, parameter.Value.Schema, false)
-						return statement
-					}).
-					ToSlice(&structFields)
-
-				parameter.In = cast.ToString(group.Key)
-				parameter.Code = jen.Id(generator.normalizer.normalizeName(cast.ToString(group.Key))).Struct(structFields...)
-
-				return
-			}).
-		Concat(linq.From(additionalParameters)).
-		OrderByT(func(parameter parameter) string { return parameter.In }).
-		SelectT(func(parameter parameter) jen.Code { return parameter.Code }).
-		ToSlice(&parameters)
-
-	parameters = generator.normalizer.lineAfterEachElement(
-		append(parameters, jen.Id("ProcessingResult").Id("RequestProcessingResult"))...)
-
-	return jen.Type().Id(name + "Request").Struct(parameters...)
+	return jen.Var().
+		Id(name).
+		Op("=").
+		Qual("regexp", "MustCompile").
+		Call(jen.Lit(regex)).
+		Line()
 }
 
-func (generator *Generator) requestParameterStruct2(name string, contentType string, appendContentTypeToName bool, operation *openapi3.Operation) jen.Code {
+func (generator *Generator) additionalConstants(swagger *openapi3.Swagger) (jen.Code, []jen.Code) {
+	var constantsComponentsCode []jen.Code
+
+	linq.From(swagger.Components.Schemas).SelectManyT(func(kv linq.KeyValue) linq.Query {
+		namePrefix := generator.normalizer.normalize(cast.ToString(kv.Key))
+		namePrefix = generator.normalizer.decapitalize(cast.ToString(kv.Key))
+		schema := kv.Value.(*openapi3.SchemaRef)
+
+		return linq.From(schema.Value.Properties).SelectT(func(kv linq.KeyValue) jen.Code {
+			name := namePrefix + generator.normalizer.normalize(strings.Title(cast.ToString(kv.Key))) + "Regex"
+			return generator.variableForRegex(name, kv.Value.(*openapi3.SchemaRef))
+		})
+	}).ToSlice(&constantsComponentsCode)
+
+	var componentsPathsCode []jen.Code
+
+	linq.From(swagger.Paths).
+		SelectManyT(func(kv linq.KeyValue) linq.Query {
+			path := cast.ToString(kv.Key)
+
+			return linq.From(kv.Value.(*openapi3.PathItem).Operations()).
+				WhereT(func(kv linq.KeyValue) bool {
+					operation := kv.Value.(*openapi3.Operation)
+					return operation.RequestBody != nil && len(operation.RequestBody.Value.Content) > 0 &&
+						linq.From(operation.RequestBody.Value.Content).
+							AnyWithT(func(kv linq.KeyValue) bool { return kv.Value.(*openapi3.MediaType).Schema.Ref == "" })
+				}).
+				SelectManyT(func(kv linq.KeyValue) linq.Query {
+					name := generator.normalizer.normalizeOperationName(path, cast.ToString(kv.Key))
+					name = generator.normalizer.decapitalize(name)
+
+					operation := kv.Value.(*openapi3.Operation)
+
+					return linq.From(operation.RequestBody.Value.Content).
+						SelectManyT(func(kv linq.KeyValue) linq.Query {
+							meType := kv.Value.(*openapi3.MediaType)
+							namePrefix := name + generator.normalizer.contentType(cast.ToString(kv.Key)+"Regex")
+
+							var parametersConstants []jen.Code
+							linq.From(meType.Schema.Value.Properties).SelectT(func(kv linq.KeyValue) jen.Code {
+								name := namePrefix + generator.normalizer.normalize(strings.Title(cast.ToString(kv.Key))) + "Regex"
+								return generator.variableForRegex(name, kv.Value.(*openapi3.SchemaRef))
+							}).ToSlice(&parametersConstants)
+
+							return linq.From(parametersConstants)
+						})
+				})
+		}).ToSlice(&componentsPathsCode)
+
+	componentsCode := jen.Null().
+		Add(constantsComponentsCode...).
+		Line().
+		Add(componentsPathsCode...).
+		Line()
+
+	var parametersCode []jen.Code
+
+	linq.From(swagger.Paths).
+		SelectManyT(func(kv linq.KeyValue) linq.Query {
+			path := cast.ToString(kv.Key)
+
+			return linq.From(kv.Value.(*openapi3.PathItem).Operations()).
+				SelectManyT(func(kv linq.KeyValue) linq.Query {
+					name := generator.normalizer.normalizeOperationName(path, cast.ToString(kv.Key))
+					name = generator.normalizer.decapitalize(name)
+
+					operation := kv.Value.(*openapi3.Operation)
+					return linq.From(operation.Parameters).SelectT(func(parameter *openapi3.ParameterRef) jen.Code {
+						name := name + strings.Title(parameter.Value.In) + generator.normalizer.normalize(strings.Title(parameter.Value.Name)) + "Regex"
+						return generator.variableForRegex(name, parameter.Value.Schema)
+					})
+				})
+		}).ToSlice(&parametersCode)
+
+	return componentsCode, parametersCode
+}
+
+func (generator *Generator) requestParameterStruct(name string, contentType string, appendContentTypeToName bool, operation *openapi3.Operation) jen.Code {
 	type parameter struct {
 		In   string
 		Code jen.Code
@@ -309,7 +346,7 @@ func (generator *Generator) requestParameterStruct2(name string, contentType str
 				linq.From(group.Group).
 					OrderByT(func(parameter *openapi3.ParameterRef) string { return parameter.Value.Name }).
 					SelectT(func(parameter *openapi3.ParameterRef) (result jen.Code) {
-						name := generator.normalizer.normalizeName(parameter.Value.Name)
+						name := generator.normalizer.normalize(parameter.Value.Name)
 						var statement = jen.Id(name)
 
 						if len(parameter.Value.Schema.Value.Enum) > 0 {
@@ -333,7 +370,7 @@ func (generator *Generator) requestParameterStruct2(name string, contentType str
 				linq.From(group.Group).
 					OrderByT(func(parameter *openapi3.ParameterRef) string { return parameter.Value.Name }).
 					SelectT(func(parameter *openapi3.ParameterRef) (result jen.Code) {
-						name := generator.normalizer.normalizeName(parameter.Value.Name)
+						name := generator.normalizer.normalize(parameter.Value.Name)
 						var statement = jen.Func().Params(jen.Id(parameter.Value.In).Id(typeName)).Id("Get" + name).Params()
 
 						if len(parameter.Value.Schema.Value.Enum) > 0 {
@@ -372,7 +409,7 @@ func (generator *Generator) requestParameterStruct2(name string, contentType str
 				linq.From(group.Group).
 					OrderByT(func(parameter *openapi3.ParameterRef) string { return parameter.Value.Name }).
 					SelectT(func(parameter *openapi3.ParameterRef) (result jen.Code) {
-						name := generator.normalizer.normalizeName(parameter.Value.Name)
+						name := generator.normalizer.normalize(parameter.Value.Name)
 						var statement = jen.Id(name)
 
 						if len(parameter.Value.Schema.Value.Enum) > 0 {
@@ -416,16 +453,16 @@ func (generator *Generator) enumFromSchema(name string, schema *openapi3.SchemaR
 	var result []jen.Code
 	var enumValues []jen.Code
 
-	result = append(result, jen.Type().Id(generator.normalizer.normalizeName(name)).String())
+	result = append(result, jen.Type().Id(generator.normalizer.normalize(name)).String())
 
 	linq.From(schema.Value.Enum).SelectT(func(value string) jen.Code {
-		return jen.Var().Id(name + generator.normalizer.normalizeName(strings.Title(value))).Id(name).Op("=").Lit(value)
+		return jen.Var().Id(name + generator.normalizer.normalize(strings.Title(value))).Id(name).Op("=").Lit(value)
 	}).ToSlice(&enumValues)
 
 	var enumSwitchCases []jen.Code
 
 	linq.From(schema.Value.Enum).SelectT(func(value string) jen.Code {
-		return jen.Id(name + generator.normalizer.normalizeName(strings.Title(value)))
+		return jen.Id(name + generator.normalizer.normalize(strings.Title(value)))
 	}).ToSlice(&enumSwitchCases)
 
 	result = append(result, enumValues...)
@@ -463,45 +500,92 @@ func (generator *Generator) enumFromSchema(name string, schema *openapi3.SchemaR
 	return jen.Null().Add(result...).Add(jen.Line())
 }
 
-func (generator *Generator) componentFromSchema(name string, schema *openapi3.SchemaRef) jen.Code {
-	name = generator.normalizer.normalizeName(name)
+func (generator *Generator) getXGoRegex(schema *openapi3.SchemaRef) string {
+	if len(schema.Value.Extensions) > 0 && schema.Value.Extensions[goRegex] != nil {
+		var regex string
+		if err := json.Unmarshal(schema.Value.Extensions[goRegex].(json.RawMessage), &regex); err != nil {
+			panic(err)
+		}
+
+		return regex
+	}
+
+	return ""
+}
+
+func (generator *Generator) componentFromSchema(name string, parentSchema *openapi3.SchemaRef) jen.Code {
+	name = generator.normalizer.normalize(name)
 
 	typeDeclaration := jen.Type().Id(name)
 
-	if len(schema.Value.Properties) == 0 {
-		if len(schema.Value.Enum) > 0 {
-			generator.typee.fillGoType(typeDeclaration, name+"Enum", schema, false)
+	if len(parentSchema.Value.Properties) == 0 {
+		if len(parentSchema.Value.Enum) > 0 {
+			generator.typee.fillGoType(typeDeclaration, name+"Enum", parentSchema, false)
 			return typeDeclaration
 		}
 
-		generator.typee.fillGoType(typeDeclaration, name, schema, false)
+		generator.typee.fillGoType(typeDeclaration, name, parentSchema, false)
 
 		return typeDeclaration
 	}
 
-	componentStruct := typeDeclaration.Struct(generator.typeProperties(name, schema.Value, false)...)
+	componentStruct := typeDeclaration.Struct(generator.typeProperties(name, parentSchema.Value, false)...)
 	helperName := generator.normalizer.decapitalize(name)
-	componentHelperStruct := jen.Type().Id(helperName).Struct(generator.typeProperties(helperName, schema.Value, true)...)
+	componentHelperStruct := jen.Type().Id(helperName).Struct(generator.typeProperties(helperName, parentSchema.Value, true)...)
 
 	var unmarshalNonRequiredAssignments []jen.Code
-	linq.From(schema.Value.Properties).
-		WhereT(func(kv linq.KeyValue) bool { return !linq.From(schema.Value.Required).Contains(kv.Key) }).
+	linq.From(parentSchema.Value.Properties).
+		WhereT(func(kv linq.KeyValue) bool { return !linq.From(parentSchema.Value.Required).Contains(kv.Key) }).
 		SelectT(func(kv linq.KeyValue) jen.Code {
-			propertyName := strings.Title(generator.normalizer.normalizeName(cast.ToString(kv.Key)))
-			return jen.Id("body").Dot(propertyName).Op("=").Id("value").Dot(propertyName).Line()
+			property := cast.ToString(kv.Key)
+			propertyName := strings.Title(generator.normalizer.normalize(property))
+
+			var additionalValidationCode []jen.Code
+			schema := kv.Value.(*openapi3.SchemaRef)
+			regex := generator.getXGoRegex(schema)
+			if regex != "" {
+				regexVarName := generator.normalizer.decapitalize(name) + strings.Title(property) + "Regex"
+				additionalValidationCode = append(additionalValidationCode, jen.If(jen.Op("!").Id(regexVarName).Dot("MatchString").Call(jen.Id("body").Dot(propertyName))).Block(
+					jen.Return().Qual("fmt",
+						"Errorf").Call(jen.Lit(fmt.Sprintf(`%s not matched by the '%s' regex`, property, html.EscapeString(regex))))))
+			}
+
+			return jen.Line().
+				Add(additionalValidationCode...).
+				Line().Line().
+				Id("body").Dot(propertyName).Op("=").Id("value").Dot(propertyName).Line()
 		}).
 		ToSlice(&unmarshalNonRequiredAssignments)
 
 	var unmarshalRequiredAssignments []jen.Code
-	linq.From(schema.Value.Required).SelectT(func(property string) jen.Code {
-		propertyName := strings.Title(generator.normalizer.normalizeName(property))
+	linq.From(parentSchema.Value.Properties).
+		WhereT(func(kv linq.KeyValue) bool {
+			return linq.From(parentSchema.Value.Required).Contains(cast.ToString(kv.Key))
+		}).
+		SelectT(func(kv linq.KeyValue) jen.Code {
+			property := cast.ToString(kv.Key)
+			propertyName := strings.Title(generator.normalizer.normalize(property))
 
-		return jen.If(jen.Id("value").Dot(propertyName).Op("==").Id("nil")).
-			Block(jen.Return().Qual("fmt", "Errorf").Call(jen.Lit(fmt.Sprintf("%s is required", property)))).
-			Line().Line().
-			Id("body").Dot(propertyName).Op("=").Op("*").Id("value").Dot(propertyName).
-			Line().Line()
-	}).ToSlice(&unmarshalRequiredAssignments)
+			var additionalValidationCode []jen.Code
+			schema := kv.Value.(*openapi3.SchemaRef)
+			regex := generator.getXGoRegex(schema)
+			if regex != "" {
+				regexVarName := generator.normalizer.decapitalize(name) + strings.Title(property) + "Regex"
+				additionalValidationCode = append(additionalValidationCode, jen.If(jen.Op("!").Id(regexVarName).Dot("MatchString").Call(jen.Id("body").Dot(propertyName))).Block(
+					jen.Return().Qual("fmt",
+						"Errorf").Call(jen.Lit(fmt.Sprintf(`%s not matched by the '%s' regex`, property, html.EscapeString(regex))))))
+			}
+
+			code := jen.If(jen.Id("value").Dot(propertyName).Op("==").Id("nil")).
+				Block(jen.Return().Qual("fmt", "Errorf").Call(jen.Lit(fmt.Sprintf("%s is required", property)))).
+				Line().Line().
+				Add(additionalValidationCode...).
+				Line().Line().
+				Id("body").Dot(propertyName).Op("=").Op("*").Id("value").Dot(propertyName).
+				Line().Line()
+
+			return code
+		}).ToSlice(&unmarshalRequiredAssignments)
 
 	unmarshalFunc := jen.Func().Params(
 		jen.Id("body").Op("*").Id(name)).Id("UnmarshalJSON").Params(
@@ -529,7 +613,7 @@ func (generator *Generator) typeProperties(typeName string, schema *openapi3.Sch
 		OrderByT(func(kv linq.KeyValue) interface{} { return kv.Key }).
 		SelectT(func(kv linq.KeyValue) interface{} {
 			originName := cast.ToString(kv.Key)
-			name := generator.normalizer.normalizeName(originName)
+			name := generator.normalizer.normalize(originName)
 			parameter := jen.Id(name)
 			schemaRef := kv.Value.(*openapi3.SchemaRef)
 			if len(schemaRef.Value.Enum) > 0 {
@@ -555,10 +639,9 @@ func (generator *Generator) enums(swagger *openapi3.Swagger) jen.Code {
 
 	linq.From(swagger.Paths).
 		SelectManyT(func(kv linq.KeyValue) linq.Query {
-			var result []jen.Code
 			path := cast.ToString(kv.Key)
 
-			linq.From(kv.Value.(*openapi3.PathItem).Operations()).
+			return linq.From(kv.Value.(*openapi3.PathItem).Operations()).
 				SelectManyT(func(kv linq.KeyValue) linq.Query {
 					var requestBodyResults []jen.Code
 
@@ -570,7 +653,7 @@ func (generator *Generator) enums(swagger *openapi3.Swagger) jen.Code {
 							SelectT(func(kv linq.KeyValue) jen.Code {
 								schema := kv.Value.(*openapi3.MediaType).Schema
 
-								namePrefix := generator.normalizer.normalizeName(name + generator.normalizer.contentType(cast.ToString(kv.Key)))
+								namePrefix := generator.normalizer.normalize(name + generator.normalizer.contentType(cast.ToString(kv.Key)))
 
 								if len(schema.Value.Enum) > 0 {
 									return generator.enumFromSchema(namePrefix+"RequestBodyEnum", schema)
@@ -580,8 +663,8 @@ func (generator *Generator) enums(swagger *openapi3.Swagger) jen.Code {
 								linq.From(schema.Value.Properties).WhereT(func(kv linq.KeyValue) bool {
 									return len(kv.Value.(*openapi3.SchemaRef).Value.Enum) > 0
 								}).SelectT(func(kv linq.KeyValue) interface{} {
-									enumName := namePrefix + generator.normalizer.normalizeName(strings.Title(cast.ToString(kv.Key))) + "Enum"
-									enumName = generator.normalizer.normalizeName(enumName)
+									enumName := namePrefix + generator.normalizer.normalize(strings.Title(cast.ToString(kv.Key))) + "Enum"
+									enumName = generator.normalizer.normalize(enumName)
 									return generator.enumFromSchema(enumName, kv.Value.(*openapi3.SchemaRef))
 								}).ToSlice(&result)
 
@@ -595,7 +678,7 @@ func (generator *Generator) enums(swagger *openapi3.Swagger) jen.Code {
 							return linq.From(kv.Value.(*openapi3.ResponseRef).Value.Content).
 								SelectT(func(kv linq.KeyValue) jen.Code {
 									schema := kv.Value.(*openapi3.MediaType).Schema
-									namePrefix := generator.normalizer.normalizeName(name + generator.normalizer.contentType(cast.ToString(kv.Key)))
+									namePrefix := generator.normalizer.normalize(name + generator.normalizer.contentType(cast.ToString(kv.Key)))
 
 									if len(schema.Value.Enum) > 0 {
 										return generator.enumFromSchema(namePrefix+"ResponseBodyEnum", schema)
@@ -605,8 +688,8 @@ func (generator *Generator) enums(swagger *openapi3.Swagger) jen.Code {
 									linq.From(schema.Value.Properties).WhereT(func(kv linq.KeyValue) bool {
 										return len(kv.Value.(*openapi3.SchemaRef).Value.Enum) > 0
 									}).SelectT(func(kv linq.KeyValue) interface{} {
-										enumName := namePrefix + generator.normalizer.normalizeName(strings.Title(cast.ToString(kv.Key))) + "Enum"
-										enumName = generator.normalizer.normalizeName(enumName)
+										enumName := namePrefix + generator.normalizer.normalize(strings.Title(cast.ToString(kv.Key))) + "Enum"
+										enumName = generator.normalizer.normalize(enumName)
 										return generator.enumFromSchema(enumName, kv.Value.(*openapi3.SchemaRef))
 									}).ToSlice(&result)
 
@@ -617,16 +700,14 @@ func (generator *Generator) enums(swagger *openapi3.Swagger) jen.Code {
 						ToSlice(&result)
 
 					return linq.From(result)
-				}).ToSlice(&result)
-
-			return linq.From(result)
+				})
 		}).ToSlice(&pathsResult)
 
 	var componentsResult []jen.Code
 
 	linq.From(swagger.Components.Schemas).
 		SelectT(func(kv linq.KeyValue) jen.Code {
-			namePrefix := generator.normalizer.normalizeName(cast.ToString(kv.Key))
+			namePrefix := generator.normalizer.normalize(cast.ToString(kv.Key))
 			schema := kv.Value.(*openapi3.SchemaRef)
 
 			if len(schema.Value.Enum) > 0 {
@@ -637,8 +718,8 @@ func (generator *Generator) enums(swagger *openapi3.Swagger) jen.Code {
 			linq.From(schema.Value.Properties).WhereT(func(kv linq.KeyValue) bool {
 				return len(kv.Value.(*openapi3.SchemaRef).Value.Enum) > 0
 			}).SelectT(func(kv linq.KeyValue) interface{} {
-				enumName := namePrefix + generator.normalizer.normalizeName(strings.Title(cast.ToString(kv.Key))) + "Enum"
-				enumName = generator.normalizer.normalizeName(enumName)
+				enumName := namePrefix + generator.normalizer.normalize(strings.Title(cast.ToString(kv.Key))) + "Enum"
+				enumName = generator.normalizer.normalize(enumName)
 				return generator.enumFromSchema(enumName, kv.Value.(*openapi3.SchemaRef))
 			}).ToSlice(&result)
 
@@ -750,7 +831,7 @@ func (generator *Generator) wrappers(swagger *openapi3.Swagger) jen.Code {
 			var routes []jen.Code
 			linq.From(groupedOperations.operations).
 				SelectT(func(operation operationWithPath) jen.Code {
-					method := generator.normalizer.normalizeName(strings.Title(strings.ToLower(cast.ToString(operation.method))))
+					method := generator.normalizer.normalize(strings.Title(strings.ToLower(cast.ToString(operation.method))))
 
 					if operation.operation.RequestBody == nil || len(operation.operation.RequestBody.Value.Content) == 1 {
 						name := generator.normalizer.normalizeOperationName(operation.path, cast.ToString(operation.method))
@@ -771,7 +852,7 @@ func (generator *Generator) wrappers(swagger *openapi3.Swagger) jen.Code {
 
 			linq.From(groupedOperations.operations).
 				SelectT(func(operation operationWithPath) jen.Code {
-					method := generator.normalizer.normalizeName(strings.Title(strings.ToLower(cast.ToString(operation.method))))
+					method := generator.normalizer.normalize(strings.Title(strings.ToLower(cast.ToString(operation.method))))
 					routerName := strings.ToLower(tag) + "Router"
 
 					if operation.operation.RequestBody == nil {
@@ -900,7 +981,7 @@ func (generator *Generator) wrapperRequestParsers(wrapperName string, operation 
 		SelectManyT(func(group linq.Group) linq.Query {
 			return linq.From(group.Group).SelectT(func(parameter *openapi3.ParameterRef) jen.Code {
 				in := parameter.Value.In
-				name := generator.normalizer.normalizeName(parameter.Value.Name)
+				name := generator.normalizer.normalize(parameter.Value.Name)
 				paramName := in + name
 				if generator.typee.isCustomType(parameter.Value.Schema.Value) {
 					return generator.wrapperCustomType(in, name, paramName, wrapperName, parameter)
@@ -1064,10 +1145,35 @@ func (generator *Generator) wrapperStr(in string, name string, paramName string,
 			Add(jen.Line())
 	}
 
-	return result.
-		Add(jen.Line()).
+	regex := generator.getXGoRegex(parameter.Value.Schema)
+	if regex != "" {
+		regexVarName := generator.normalizer.decapitalize(wrapperName) + strings.Title(in) + name + "Regex"
+		//result = result.Line().Add(jen.If(jen.Op("!").Id(regexVarName).Dot("MatchString").Call(jen.Id("request").Dot(strings.Title(in)).Dot(name))).Block(
+		//	jen.Return().Qual("fmt", "Errorf").Call(jen.Lit(fmt.Sprintf(`%s not matched by the '%s' regex`, name, html.EscapeString(regex)))))).
+		//	Line()
+
+		result = result.Line().If(jen.Op("!").Id(regexVarName).Dot("MatchString").Call(jen.Id("request").Dot("Header").Dot(name))).Block(
+			jen.Id("err").Op(":=").Qual("fmt",
+				"Errorf").Call(jen.Lit(fmt.Sprintf("%s not matched by the '%s' regex", parameter.Value.Name, regex))),
+			jen.Line(),
+			jen.Id("request").Dot("ProcessingResult").Op("=").Id("RequestProcessingResult").Values(jen.Id("error").Op(":").Id("err"),
+				jen.Id("typee").Op(":").Id(fmt.Sprintf("%sParseFailed", strings.Title(in)))),
+			jen.If(jen.Id("router").Dot("hooks").Dot("Request"+strings.Title(in)+"ParseFailed").Op("!=").Id("nil")).Block(
+				jen.Id("router").Dot("hooks").Dot("Request"+strings.Title(in)+"ParseFailed").Call(jen.Id("r"),
+					jen.Lit(wrapperName),
+					jen.Lit(parameter.Value.Name),
+					jen.Id("request").Dot("ProcessingResult"))),
+			jen.Line(),
+			jen.Return()).
+			Line()
+	}
+
+	result = result.
+		Line().
 		Add(jen.Id("request").Dot(strings.Title(parameter.Value.In)).Dot(name).Op("=").Id(paramName)).
-		Add(jen.Line())
+		Line()
+
+	return result
 }
 
 func (generator *Generator) wrapperInteger(in string, name string, paramName string, wrapperName string, parameter *openapi3.ParameterRef) jen.Code {
@@ -1303,7 +1409,7 @@ func (generator *Generator) builders(swagger *openapi3.Swagger) (result jen.Code
 									func(kv linq.KeyValue) (structName string) {
 										if "" == kv.Value.(*openapi3.MediaType).Schema.Ref {
 											structName = name
-											structName += strings.Title(generator.normalizer.normalizeName(cast.ToString(kv.Key)))
+											structName += strings.Title(generator.normalizer.normalize(cast.ToString(kv.Key)))
 											return structName
 										}
 
@@ -1753,7 +1859,7 @@ func (generator *Generator) headersStruct(name string, headers map[string]*opena
 	var headersCode []jen.Code
 
 	linq.From(headers).SelectT(func(kv linq.KeyValue) jen.Code {
-		name := generator.normalizer.normalizeName(cast.ToString(kv.Key))
+		name := generator.normalizer.normalize(cast.ToString(kv.Key))
 		field := jen.Id(name)
 
 		generator.typee.fillGoType(field, name, kv.Value.(*openapi3.HeaderRef).Value.Schema, false)
@@ -1766,7 +1872,7 @@ func (generator *Generator) headersStruct(name string, headers map[string]*opena
 	var headersMapCode []jen.Code
 
 	linq.From(headers).SelectT(func(kv linq.KeyValue) jen.Code {
-		name := generator.normalizer.normalizeName(cast.ToString(kv.Key))
+		name := generator.normalizer.normalize(cast.ToString(kv.Key))
 		return jen.Lit(name).Op(":").Qual("github.com/spf13/cast", "ToString").Call(jen.Id("headers").Dot(name))
 	}).ToSlice(&headersMapCode)
 

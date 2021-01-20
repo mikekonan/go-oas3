@@ -16,7 +16,7 @@ func (normalizer *Normalizer) decapitalize(str string) string {
 	return strings.ToLower(str[:1]) + str[1:]
 }
 
-func (normalizer *Normalizer) normalizeName(str string) string {
+func (normalizer *Normalizer) normalize(str string) string {
 	separators := "-#@!$&=.+:;_~ (){}[]"
 	s := strings.Trim(str, " ")
 
@@ -60,7 +60,7 @@ func (normalizer *Normalizer) normalizeName(str string) string {
 }
 
 func (normalizer *Normalizer) normalizeOperationName(path string, method string) string {
-	return normalizer.normalizeName(strings.ReplaceAll(strings.ToLower(method)+path, "/", "-"))
+	return normalizer.normalize(strings.ReplaceAll(strings.ToLower(method)+path, "/", "-"))
 }
 
 func (normalizer *Normalizer) doubleLineAfterEachElement(from ...jen.Code) (result []jen.Code) {
@@ -92,7 +92,7 @@ func (normalizer *Normalizer) extractNameFromRef(str string) string {
 		return ""
 	}
 
-	return normalizer.normalizeName(str[strings.LastIndex(str, "/")+1:])
+	return normalizer.normalize(str[strings.LastIndex(str, "/")+1:])
 }
 
 func (normalizer *Normalizer) contentType(str string) string {

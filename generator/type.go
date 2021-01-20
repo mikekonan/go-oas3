@@ -10,7 +10,10 @@ import (
 	"github.com/mikekonan/go-oas3/configurator"
 )
 
-const goType = "x-go-type"
+const (
+	goType  = "x-go-type"
+	goRegex = "x-go-regex"
+)
 
 type Type struct {
 	normalizer *Normalizer          `di.inject:"normalizer"`
@@ -31,7 +34,7 @@ func (typ *Type) fillGoType(into *jen.Statement, typeName string, schemaRef *ope
 		return
 	}
 
-	if len(schemaRef.Value.Extensions) > 0 && schemaRef.Value.Extensions[goType] != "" {
+	if len(schemaRef.Value.Extensions) > 0 && schemaRef.Value.Extensions[goType] != nil {
 		var customType string
 		if err := json.Unmarshal(schemaRef.Value.Extensions[goType].(json.RawMessage), &customType); err != nil {
 			panic(err)
@@ -56,7 +59,7 @@ func (typ *Type) fillGoType(into *jen.Statement, typeName string, schemaRef *ope
 	switch schema.Type {
 	case "object":
 		if schemaRef.Ref != "" {
-			typeName := typ.normalizer.normalizeName(typ.normalizer.extractNameFromRef(schemaRef.Ref))
+			typeName := typ.normalizer.normalize(typ.normalizer.extractNameFromRef(schemaRef.Ref))
 			into.Qual(typ.config.ComponentsPackage, typeName)
 			return
 		}
