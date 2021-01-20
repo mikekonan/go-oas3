@@ -62,8 +62,6 @@ Support more types.
 
 Support security schemas.
 
-Create a better example.
-
 Remove cast dependency from generated code.
 
 Create an example that covers all use cases.
