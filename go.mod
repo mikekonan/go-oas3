@@ -10,5 +10,5 @@ require (
 	github.com/goioc/di v1.5.0
 	github.com/heetch/confita v0.9.2
 	github.com/spf13/cast v1.3.1
-	golang.org/x/sys v0.0.0-20191115151921-52ab43148777 // indirect
+	github.com/tdewolff/minify/v2 v2.9.11
 )

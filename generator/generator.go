@@ -10,6 +10,7 @@ import (
 	"github.com/dave/jennifer/jen"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/spf13/cast"
+	"github.com/tdewolff/minify/v2/minify"
 
 	"github.com/mikekonan/go-oas3/configurator"
 )
@@ -43,7 +44,8 @@ func (generator *Generator) Generate(swagger *openapi3.Swagger) *Result {
 	routerCode := jen.Null().
 		Add(parametersAdditionalVars...).Line().
 		Add(generator.wrappers(swagger)).Line().
-		Add(generator.requestResponseBuilders(swagger))
+		Add(generator.requestResponseBuilders(swagger)).Line().
+		Add(generator.specCode(swagger))
 
 	return &Result{
 		ComponentsCode: generator.file(componentsCode, generator.config.ComponentsPackage),
@@ -1885,6 +1887,29 @@ func (generator *Generator) headersStruct(name string, headers map[string]*opena
 			Values(headersMapCode...))
 
 	return jen.Null().Add(generator.normalizer.doubleLineAfterEachElement(headersStruct, headersToMap)...)
+}
+
+func (generator *Generator) specCode(swagger *openapi3.Swagger) jen.Code {
+	specJson, err := json.Marshal(swagger)
+	if err != nil {
+		panic(err)
+	}
+
+	minifiedJson, err := minify.JSON(string(specJson))
+	if err != nil {
+		panic(err)
+	}
+
+	return jen.Var().Id("spec").Op("=").Index().Id("byte").Call(jen.Lit(minifiedJson)).
+		Line().Line().
+		Func().Id("Spec").Params(
+		jen.Id("w").Qual("net/http",
+			"ResponseWriter"),
+		jen.Id("_").Op("*").Qual("net/http",
+			"Request")).Block(
+		jen.Id("w").Dot("Header").Call().Dot("Add").Call(jen.Lit("Content-Type"),
+			jen.Lit("application/json")),
+		jen.Id("w").Dot("Write").Call(jen.Id("spec")))
 }
 
 func (*Generator) builderConstructorName(name string) string {
