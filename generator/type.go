@@ -40,7 +40,8 @@ func (typ *Type) fillGoType(into *jen.Statement, typeName string, schemaRef *ope
 			panic(err)
 		}
 
-		into.Qual(strings.Split(customType, ".")[0], strings.Split(customType, ".")[1])
+		index := strings.LastIndex(customType, ".")
+		into.Qual(customType[:index], customType[index+1:])
 		return
 	}
 
