@@ -58,13 +58,15 @@ Specify a regex to match a string:
 ```
 
 ## Plans
-Support more types.
+- [ ] Support more types.
 
-Support security schemas.
+- [ ] Support security schemas.
 
-Remove cast dependency from generated code.
+- [ ] Remove cast dependency from generated code.
 
-Create an example that covers all use cases.
+- [ ] Create an example that covers all use cases.
+
+- [x] Added handler that provides spec in json format.
 
 ## Have a question or need some functionality?
 Feel free to discuss it or do a PR.
