@@ -64,7 +64,7 @@ func (generator *Generator) responsesBodies(name string, suffix string, response
 			bodyName := name + cast.ToString(kv.Key) + suffix
 			result := jen.Type().Id(bodyName)
 			var schema = responseBody.Value.Content["application/json"].Schema
-			generator.typee.fillGoType(result, bodyName, schema, false)
+			generator.typee.fillGoType(result, bodyName, schema, false, false)
 
 			return result
 		}).
@@ -353,14 +353,14 @@ func (generator *Generator) requestParameterStruct(name string, contentType stri
 
 						if len(parameter.Value.Schema.Value.Enum) > 0 {
 							if len(parameter.Value.Schema.Ref) > 0 {
-								generator.typee.fillGoType(statement, generator.normalizer.extractNameFromRef(parameter.Value.Schema.Ref), parameter.Value.Schema, false)
+								generator.typee.fillGoType(statement, generator.normalizer.extractNameFromRef(parameter.Value.Schema.Ref), parameter.Value.Schema, false, false)
 								return statement
 							}
 
 							//todo: generate enum for anonymous type
 						}
 
-						generator.typee.fillGoType(statement, name, parameter.Value.Schema, false)
+						generator.typee.fillGoType(statement, name, parameter.Value.Schema, false, false)
 						return statement
 					}).
 					ToSlice(&structFields)
@@ -378,7 +378,7 @@ func (generator *Generator) requestParameterStruct(name string, contentType stri
 						if len(parameter.Value.Schema.Value.Enum) > 0 {
 							if len(parameter.Value.Schema.Ref) > 0 {
 								var returnType = jen.Null()
-								generator.typee.fillGoType(returnType, generator.normalizer.extractNameFromRef(parameter.Value.Schema.Ref), parameter.Value.Schema, false)
+								generator.typee.fillGoType(returnType, generator.normalizer.extractNameFromRef(parameter.Value.Schema.Ref), parameter.Value.Schema, false, false)
 								statement = statement.Params(returnType).Block(jen.Return().Id(parameter.Value.In).Dot(name))
 								return statement
 							}
@@ -387,7 +387,7 @@ func (generator *Generator) requestParameterStruct(name string, contentType stri
 						}
 
 						var returnType = jen.Null()
-						generator.typee.fillGoType(returnType, name, parameter.Value.Schema, false)
+						generator.typee.fillGoType(returnType, name, parameter.Value.Schema, false, false)
 						statement = statement.Params(returnType).Block(jen.Return().Id(parameter.Value.In).Dot(name))
 						return statement
 					}).
@@ -416,14 +416,14 @@ func (generator *Generator) requestParameterStruct(name string, contentType stri
 
 						if len(parameter.Value.Schema.Value.Enum) > 0 {
 							if len(parameter.Value.Schema.Ref) > 0 {
-								generator.typee.fillGoType(statement, generator.normalizer.extractNameFromRef(parameter.Value.Schema.Ref), parameter.Value.Schema, false)
+								generator.typee.fillGoType(statement, generator.normalizer.extractNameFromRef(parameter.Value.Schema.Ref), parameter.Value.Schema, false, false)
 								return statement
 							}
 
 							//todo: generate enum for anonymous type
 						}
 
-						generator.typee.fillGoType(statement, name, parameter.Value.Schema, false)
+						generator.typee.fillGoType(statement, name, parameter.Value.Schema, false, false)
 						return statement
 					}).
 					ToSlice(&structFields)
@@ -522,11 +522,11 @@ func (generator *Generator) componentFromSchema(name string, parentSchema *opena
 
 	if len(parentSchema.Value.Properties) == 0 {
 		if len(parentSchema.Value.Enum) > 0 {
-			generator.typee.fillGoType(typeDeclaration, name+"Enum", parentSchema, false)
+			generator.typee.fillGoType(typeDeclaration, name+"Enum", parentSchema, false, false)
 			return typeDeclaration
 		}
 
-		generator.typee.fillGoType(typeDeclaration, name, parentSchema, false)
+		generator.typee.fillGoType(typeDeclaration, name, parentSchema, false, true)
 
 		return typeDeclaration
 	}
@@ -553,9 +553,8 @@ func (generator *Generator) componentFromSchema(name string, parentSchema *opena
 							"Errorf").Call(jen.Lit(fmt.Sprintf(`%s not matched by the '%s' regex`, property, html.EscapeString(regex))))))
 			}
 
-			return jen.Line().
+			return jen.Null().
 				Add(additionalValidationCode...).
-				Line().Line().
 				Id("body").Dot(propertyName).Op("=").Id("value").Dot(propertyName).Line()
 		}).
 		ToSlice(&unmarshalNonRequiredAssignments)
@@ -624,13 +623,13 @@ func (generator *Generator) typeProperties(typeName string, schema *openapi3.Sch
 				if schemaRef.Ref != "" {
 					name = generator.normalizer.extractNameFromRef(schemaRef.Ref)
 				} else {
-					name = typeName + strings.Title(name) + "Enum"
+					name = strings.Title(typeName) + strings.Title(name) + "Enum"
 				}
 			}
 
 			asPointer := pointersForRequired && linq.From(schema.Required).Contains(originName)
 
-			generator.typee.fillGoType(parameter, name, schemaRef, asPointer)
+			generator.typee.fillGoType(parameter, name, schemaRef, asPointer, false)
 			generator.typee.fillJsonTag(parameter, originName)
 			return parameter
 		}).ToSlice(&parameters)
@@ -1866,7 +1865,7 @@ func (generator *Generator) headersStruct(name string, headers map[string]*opena
 		name := generator.normalizer.normalize(cast.ToString(kv.Key))
 		field := jen.Id(name)
 
-		generator.typee.fillGoType(field, name, kv.Value.(*openapi3.HeaderRef).Value.Schema, false)
+		generator.typee.fillGoType(field, name, kv.Value.(*openapi3.HeaderRef).Value.Schema, false, false)
 
 		return field
 	}).ToSlice(&headersCode)
