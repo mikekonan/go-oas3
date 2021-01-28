@@ -533,9 +533,6 @@ func (generator *Generator) componentFromSchema(name string, parentSchema *opena
 
 	componentStruct := typeDeclaration.Struct(generator.typeProperties(name, parentSchema.Value, false)...)
 	helperName := generator.normalizer.decapitalize(name)
-	if helperName == "operationLog" {
-		println("keka2")
-	}
 	componentHelperStruct := jen.Type().Id(helperName).Struct(generator.typeProperties(helperName, parentSchema.Value, true)...)
 
 	var unmarshalNonRequiredAssignments []jen.Code
