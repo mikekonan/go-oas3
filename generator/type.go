@@ -24,7 +24,7 @@ func (typ *Type) fillJsonTag(into *jen.Statement, name string) {
 	into.Tag(map[string]string{"json": strings.ToLower(name[:1]) + name[1:]})
 }
 
-func (typ *Type) fillGoType(into *jen.Statement, typeName string, schemaRef *openapi3.SchemaRef, asPointer bool) {
+func (typ *Type) fillGoType(into *jen.Statement, typeName string, schemaRef *openapi3.SchemaRef, asPointer bool, needAliasing bool) {
 	if asPointer {
 		into.Op("*")
 	}
@@ -41,6 +41,11 @@ func (typ *Type) fillGoType(into *jen.Statement, typeName string, schemaRef *ope
 		}
 
 		index := strings.LastIndex(customType, ".")
+
+		if needAliasing {
+			into.Op("=")
+		}
+
 		into.Qual(customType[:index], customType[index+1:])
 		return
 	}
@@ -72,7 +77,7 @@ func (typ *Type) fillGoType(into *jen.Statement, typeName string, schemaRef *ope
 		return
 	case "array":
 		into.Index()
-		typ.fillGoType(into, typeName, schema.Items, asPointer)
+		typ.fillGoType(into, typeName, schema.Items, asPointer, needAliasing)
 		return
 	case "integer":
 		into.Int()
