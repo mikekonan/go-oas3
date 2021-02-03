@@ -27,7 +27,7 @@ The result generated boilerplate and its client you can see at ./example.
 
 # OpenAPI features
 ### Required fields
-Path, query, component, header required fields are supported. 
+Path, query, component, header required fields are supported. Security schemas for http and apikey(header).
 
 ### Custom types
 Generator supports few swagger types for components. 
