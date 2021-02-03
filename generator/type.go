@@ -11,8 +11,9 @@ import (
 )
 
 const (
-	goType  = "x-go-type"
-	goRegex = "x-go-regex"
+	goType            = "x-go-type"
+	goTypeStringParse = "x-go-type-string-parse"
+	goRegex           = "x-go-regex"
 )
 
 type Type struct {
@@ -34,19 +35,12 @@ func (typ *Type) fillGoType(into *jen.Statement, typeName string, schemaRef *ope
 		return
 	}
 
-	if len(schemaRef.Value.Extensions) > 0 && schemaRef.Value.Extensions[goType] != nil {
-		var customType string
-		if err := json.Unmarshal(schemaRef.Value.Extensions[goType].(json.RawMessage), &customType); err != nil {
-			panic(err)
-		}
-
-		index := strings.LastIndex(customType, ".")
-
+	if pkg, typee, ok := typ.getXGoType(schemaRef.Value); ok {
 		if needAliasing {
 			into.Op("=")
 		}
 
-		into.Qual(customType[:index], customType[index+1:])
+		into.Qual(pkg, typee)
 		return
 	}
 
@@ -77,7 +71,7 @@ func (typ *Type) fillGoType(into *jen.Statement, typeName string, schemaRef *ope
 		return
 	case "array":
 		into.Index()
-		typ.fillGoType(into, typeName, schema.Items, asPointer, needAliasing)
+		typ.fillGoType(into, typeName, schema.Items, false, needAliasing)
 		return
 	case "integer":
 		into.Int()
@@ -126,6 +120,54 @@ func (typ *Type) fillGoType(into *jen.Statement, typeName string, schemaRef *ope
 	into.Interface()
 }
 
-func (typ *Type) isCustomType(ref *openapi3.Schema) bool {
-	return ref.Type == "string" && ref.Format != ""
+func (typ *Type) hasXGoType(schema *openapi3.Schema) bool {
+	if len(schema.Extensions) > 0 && schema.Extensions[goType] != nil {
+		return true
+	}
+
+	return false
+}
+
+func (typ *Type) hasXGoTypeStringParse(schema *openapi3.Schema) bool {
+	if typ.hasXGoType(schema) && schema.Extensions[goTypeStringParse] != nil {
+		return true
+	}
+
+	return false
+}
+
+func (typ *Type) getXGoTypeStringParse(schema *openapi3.Schema) (string, string, bool) {
+	if typ.hasXGoType(schema) && schema.Extensions[goTypeStringParse] != nil {
+		var customType string
+
+		if err := json.Unmarshal(schema.Extensions[goTypeStringParse].(json.RawMessage), &customType); err != nil {
+			panic(err)
+		}
+
+		index := strings.LastIndex(customType, ".")
+
+		return customType[:index], customType[index+1:], true
+	}
+
+	return "", "", false
+}
+
+func (typ *Type) getXGoType(schema *openapi3.Schema) (string, string, bool) {
+	if typ.hasXGoType(schema) && schema.Extensions[goType] != nil {
+		var customType string
+
+		if err := json.Unmarshal(schema.Extensions[goType].(json.RawMessage), &customType); err != nil {
+			panic(err)
+		}
+
+		index := strings.LastIndex(customType, ".")
+
+		return customType[:index], customType[index+1:], true
+	}
+
+	return "", "", false
+}
+
+func (typ *Type) isCustomType(schema *openapi3.Schema) bool {
+	return schema.Type == "string" && (schema.Format != "" || typ.hasXGoTypeStringParse(schema))
 }
