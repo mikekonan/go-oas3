@@ -1349,13 +1349,11 @@ func (generator *Generator) wrapperSecurity(name string, operation *openapi3.Ope
 				jen.Id("processor").Dot("scheme"),
 				jen.Id("value")),
 				jen.Id("err").Op("!=").Id("nil")).Block(
-				jen.Id("request").Dot("ProcessingResult").Op("=").Id("RequestProcessingResult").Values(jen.Id("error").Op(":").Id("err"),
-					jen.Id("typee").Op(":").Id("SecurityCheckFailed")),
-				jen.Line().If(jen.Id("router").Dot("hooks").Dot("RequestSecurityCheckFailed").Op("!=").Id("nil")).Block(
+				jen.If(jen.Id("router").Dot("hooks").Dot("RequestSecurityCheckFailed").Op("!=").Id("nil")).Block(
 					jen.Id("router").Dot("hooks").Dot("RequestSecurityCheckFailed").Call(jen.Id("r"),
 						jen.Lit(name),
 						jen.Id("string").Call(jen.Id("processor").Dot("scheme")),
-						jen.Id("request").Dot("ProcessingResult"))),
+						jen.Id("RequestProcessingResult").Values(jen.Id("error").Op(":").Id("err"), jen.Id("typee").Op(":").Id("SecurityCheckFailed")))),
 				jen.Line().Id("isLinkedChecksValid").Op("=").Id("false"),
 				jen.Line().Break()),
 			jen.Line().If(jen.Id("router").Dot("hooks").Dot("RequestSecurityCheckCompleted").Op("!=").Id("nil")).Block(
