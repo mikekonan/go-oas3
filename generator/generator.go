@@ -2019,10 +2019,10 @@ func (generator *Generator) securitySchemas(swagger *openapi3.Swagger) jen.Code 
 				assignment := jen.Null()
 				if schema.Value.Scheme == "bearer" {
 					ifStatement = ifStatement.Op("!").Qual("strings", "HasPrefix").Call(jen.Id("value"), jen.Lit("Bearer "))
-					assignment = assignment.Id("value").Op("=").Id("value").Index(jen.Lit(8), jen.Empty())
+					assignment = assignment.Id("value").Op("=").Id("value").Index(jen.Lit(7), jen.Empty())
 				} else {
 					ifStatement = ifStatement.Op("!").Qual("strings", "HasPrefix").Call(jen.Id("value"), jen.Lit("Basic "))
-					assignment = assignment.Id("value").Op("=").Id("value").Index(jen.Lit(7), jen.Empty())
+					assignment = assignment.Id("value").Op("=").Id("value").Index(jen.Lit(6), jen.Empty())
 				}
 
 				return jen.Line().Id("SecurityScheme"+strings.Title(name)).Op(":").Func().Params(
