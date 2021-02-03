@@ -63,7 +63,7 @@ Specify a regex to match a string:
 ## Plans
 - [ ] Support more types.
 
-- [ ] Support security schemas.
+- [x] Support security schemas. Cookies - left.
 
 - [ ] Remove cast dependency from generated code.
 
