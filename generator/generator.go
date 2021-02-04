@@ -1099,40 +1099,6 @@ func (generator *Generator) wrapperCustomType(in string, name string, paramName 
 		jen.Line().Return(),
 	}
 
-	switch parameter.Value.Schema.Value.Format {
-	case "uuid":
-		parameterCode := jen.Null().
-			Add(jen.List(jen.Id(paramName), jen.Id("err")).Op(":=").Id("uuid").Dot("Parse").Call(jen.Id(paramName+"Str"))).
-			Add(jen.Line()).
-			Add(jen.If(jen.Id("err").Op("!=").Id("nil")).Block(parseFailed...)).
-			Add(jen.Line(), jen.Line()).
-			Add(jen.Id("request").Dot(strings.Title(in)).Dot(name).Op("=").Id(paramName))
-
-		result.Add(generator.wrapRequired(paramName+"Str", parameter.Value.Required, parameterCode))
-		break
-	case "iso4217-currency-code":
-		parameterCode := jen.Null().
-			Add(jen.List(jen.Id(paramName), jen.Id("err")).Op(":=").Qual("github.com/mikekonan/go-currencies", "ByCodeStrErr").Call(jen.Id(paramName+"Str"))).
-			Add(jen.Line()).
-			Add(jen.If(jen.Id("err").Op("!=").Id("nil")).Block(parseFailed...)).
-			Add(jen.Line(), jen.Line()).
-			Add(jen.Id("request").Dot(strings.Title(in)).Dot(name).Op("=").Id(paramName).Dot("Code").Call())
-
-		result.Add(generator.wrapRequired(paramName+"Str", parameter.Value.Required, parameterCode))
-		break
-	case "iso3166-alpha-2":
-		parameterCode := jen.Null().
-			Add(jen.List(jen.Id(paramName), jen.Id("err")).Op(":=").Qual("github.com/mikekonan/go-countries", "ByAlpha2CodeStrErr").Call(jen.Id(paramName+"Str"))).
-			Add(jen.Line()).
-			Add(jen.If(jen.Id("err").Op("!=").Id("nil")).Block(parseFailed...)).
-			Add(jen.Line(), jen.Line()).
-			Add(jen.Id("request").Dot(strings.Title(in)).Dot(name).Op("=").Id(paramName).Dot("Alpha2Code").Call())
-
-		result.Add(generator.wrapRequired(paramName+"Str", parameter.Value.Required, parameterCode))
-		break
-	default:
-	}
-
 	if pkg, parse, ok := generator.typee.getXGoTypeStringParse(parameter.Value.Schema.Value); ok {
 		parameterCode := jen.Null().
 			Add(jen.List(jen.Id(paramName), jen.Id("err")).Op(":=").Qual(pkg, parse).Call(jen.Id(paramName+"Str"))).
@@ -1142,6 +1108,40 @@ func (generator *Generator) wrapperCustomType(in string, name string, paramName 
 			Add(jen.Id("request").Dot(strings.Title(in)).Dot(name).Op("=").Id(paramName))
 
 		result.Add(generator.wrapRequired(paramName+"Str", parameter.Value.Required, parameterCode))
+	} else {
+		switch parameter.Value.Schema.Value.Format {
+		case "uuid":
+			parameterCode := jen.Null().
+				Add(jen.List(jen.Id(paramName), jen.Id("err")).Op(":=").Id("uuid").Dot("Parse").Call(jen.Id(paramName+"Str"))).
+				Add(jen.Line()).
+				Add(jen.If(jen.Id("err").Op("!=").Id("nil")).Block(parseFailed...)).
+				Add(jen.Line(), jen.Line()).
+				Add(jen.Id("request").Dot(strings.Title(in)).Dot(name).Op("=").Id(paramName))
+
+			result.Add(generator.wrapRequired(paramName+"Str", parameter.Value.Required, parameterCode))
+			break
+		case "iso4217-currency-code":
+			parameterCode := jen.Null().
+				Add(jen.List(jen.Id(paramName), jen.Id("err")).Op(":=").Qual("github.com/mikekonan/go-currencies", "ByCodeStrErr").Call(jen.Id(paramName+"Str"))).
+				Add(jen.Line()).
+				Add(jen.If(jen.Id("err").Op("!=").Id("nil")).Block(parseFailed...)).
+				Add(jen.Line(), jen.Line()).
+				Add(jen.Id("request").Dot(strings.Title(in)).Dot(name).Op("=").Id(paramName).Dot("Code").Call())
+
+			result.Add(generator.wrapRequired(paramName+"Str", parameter.Value.Required, parameterCode))
+			break
+		case "iso3166-alpha-2":
+			parameterCode := jen.Null().
+				Add(jen.List(jen.Id(paramName), jen.Id("err")).Op(":=").Qual("github.com/mikekonan/go-countries", "ByAlpha2CodeStrErr").Call(jen.Id(paramName+"Str"))).
+				Add(jen.Line()).
+				Add(jen.If(jen.Id("err").Op("!=").Id("nil")).Block(parseFailed...)).
+				Add(jen.Line(), jen.Line()).
+				Add(jen.Id("request").Dot(strings.Title(in)).Dot(name).Op("=").Id(paramName).Dot("Alpha2Code").Call())
+
+			result.Add(generator.wrapRequired(paramName+"Str", parameter.Value.Required, parameterCode))
+			break
+		default:
+		}
 	}
 
 	return result.Line()
