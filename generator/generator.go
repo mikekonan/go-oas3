@@ -1748,10 +1748,6 @@ func (generator *Generator) responseBuilders(operationStruct operationStruct) je
 
 	linq.From(operationStruct.Responses).
 		SelectT(func(resp operationResponse) (results []jen.Code) {
-			if strings.Contains(statusCodesBuilderName, "putOperations") {
-				fmt.Println()
-			}
-
 			hasHeaders := len(resp.Headers) > 0
 			hasContentTypes := len(resp.ContentTypeBodyNameMap) > 0
 			isRedirect := resp.StatusCode == "302"
