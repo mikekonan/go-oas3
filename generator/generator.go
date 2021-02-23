@@ -1788,7 +1788,6 @@ func (generator *Generator) responseBuilders(operationStruct operationStruct) je
 
 			if hasHeaders && !hasContentTypes {
 				headersStructName := generator.headersStructName(operationStruct.Name + resp.StatusCode)
-				results = append(results, generator.headersStruct(headersStructName, resp.Headers))
 				headersBuilderName := generator.headersBuilderName(operationStruct.PrivateName + resp.StatusCode)
 
 				//headers struct
@@ -2095,14 +2094,15 @@ func (generator *Generator) headersStruct(name string, headers map[string]*opena
 	var headersMapCode []jen.Code
 
 	linq.From(headers).SelectT(func(kv linq.KeyValue) jen.Code {
-		name := generator.normalizer.normalize(cast.ToString(kv.Key))
-		return jen.Lit(name).Op(":").Qual("github.com/spf13/cast", "ToString").Call(jen.Id("headers").Dot(name))
+		key := cast.ToString(kv.Key)
+		name := generator.normalizer.normalize(key)
+		return jen.Lit(key).Op(":").Qual("github.com/spf13/cast", "ToString").Call(jen.Id("headers").Dot(name))
 	}).ToSlice(&headersMapCode)
 
 	headersToMap := jen.Func().Params(
 		jen.Id("headers").Id(name)).Id("toMap").Params().Params(
 		jen.Map(jen.Id("string")).Id("string")).Block(
-		jen.Line().Return().Map(jen.Id("string")).Id("string").
+		jen.Return().Map(jen.Id("string")).Id("string").
 			Values(headersMapCode...))
 
 	return jen.Null().Add(generator.normalizer.doubleLineAfterEachElement(headersStruct, headersToMap)...)
