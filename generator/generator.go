@@ -816,6 +816,15 @@ func (generator *Generator) requestProcessingResultType() jen.Code {
 			jen.Id("typee").Id("requestProcessingResultType"),
 		)).
 		Add(jen.Line(), jen.Line()).
+		Add(jen.Func().Id("NewRequestProcessingResult").Params(
+			jen.Id("t").Id("requestProcessingResultType"),
+			jen.Id("err").Id("error")).
+			Params(jen.Id("RequestProcessingResult")).Block(
+			jen.Return().Id("RequestProcessingResult").Values(jen.Dict{
+					jen.Id("typee"): jen.Id("t"),
+					jen.Id("error"): jen.Id("err"),
+				}))).
+		Add(jen.Line(), jen.Line()).
 		Add(jen.Func().Params(
 			jen.Id("r").Id("RequestProcessingResult")).Id("Type").Params().Params(
 			jen.Id("requestProcessingResultType")).Block(
