@@ -64,6 +64,12 @@ func (typ *Type) fillGoType(into *jen.Statement, typeName string, schemaRef *ope
 			return
 		}
 
+		if schema.AdditionalProperties != nil {
+			into.Map(jen.Id("string"))
+			typ.fillGoType(into, typeName, schema.AdditionalProperties, false, needAliasing)
+			return
+		}
+
 		if len(schema.Properties) == 0 {
 			into.Interface()
 			return
