@@ -821,9 +821,9 @@ func (generator *Generator) requestProcessingResultType() jen.Code {
 			jen.Id("err").Id("error")).
 			Params(jen.Id("RequestProcessingResult")).Block(
 			jen.Return().Id("RequestProcessingResult").Values(jen.Dict{
-					jen.Id("typee"): jen.Id("t"),
-					jen.Id("error"): jen.Id("err"),
-				}))).
+				jen.Id("typee"): jen.Id("t"),
+				jen.Id("error"): jen.Id("err"),
+			}))).
 		Add(jen.Line(), jen.Line()).
 		Add(jen.Func().Params(
 			jen.Id("r").Id("RequestProcessingResult")).Id("Type").Params().Params(
@@ -1452,9 +1452,27 @@ func (generator *Generator) wrapper(name string, requestName string, routerName,
 				jen.Id("response").Dot("contentType").Call())).Line())
 
 		funcCode = append(funcCode, jen.If(jen.Id("response").Dot("body").Call().Op("!=").Id("nil")).Block(
-			jen.List(jen.Id("data"),
-				jen.Id("err")).Op(":=").Qual("encoding/json",
-				"Marshal").Call(jen.Id("response").Dot("body").Call()),
+			jen.Var().Defs(
+				jen.Id("data").Index().Byte(),
+				jen.Id("err").Error(),
+			).Line(),
+			jen.Switch(jen.Id("response").Dot("contentType").Call()).Block(
+				jen.Case(jen.Lit("application/xml")).Block(
+					jen.List(jen.Id("data"), jen.Id("err")).Op("=").
+						Qual("encoding/xml", "Marshal").Call(jen.Id("response").Dot("body").Call()),
+				),
+				jen.Case(jen.Lit("text/html")).Block(
+					jen.Id("data").Op("=").
+							Index().Byte().Parens(jen.Qual("fmt", "Sprint").Call(jen.Id("response").Dot("body").Call())),
+				),
+				jen.Case(jen.Lit("application/json")).Block(
+					jen.Fallthrough(),
+				),
+				jen.Default().Block(
+					jen.List(jen.Id("data"), jen.Id("err")).Op("=").
+						Qual("encoding/json", "Marshal").Call(jen.Id("response").Dot("body").Call()),
+				),
+			).Line(),
 			jen.If(jen.Id("err").Op("!=").Id("nil")).Block(
 				jen.If(jen.Id("router").Dot("hooks").Dot("ResponseBodyMarshalFailed").Op("!=").Id("nil")).Block(
 					jen.Id("router").Dot("hooks").Dot("ResponseBodyMarshalFailed").Call(
