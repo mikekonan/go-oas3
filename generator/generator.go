@@ -1444,12 +1444,12 @@ func (generator *Generator) wrapper(name string, requestName string, routerName,
 				jen.Id("r"),
 				jen.Lit(name)))).Line().Line())
 
-	funcCode = append(funcCode, jen.Id("w").Dot("WriteHeader").Call(jen.Id("response").Dot("statusCode").Call()).Line().Line())
-
 	if len(operation.Responses) > 0 && linq.From(operation.Responses).AnyWithT(func(kv linq.KeyValue) bool { return len(kv.Value.(*openapi3.ResponseRef).Value.Content) > 0 }) {
 		funcCode = append(funcCode, jen.If(jen.Id("len").Call(jen.Id("response").Dot("contentType").Call()).Op(">").Lit(0)).Block(
 			jen.Id("w").Dot("Header").Call().Dot("Set").Call(jen.Lit("content-type"),
 				jen.Id("response").Dot("contentType").Call())).Line())
+
+		funcCode = append(funcCode, jen.Id("w").Dot("WriteHeader").Call(jen.Id("response").Dot("statusCode").Call()).Line().Line())
 
 		funcCode = append(funcCode, jen.If(jen.Id("response").Dot("body").Call().Op("!=").Id("nil")).Block(
 			jen.Var().Defs(
@@ -1498,6 +1498,8 @@ func (generator *Generator) wrapper(name string, requestName string, routerName,
 				jen.Id("router").Dot("hooks").Dot("ResponseBodyWriteCompleted").Call(
 					jen.Id("r"),
 					jen.Lit(name), jen.Id("count")))).Line().Line())
+	} else {
+		funcCode = append(funcCode, jen.Id("w").Dot("WriteHeader").Call(jen.Id("response").Dot("statusCode").Call()).Line().Line())
 	}
 
 	funcCode = append(funcCode, jen.If(jen.Id("router").Dot("hooks").Dot("ServiceCompleted").Op("!=").Id("nil")).
