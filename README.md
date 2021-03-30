@@ -9,7 +9,7 @@ The purpose of this project is to generate a clean server boilerplate code from 
 Take a note that path stubs generation relies on the **first tag** from your paths.
 ## Installation
 ```
-GO111MODULE=on go get github.com/mikekonan/go-oas3@v1.0.16
+GO111MODULE=on go get github.com/mikekonan/go-oas3@v1.0.18
 ```
 ## Program arguments
 ```
@@ -58,6 +58,15 @@ Specify a regex to match a string:
       schema:
         type: string
         x-go-regex: ^[.?\d]+$
+```
+
+If you want to use your specific type(it has to declare function ```Parse{TYPENAME} ({TYPENAME}, error)```) in query/path/header params:
+```
+    ULID:
+      type: string
+      format: uuid
+      x-go-type: githubrepo/lib/pkg.{TYPENAME}
+      x-go-type-string-parse: githubrepo/lib/pkg.Parse{TYPENAME}
 ```
 
 ## Plans
