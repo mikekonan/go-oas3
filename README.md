@@ -62,9 +62,8 @@ Specify a regex to match a string:
 
 If you want to use your specific type(it has to declare function ```Parse{TYPENAME} ({TYPENAME}, error)```) in query/path/header params:
 ```
-    ULID:
+    TYPENAME:
       type: string
-      format: uuid
       x-go-type: githubrepo/lib/pkg.{TYPENAME}
       x-go-type-string-parse: githubrepo/lib/pkg.Parse{TYPENAME}
 ```
