@@ -1430,6 +1430,9 @@ func (generator *Generator) wrapper(name string, requestName string, routerName,
 				jen.Id("response").Dot("redirectURL").Call(),
 				jen.Lit(302)),
 			jen.Line().Line(),
+			jen.If(jen.Id("router").Dot("hooks").Dot("ServiceCompleted").Op("!=").Id("nil")).
+				Block(jen.Id("router").Dot("hooks").Dot("ServiceCompleted").Call(jen.Id("r"), jen.Lit(name))),
+			jen.Line().Line(),
 			jen.Return(),
 		),
 		jen.Line().Line(),
@@ -1463,7 +1466,7 @@ func (generator *Generator) wrapper(name string, requestName string, routerName,
 				),
 				jen.Case(jen.Lit("text/html")).Block(
 					jen.Id("data").Op("=").
-							Index().Byte().Parens(jen.Qual("fmt", "Sprint").Call(jen.Id("response").Dot("body").Call())),
+						Index().Byte().Parens(jen.Qual("fmt", "Sprint").Call(jen.Id("response").Dot("body").Call())),
 				),
 				jen.Case(jen.Lit("application/json")).Block(
 					jen.Fallthrough(),
@@ -1493,11 +1496,17 @@ func (generator *Generator) wrapper(name string, requestName string, routerName,
 						jen.Lit(name),
 						jen.Id("count"),
 						jen.Id("err"))),
+				jen.Line(),
+				jen.If(jen.Id("router").Dot("hooks").Dot("ResponseBodyWriteCompleted").Op("!=").Id("nil")).Block(
+					jen.Id("router").Dot("hooks").Dot("ResponseBodyWriteCompleted").Call(
+						jen.Id("r"),
+						jen.Lit(name), jen.Id("count"))),
 				jen.Line().Return()).Line().Line(),
 			jen.If(jen.Id("router").Dot("hooks").Dot("ResponseBodyWriteCompleted").Op("!=").Id("nil")).Block(
 				jen.Id("router").Dot("hooks").Dot("ResponseBodyWriteCompleted").Call(
 					jen.Id("r"),
-					jen.Lit(name), jen.Id("count")))).Line().Line())
+					jen.Lit(name), jen.Id("count")))).Line().Line(),
+		)
 	} else {
 		funcCode = append(funcCode, jen.Id("w").Dot("WriteHeader").Call(jen.Id("response").Dot("statusCode").Call()).Line().Line())
 	}
