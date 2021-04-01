@@ -2,6 +2,7 @@ package generator
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/dave/jennifer/jen"
@@ -26,13 +27,11 @@ func (typ *Type) fillJsonTag(into *jen.Statement, name string) {
 }
 
 func (typ *Type) fillGoType(into *jen.Statement, typeName string, schemaRef *openapi3.SchemaRef, asPointer bool, needAliasing bool) {
+	if typeName == "CurrencyCode" {
+		fmt.Print()
+	}
 	if asPointer {
 		into.Op("*")
-	}
-
-	if schemaRef.Ref != "" {
-		into.Qual(typ.config.ComponentsPackage, typ.normalizer.extractNameFromRef(schemaRef.Ref))
-		return
 	}
 
 	if pkg, typee, ok := typ.getXGoType(schemaRef.Value); ok {
@@ -41,6 +40,11 @@ func (typ *Type) fillGoType(into *jen.Statement, typeName string, schemaRef *ope
 		}
 
 		into.Qual(pkg, typee)
+		return
+	}
+
+	if schemaRef.Ref != "" {
+		into.Qual(typ.config.ComponentsPackage, typ.normalizer.extractNameFromRef(schemaRef.Ref))
 		return
 	}
 
