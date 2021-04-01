@@ -89,6 +89,10 @@ func (typ *Type) fillGoType(into *jen.Statement, typeName string, schemaRef *ope
 		into.Bool()
 		return
 	case "string":
+		if needAliasing {
+			into.Op("=")
+		}
+
 		switch schema.Format {
 		case "byte":
 			into.Byte().Values()
