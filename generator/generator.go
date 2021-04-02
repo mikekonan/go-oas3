@@ -880,7 +880,8 @@ func (generator *Generator) wrappers(swagger *openapi3.Swagger) jen.Code {
 						name := generator.normalizer.normalizeOperationName(operation.path, cast.ToString(operation.method))
 						requestName := name + "Request"
 						requestBody := linq.From(operation.operation.RequestBody.Value.Content).SelectT(func(kv linq.KeyValue) interface{} { return kv.Value }).First().(*openapi3.MediaType).Schema
-						return generator.wrapper(name, requestName, routerName, method, operation.path, operation.operation, requestBody, "")
+						contentType := linq.From(operation.operation.RequestBody.Value.Content).SelectT(func(kv linq.KeyValue) interface{} { return kv.Key }).First().(string)
+						return generator.wrapper(name, requestName, routerName, method, operation.path, operation.operation, requestBody, contentType)
 					}
 
 					var result []jen.Code
@@ -1302,9 +1303,34 @@ func (generator *Generator) wrapperBody(method string, path string, contentType 
 	return result.
 		Add(jen.Var().Id("body").Qual(generator.config.ComponentsPackage, name)).
 		Add(jen.Line()).
-		Add(jen.If(jen.Id("err").Op(":=").Qual("encoding/json",
-			"NewDecoder").Call(jen.Id("r").Dot("Body")).Dot("Decode").Call(jen.Op("&").Id("body")),
-			jen.Id("err").Op("!=").Id("nil")).Block(
+		Add(func() *jen.Statement {
+			switch contentType {
+			case "application/xml":
+				return jen.Id("err").Op("=").Qual("encoding/xml", "NewDecoder").Call(jen.Id("r").Dot("Body")).Dot("Decode").Call(jen.Op("&").Id("body"))
+
+			case "application/*":
+				return jen.Add(jen.Var().Defs(
+						jen.Id("buf").Interface(),
+						jen.Id("ok").Bool(),
+					),
+					jen.Line(),
+					jen.If(
+						jen.List(jen.Id("buf"), jen.Id("err")).Op("=").Qual("io/ioutil", "ReadAll").Call(jen.Id("r").Dot("Body")),
+						jen.Id("err").Op("==").Nil(),
+					).Block(
+						jen.If(
+							jen.List(jen.Id("body"), jen.Id("ok")).Op("=").Id("buf").Assert(jen.Qual(generator.config.ComponentsPackage, name)),
+							jen.Op("!").Id("ok"),
+						).Block(
+							jen.Id("err").Op("=").Qual("errors", "New").Call(jen.Lit("body is not []byte")),
+						),
+					))
+			default:
+				return jen.Id("err").Op("=").Qual("encoding/json", "NewDecoder").Call(jen.Id("r").Dot("Body")).Dot("Decode").Call(jen.Op("&").Id("body"))
+			}
+		}()).
+		Add(jen.Line()).
+		Add(jen.If(jen.Id("err").Op("!=").Id("nil")).Block(
 			jen.Id("request").Dot("ProcessingResult").Op("=").Id("RequestProcessingResult").Values(jen.Id("error").Op(":").Id("err"),
 				jen.Id("typee").Op(":").Id("BodyUnmarshalFailed")),
 			jen.If(jen.Id("router").Dot("hooks").Dot("RequestBodyUnmarshalFailed").Op("!=").Id("nil")).Block(
@@ -1415,6 +1441,8 @@ func (generator *Generator) wrapperRequestParser(name string, requestName string
 
 func (generator *Generator) wrapper(name string, requestName string, routerName, method string, path string, operation *openapi3.Operation, requestBody *openapi3.SchemaRef, contentType string) jen.Code {
 	var funcCode []jen.Code
+
+	funcCode = append(funcCode, jen.Defer().Id("r").Dot("Body").Dot("Close").Call().Line())
 
 	funcCode = append(funcCode, jen.Id("response").Op(":=").Id("router").Dot("service").Dot(name).Call(jen.Id("r").Dot("Context").Call(),
 		jen.Id("router").Dot("parse"+name+"Request").Call(jen.Id("r"))),
