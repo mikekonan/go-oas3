@@ -99,7 +99,10 @@ func (typ *Type) fillGoType(into *jen.Statement, typeName string, schemaRef *ope
 
 		switch schema.Format {
 		case "byte":
-			into.Byte().Values()
+			into.Index().Byte()
+			return
+		case "binary":
+			into.Index().Byte()
 			return
 		case "email":
 			into.String()
