@@ -100,6 +100,10 @@ func (normalizer *Normalizer) contentType(str string) string {
 		return ""
 	}
 
-	return cast.ToString(linq.From(strings.Split(str, "/")).
+	var split = func(r rune) bool {
+		return r == '/' || r == '-'
+	}
+
+	return cast.ToString(linq.From(strings.FieldsFunc(str, split)).
 		AggregateWithSeedT("", func(accumulator, str string) string { return accumulator + strings.Title(str) }))
 }
