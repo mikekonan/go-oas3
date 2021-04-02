@@ -1308,7 +1308,7 @@ func (generator *Generator) wrapperBody(method string, path string, contentType 
 			case "application/xml":
 				return jen.Id("err").Op("=").Qual("encoding/xml", "NewDecoder").Call(jen.Id("r").Dot("Body")).Dot("Decode").Call(jen.Op("&").Id("body"))
 
-			case "application/*":
+			case "application/octet-stream":
 				return jen.Add(jen.Var().Defs(
 						jen.Id("buf").Interface(),
 						jen.Id("ok").Bool(),
