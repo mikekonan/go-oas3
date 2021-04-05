@@ -1492,6 +1492,15 @@ func (generator *Generator) wrapper(name string, requestName string, routerName,
 					jen.List(jen.Id("data"), jen.Id("err")).Op("=").
 						Qual("encoding/xml", "Marshal").Call(jen.Id("response").Dot("body").Call()),
 				),
+				jen.Case(jen.Lit("application/octet-stream")).Block(
+					jen.Var().Id("ok").Bool(),
+					jen.If(
+						jen.List(jen.Id("data"), jen.Id("ok")).Op("=").Parens(jen.Id("response").Dot("body").Call()).Assert(jen.Index().Byte()),
+						jen.Op("!").Id("ok"),
+					).Block(
+						jen.Id("err").Op("=").Qual("errors", "New").Call(jen.Lit("body is not []byte")),
+					),
+				),
 				jen.Case(jen.Lit("text/html")).Block(
 					jen.Id("data").Op("=").
 						Index().Byte().Parens(jen.Qual("fmt", "Sprint").Call(jen.Id("response").Dot("body").Call())),
