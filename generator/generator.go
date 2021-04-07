@@ -24,6 +24,7 @@ type Generator struct {
 type Result struct {
 	ComponentsCode *jen.File
 	RouterCode     *jen.File
+	SpecCode       *jen.File
 }
 
 func (generator *Generator) file(from jen.Code, packagePath string) *jen.File {
@@ -45,12 +46,12 @@ func (generator *Generator) Generate(swagger *openapi3.Swagger) *Result {
 		Add(parametersAdditionalVars...).Line().
 		Add(generator.wrappers(swagger)).Line().
 		Add(generator.requestResponseBuilders(swagger)).Line().
-		Add(generator.specCode(swagger)).Line().
 		Add(generator.securitySchemas(swagger))
 
 	return &Result{
 		ComponentsCode: generator.file(componentsCode, generator.config.ComponentsPackage),
 		RouterCode:     generator.file(routerCode, generator.config.Package),
+		SpecCode:       generator.file(generator.specCode(swagger), generator.config.Package),
 	}
 }
 
@@ -1310,9 +1311,9 @@ func (generator *Generator) wrapperBody(method string, path string, contentType 
 
 			case "application/octet-stream":
 				return jen.Add(jen.Var().Defs(
-						jen.Id("buf").Interface(),
-						jen.Id("ok").Bool(),
-					),
+					jen.Id("buf").Interface(),
+					jen.Id("ok").Bool(),
+				),
 					jen.Line(),
 					jen.If(
 						jen.List(jen.Id("buf"), jen.Id("err")).Op("=").Qual("io/ioutil", "ReadAll").Call(jen.Id("r").Dot("Body")),
