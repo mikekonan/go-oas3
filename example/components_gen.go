@@ -2,15 +2,97 @@
 
 package example
 
-type Error struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
+import (
+	"encoding/json"
+	"fmt"
+	uuid "github.com/google/uuid"
+	countries "github.com/mikekonan/go-types/country"
+	currency "github.com/mikekonan/go-types/currency"
+	email "github.com/mikekonan/go-types/email"
+	url "github.com/mikekonan/go-types/url"
+)
+
+type createTransactionRequest struct {
+	CallbackURL   url.URL              `json:"callbackURL"`
+	Country       countries.Alpha2Code `json:"country"`
+	Currency      currency.Code        `json:"currency"`
+	Email         email.Email          `json:"email"`
+	TransactionID uuid.UUID            `json:"transactionID"`
 }
 
-type Pet struct {
-	ID   int    `json:"id"`
-	Name string `json:"name"`
-	Tag  string `json:"tag"`
+type CreateTransactionRequest struct {
+	CallbackURL   url.URL              `json:"callbackURL"`
+	Country       countries.Alpha2Code `json:"country"`
+	Currency      currency.Code        `json:"currency"`
+	Email         email.Email          `json:"email"`
+	TransactionID uuid.UUID            `json:"transactionID"`
 }
 
-type Pets []Pet
+func (body *CreateTransactionRequest) UnmarshalJSON(data []byte) error {
+	var value createTransactionRequest
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+
+	body.TransactionID = value.TransactionID
+	body.CallbackURL = value.CallbackURL
+	body.Country = value.Country
+	body.Currency = value.Currency
+	body.Email = value.Email
+
+	return nil
+}
+
+type Email = email.Email
+
+type genericResponse struct {
+	Result GenericResponseResultEnum `json:"result"`
+}
+
+type GenericResponse struct {
+	Result GenericResponseResultEnum `json:"result"`
+}
+
+func (body *GenericResponse) UnmarshalJSON(data []byte) error {
+	var value genericResponse
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+
+	body.Result = value.Result
+
+	return nil
+}
+
+type URL = url.URL
+
+type GenericResponseResultEnum string
+
+var GenericResponseResultEnumSuccess GenericResponseResultEnum = "success"
+var GenericResponseResultEnumFailed GenericResponseResultEnum = "failed"
+
+func (enum GenericResponseResultEnum) Check() error {
+	switch enum {
+	case GenericResponseResultEnumSuccess, GenericResponseResultEnumFailed:
+
+		return nil
+	}
+
+	return fmt.Errorf("invalid GenericResponseResultEnum enum value")
+}
+
+func (enum *GenericResponseResultEnum) UnmarshalJSON(data []byte) error {
+	var strValue string
+	if err := json.Unmarshal(data, &strValue); err != nil {
+
+		return err
+	}
+	enumValue := GenericResponseResultEnum(strValue)
+	if err := enumValue.Check(); err != nil {
+
+		return err
+	}
+	*enum = enumValue
+
+	return nil
+}

@@ -34,9 +34,9 @@ Generator supports few swagger types for components.
 |openapi type|go type|
 |---|---|
 |uuid|github.com/google/uuid.UUID|
-|iso4217-currency-code|github.com/mikekonan/go-currencies.Code|
-|iso3166-alpha-2|github.com/mikekonan/go-countries.Alpha2Code|
-|iso3166-alpha-3|github.com/mikekonan/go-countries.Alpha3Code|
+|iso4217-currency-code|github.com/mikekonan/go-types/currency.Code|
+|iso3166-alpha-2|github.com/mikekonan/go-types/country.Alpha2Code|
+|iso3166-alpha-3|github.com/mikekonan/go-types/country.Alpha3Code|
 
 #### Extentions:
 Specify a go type with:
@@ -71,13 +71,9 @@ If you want to use your specific type(it has to declare function ```Parse{TYPENA
 ## Plans
 - [ ] Support more types.
 
-- [x] Support security schemas. Cookies - left.
+- [ ] Support cookies in security schemas.
 
 - [ ] Remove cast dependency from generated code.
-
-- [ ] Create an example that covers all use cases.
-
-- [x] Added handler that provides spec in json format.
 
 ## Have a question or need some functionality?
 Feel free to discuss it or do a PR.

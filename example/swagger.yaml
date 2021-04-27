@@ -1,0 +1,88 @@
+openapi: 3.0.0
+info:
+  title: go-oas3 example
+  description: go-oas3 example
+  version: 1.0.0
+servers:
+  - url: 'https://example.com'
+paths:
+  /transaction:
+    post:
+      tags:
+        - transactions
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTransactionRequest"
+        description: address to observe
+      responses:
+        201:
+          description: transaction created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericResponse"
+        400:
+          description: bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericResponse"
+  /transactions/{uuid}:
+    delete:
+      tags:
+        - transactions
+      parameters:
+        - in: path
+          name: uuid
+          schema:
+            type: string
+          required: true
+          description: uuid
+          x-go-type: "github.com/satori/go.uuid.UUID"
+          x-go-type-string-parse: "github.com/satori/go.uuid.FromString"
+      responses:
+        200:
+          description: transaction deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericResponse"
+        400:
+          description: bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericResponse"
+components:
+  schemas:
+    CurrencyCode:
+      $ref: "https://raw.githubusercontent.com/mikekonan/go-types/main/swagger.yaml#/components/schemas/CurrencyCode"
+    CountryAlpha2:
+      $ref: "https://raw.githubusercontent.com/mikekonan/go-types/main/swagger.yaml#/components/schemas/CountryAlpha2"
+    Email:
+      $ref: "https://raw.githubusercontent.com/mikekonan/go-types/main/swagger.yaml#/components/schemas/Email"
+    URL:
+      $ref: "https://raw.githubusercontent.com/mikekonan/go-types/main/swagger.yaml#/components/schemas/URL"
+    GenericResponse:
+      properties:
+        result:
+          type: string
+          enum:
+            - success
+            - failed
+          example: success
+    CreateTransactionRequest:
+      properties:
+        Currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        Country:
+          $ref: '#/components/schemas/CountryAlpha2'
+        Email:
+          $ref: '#/components/schemas/Email'
+        CallbackURL:
+          $ref: '#/components/schemas/URL'
+        TransactionID:
+          type: string
+          format: uuid

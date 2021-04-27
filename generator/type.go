@@ -2,7 +2,6 @@ package generator
 
 import (
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	"github.com/dave/jennifer/jen"
@@ -27,9 +26,6 @@ func (typ *Type) fillJsonTag(into *jen.Statement, name string) {
 }
 
 func (typ *Type) fillGoType(into *jen.Statement, typeName string, schemaRef *openapi3.SchemaRef, asPointer bool, needAliasing bool) {
-	if typeName == "CurrencyCode" {
-		fmt.Print()
-	}
 	if asPointer {
 		into.Op("*")
 	}
@@ -114,13 +110,13 @@ func (typ *Type) fillGoType(into *jen.Statement, typeName string, schemaRef *ope
 			into.String()
 			return
 		case "iso4217-currency-code":
-			into.Qual("github.com/mikekonan/go-currencies", "Code")
+			into.Qual("github.com/mikekonan/go-types/currency", "Code")
 			return
 		case "iso3166-alpha-2":
-			into.Qual("github.com/mikekonan/go-countries", "Alpha2Code")
+			into.Qual("github.com/mikekonan/go-types/country", "Alpha2Code")
 			return
 		case "iso3166-alpha-3":
-			into.Qual("github.com/mikekonan/go-countries", "Alpha3Code")
+			into.Qual("github.com/mikekonan/go-types/country", "Alpha3Code")
 			return
 		case "uuid":
 			into.Qual("github.com/google/uuid", "UUID")
