@@ -1,4 +1,4 @@
-Go OpenAPI v3 server codegen
+Go OpenAPI v3 server codegenerator
 ----------------------------------------
 The purpose of this project is to generate a clean server boilerplate code from openapi v3 specification. The generated code based on github.com/go-chi/chi router. Generator goes over all paths and components and generates Go structs and stubs. 
 
