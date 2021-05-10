@@ -23,7 +23,7 @@ func (loader *Loader) Load() (*openapi3.Swagger, error) {
 			return nil, err
 		}
 
-		setTransportWithHeaders(headers)
+		loader.setTransportWithHeaders(headers)
 	}
 
 	u, err := url.Parse(loader.config.SwaggerAddr)
@@ -44,7 +44,7 @@ func (fn RoundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) 
 	return fn(req)
 }
 
-func setTransportWithHeaders(headers http.Header) {
+func (loader Loader) setTransportWithHeaders(headers http.Header) {
 	http.DefaultClient.Transport = RoundTripperFunc(func(request *http.Request) (*http.Response, error) {
 		for key, value := range headers {
 			request.Header[key] = value
