@@ -20,6 +20,9 @@ Usage of go-oas3:
   -path string
   -swagger-addr string
     	 (default "swagger.yaml")
+  -authorization string 
+    a list of comma-separated key:value pairs to be sent as headers alongside each http request
+
 ```
 ## Example
 Run with: ```go-oas3 -swagger-addr https://raw.githubusercontent.com/OAI/OpenAPI-Specification/master/examples/v3.0/petstore.yaml -package example -path ./example```
