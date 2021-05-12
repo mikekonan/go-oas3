@@ -2,8 +2,11 @@ package configurator
 
 import (
 	"context"
+	"fmt"
+	"net/http"
 	"os"
 	"path"
+	"strings"
 
 	"github.com/heetch/confita"
 	"github.com/heetch/confita/backend/flags"
@@ -16,12 +19,30 @@ type Config struct {
 
 	ComponentsPackage string `config:"componentsPackage"`
 	ComponentsPath    string `config:"componentsPath"`
+
+	Authorization string `config:"authorization,short=a,description=a list of comma-separated key:value pairs to be sent as headers alongside each http request"`
 }
 
 func (config *Config) Defaults() *Config {
 	config.SwaggerAddr = "swagger.yaml"
 
 	return config
+}
+
+func (config *Config) Headers() (http.Header, error) {
+	headers := strings.Split(config.Authorization, ",")
+	out := make(http.Header)
+
+	for _, header := range headers {
+		keyValue := strings.Split(header, ":")
+		if len(keyValue) != 2 {
+			return nil, fmt.Errorf("invalid header format: %q", header)
+		}
+
+		out[keyValue[0]] = []string{keyValue[1]}
+	}
+
+	return out, nil
 }
 
 type Configurator struct {
