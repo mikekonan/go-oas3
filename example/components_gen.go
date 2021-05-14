@@ -10,13 +10,19 @@ import (
 	currency "github.com/mikekonan/go-types/currency"
 	email "github.com/mikekonan/go-types/email"
 	url "github.com/mikekonan/go-types/url"
+	"regexp"
 )
+
+var createTransactionRequestRegexParamRegex = regexp.MustCompile("^[.?\\d]+$")
+
+type URL = url.URL
 
 type createTransactionRequest struct {
 	CallbackURL   url.URL              `json:"callbackURL"`
 	Country       countries.Alpha2Code `json:"country"`
 	Currency      currency.Code        `json:"currency"`
 	Email         email.Email          `json:"email"`
+	RegexParam    string               `json:"regexParam"`
 	TransactionID uuid.UUID            `json:"transactionID"`
 }
 
@@ -25,6 +31,7 @@ type CreateTransactionRequest struct {
 	Country       countries.Alpha2Code `json:"country"`
 	Currency      currency.Code        `json:"currency"`
 	Email         email.Email          `json:"email"`
+	RegexParam    string               `json:"regexParam"`
 	TransactionID uuid.UUID            `json:"transactionID"`
 }
 
@@ -34,11 +41,16 @@ func (body *CreateTransactionRequest) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
+	body.Currency = value.Currency
+	body.Email = value.Email
+	if !createTransactionRequestRegexParamRegex.MatchString(body.RegexParam) {
+		return fmt.Errorf("RegexParam not matched by the '^[.?\\d]+$' regex")
+	}
+
+	body.RegexParam = value.RegexParam
 	body.TransactionID = value.TransactionID
 	body.CallbackURL = value.CallbackURL
 	body.Country = value.Country
-	body.Currency = value.Currency
-	body.Email = value.Email
 
 	return nil
 }
@@ -63,8 +75,6 @@ func (body *GenericResponse) UnmarshalJSON(data []byte) error {
 
 	return nil
 }
-
-type URL = url.URL
 
 type GenericResponseResultEnum string
 

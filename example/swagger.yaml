@@ -42,6 +42,11 @@ paths:
           description: uuid
           x-go-type: "github.com/satori/go.uuid.UUID"
           x-go-type-string-parse: "github.com/satori/go.uuid.FromString"
+        - in: path
+          name: regexParam
+          schema:
+            type: string
+            x-go-regex: ^[.?\d]+$
       responses:
         200:
           description: transaction deleted
@@ -86,3 +91,6 @@ components:
         TransactionID:
           type: string
           format: uuid
+        RegexParam:
+          type: string
+          x-go-regex: ^[.?\d]+$
