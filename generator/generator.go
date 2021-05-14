@@ -538,7 +538,7 @@ func (generator *Generator) componentFromSchema(name string, parentSchema *opena
 				additionalValidationCode = append(additionalValidationCode,
 					jen.If(jen.Op("!").Id(regexVarName).Dot("MatchString").Call(jen.Id("body").Dot(propertyName))).Block(
 						jen.Return().Qual("fmt",
-							"Errorf").Call(jen.Lit(fmt.Sprintf(`%s not matched by the '%s' regex`, property, html.EscapeString(regex))))))
+							"Errorf").Call(jen.Lit(fmt.Sprintf(`%s not matched by the '%s' regex`, property, html.EscapeString(regex))))).Line())
 			}
 
 			return jen.Null().
@@ -564,7 +564,7 @@ func (generator *Generator) componentFromSchema(name string, parentSchema *opena
 				additionalValidationCode = append(additionalValidationCode,
 					jen.If(jen.Op("!").Id(regexVarName).Dot("MatchString").Call(jen.Op("*").Id("value").Dot(propertyName))).Block(
 						jen.Return().Qual("fmt",
-							"Errorf").Call(jen.Lit(fmt.Sprintf(`%s not matched by the '%s' regex`, property, html.EscapeString(regex))))))
+							"Errorf").Call(jen.Lit(fmt.Sprintf(`%s not matched by the '%s' regex`, property, html.EscapeString(regex))))).Line())
 			}
 
 			code := jen.If(jen.Id("value").Dot(propertyName).Op("==").Id("nil")).

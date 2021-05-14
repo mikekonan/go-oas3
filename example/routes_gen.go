@@ -8,10 +8,12 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"net/http"
-
 	chi "github.com/go-chi/chi"
+	"net/http"
+	"regexp"
 )
+
+var deleteTransactionsUUIDPathRegexParamRegex = regexp.MustCompile("^[.?\\d]+$")
 
 type Hooks struct {
 	RequestSecurityParseFailed    func(*http.Request, string, RequestProcessingResult)
@@ -83,126 +85,8 @@ type transactionsRouter struct {
 }
 
 func (router *transactionsRouter) mount() {
-	router.router.Delete("/transactions/{uuid}", router.DeleteTransactionsUUID)
 	router.router.Post("/transaction", router.PostTransaction)
-}
-
-func (router *transactionsRouter) parseDeleteTransactionsUUIDRequest(r *http.Request) (request DeleteTransactionsUUIDRequest) {
-	request.ProcessingResult = RequestProcessingResult{typee: ParseSucceed}
-
-	pathUUID := chi.URLParam(r, "uuid")
-	if pathUUID == "" {
-		err := fmt.Errorf("uuid is empty")
-
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathParseFailed}
-		if router.hooks.RequestPathParseFailed != nil {
-			router.hooks.RequestPathParseFailed(r, "DeleteTransactionsUUID", "uuid", request.ProcessingResult)
-		}
-
-		return
-	}
-
-	request.Path.UUID = pathUUID
-
-	if router.hooks.RequestPathParseCompleted != nil {
-		router.hooks.RequestPathParseCompleted(r, "DeleteTransactionsUUID")
-	}
-
-	if router.hooks.RequestParseCompleted != nil {
-		router.hooks.RequestParseCompleted(r, "DeleteTransactionsUUID")
-	}
-
-	return
-}
-
-func (router *transactionsRouter) DeleteTransactionsUUID(w http.ResponseWriter, r *http.Request) {
-	defer r.Body.Close()
-
-	response := router.service.DeleteTransactionsUUID(r.Context(), router.parseDeleteTransactionsUUIDRequest(r))
-
-	if response.statusCode() == 302 && response.redirectURL() != "" {
-		if router.hooks.RequestRedirectStarted != nil {
-			router.hooks.RequestRedirectStarted(r, "DeleteTransactionsUUID", response.redirectURL())
-		}
-
-		http.Redirect(w, r, response.redirectURL(), 302)
-
-		if router.hooks.ServiceCompleted != nil {
-			router.hooks.ServiceCompleted(r, "DeleteTransactionsUUID")
-		}
-
-		return
-	}
-
-	for header, value := range response.headers() {
-		w.Header().Set(header, value)
-	}
-
-	if router.hooks.RequestProcessingCompleted != nil {
-		router.hooks.RequestProcessingCompleted(r, "DeleteTransactionsUUID")
-	}
-
-	if len(response.contentType()) > 0 {
-		w.Header().Set("content-type", response.contentType())
-	}
-
-	w.WriteHeader(response.statusCode())
-
-	if response.body() != nil {
-		var (
-			data []byte
-			err  error
-		)
-
-		switch response.contentType() {
-		case "application/xml":
-			data, err = xml.Marshal(response.body())
-		case "application/octet-stream":
-			var ok bool
-			if data, ok = (response.body()).([]byte); !ok {
-				err = errors.New("body is not []byte")
-			}
-		case "text/html":
-			data = []byte(fmt.Sprint(response.body()))
-		case "application/json":
-			fallthrough
-		default:
-			data, err = json.Marshal(response.body())
-		}
-
-		if err != nil {
-			if router.hooks.ResponseBodyMarshalFailed != nil {
-				router.hooks.ResponseBodyMarshalFailed(w, r, "DeleteTransactionsUUID", err)
-			}
-
-			return
-		}
-
-		if router.hooks.ResponseBodyMarshalCompleted != nil {
-			router.hooks.ResponseBodyMarshalCompleted(r, "DeleteTransactionsUUID")
-		}
-
-		count, err := w.Write(data)
-		if err != nil {
-			if router.hooks.ResponseBodyWriteFailed != nil {
-				router.hooks.ResponseBodyWriteFailed(r, "DeleteTransactionsUUID", count, err)
-			}
-
-			if router.hooks.ResponseBodyWriteCompleted != nil {
-				router.hooks.ResponseBodyWriteCompleted(r, "DeleteTransactionsUUID", count)
-			}
-
-			return
-		}
-
-		if router.hooks.ResponseBodyWriteCompleted != nil {
-			router.hooks.ResponseBodyWriteCompleted(r, "DeleteTransactionsUUID", count)
-		}
-	}
-
-	if router.hooks.ServiceCompleted != nil {
-		router.hooks.ServiceCompleted(r, "DeleteTransactionsUUID")
-	}
+	router.router.Delete("/transactions/{uuid}", router.DeleteTransactionsUUID)
 }
 
 func (router *transactionsRouter) parsePostTransactionRequest(r *http.Request) (request PostTransactionRequest) {
@@ -324,6 +208,138 @@ func (router *transactionsRouter) PostTransaction(w http.ResponseWriter, r *http
 
 	if router.hooks.ServiceCompleted != nil {
 		router.hooks.ServiceCompleted(r, "PostTransaction")
+	}
+}
+
+func (router *transactionsRouter) parseDeleteTransactionsUUIDRequest(r *http.Request) (request DeleteTransactionsUUIDRequest) {
+	request.ProcessingResult = RequestProcessingResult{typee: ParseSucceed}
+
+	pathUUID := chi.URLParam(r, "uuid")
+	if pathUUID == "" {
+		err := fmt.Errorf("uuid is empty")
+
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathParseFailed}
+		if router.hooks.RequestPathParseFailed != nil {
+			router.hooks.RequestPathParseFailed(r, "DeleteTransactionsUUID", "uuid", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	request.Path.UUID = pathUUID
+
+	pathRegexParam := chi.URLParam(r, "regexParam")
+	if !deleteTransactionsUUIDPathRegexParamRegex.MatchString(request.Header.RegexParam) {
+		err := fmt.Errorf("regexParam not matched by the '^[.?\\d]+$' regex")
+
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathParseFailed}
+		if router.hooks.RequestPathParseFailed != nil {
+			router.hooks.RequestPathParseFailed(r, "DeleteTransactionsUUID", "regexParam", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	request.Path.RegexParam = pathRegexParam
+
+	if router.hooks.RequestPathParseCompleted != nil {
+		router.hooks.RequestPathParseCompleted(r, "DeleteTransactionsUUID")
+	}
+
+	if router.hooks.RequestParseCompleted != nil {
+		router.hooks.RequestParseCompleted(r, "DeleteTransactionsUUID")
+	}
+
+	return
+}
+
+func (router *transactionsRouter) DeleteTransactionsUUID(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
+	response := router.service.DeleteTransactionsUUID(r.Context(), router.parseDeleteTransactionsUUIDRequest(r))
+
+	if response.statusCode() == 302 && response.redirectURL() != "" {
+		if router.hooks.RequestRedirectStarted != nil {
+			router.hooks.RequestRedirectStarted(r, "DeleteTransactionsUUID", response.redirectURL())
+		}
+
+		http.Redirect(w, r, response.redirectURL(), 302)
+
+		if router.hooks.ServiceCompleted != nil {
+			router.hooks.ServiceCompleted(r, "DeleteTransactionsUUID")
+		}
+
+		return
+	}
+
+	for header, value := range response.headers() {
+		w.Header().Set(header, value)
+	}
+
+	if router.hooks.RequestProcessingCompleted != nil {
+		router.hooks.RequestProcessingCompleted(r, "DeleteTransactionsUUID")
+	}
+
+	if len(response.contentType()) > 0 {
+		w.Header().Set("content-type", response.contentType())
+	}
+
+	w.WriteHeader(response.statusCode())
+
+	if response.body() != nil {
+		var (
+			data []byte
+			err  error
+		)
+
+		switch response.contentType() {
+		case "application/xml":
+			data, err = xml.Marshal(response.body())
+		case "application/octet-stream":
+			var ok bool
+			if data, ok = (response.body()).([]byte); !ok {
+				err = errors.New("body is not []byte")
+			}
+		case "text/html":
+			data = []byte(fmt.Sprint(response.body()))
+		case "application/json":
+			fallthrough
+		default:
+			data, err = json.Marshal(response.body())
+		}
+
+		if err != nil {
+			if router.hooks.ResponseBodyMarshalFailed != nil {
+				router.hooks.ResponseBodyMarshalFailed(w, r, "DeleteTransactionsUUID", err)
+			}
+
+			return
+		}
+
+		if router.hooks.ResponseBodyMarshalCompleted != nil {
+			router.hooks.ResponseBodyMarshalCompleted(r, "DeleteTransactionsUUID")
+		}
+
+		count, err := w.Write(data)
+		if err != nil {
+			if router.hooks.ResponseBodyWriteFailed != nil {
+				router.hooks.ResponseBodyWriteFailed(r, "DeleteTransactionsUUID", count, err)
+			}
+
+			if router.hooks.ResponseBodyWriteCompleted != nil {
+				router.hooks.ResponseBodyWriteCompleted(r, "DeleteTransactionsUUID", count)
+			}
+
+			return
+		}
+
+		if router.hooks.ResponseBodyWriteCompleted != nil {
+			router.hooks.ResponseBodyWriteCompleted(r, "DeleteTransactionsUUID", count)
+		}
+	}
+
+	if router.hooks.ServiceCompleted != nil {
+		router.hooks.ServiceCompleted(r, "DeleteTransactionsUUID")
 	}
 }
 
@@ -562,8 +578,18 @@ type TransactionsService interface {
 	DeleteTransactionsUUID(context.Context, DeleteTransactionsUUIDRequest) DeleteTransactionsUUIDResponse
 }
 
+type PostTransactionRequest struct {
+	Body             CreateTransactionRequest
+	ProcessingResult RequestProcessingResult
+}
+
 type DeleteTransactionsUUIDRequestPath struct {
-	UUID string
+	RegexParam string
+	UUID       string
+}
+
+func (path DeleteTransactionsUUIDRequestPath) GetRegexParam() string {
+	return path.RegexParam
 }
 
 func (path DeleteTransactionsUUIDRequestPath) GetUUID() string {
@@ -572,11 +598,6 @@ func (path DeleteTransactionsUUIDRequestPath) GetUUID() string {
 
 type DeleteTransactionsUUIDRequest struct {
 	Path             DeleteTransactionsUUIDRequestPath
-	ProcessingResult RequestProcessingResult
-}
-
-type PostTransactionRequest struct {
-	Body             CreateTransactionRequest
 	ProcessingResult RequestProcessingResult
 }
 
