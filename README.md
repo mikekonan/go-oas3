@@ -80,3 +80,7 @@ If you want to use your specific type(it has to declare function ```Parse{TYPENA
 
 ## Have a question or need some functionality?
 Feel free to discuss it or do a PR.
+
+## Contribution
+Go OpenAPI v3 server codegenerator uses https://github.com/dave/jennifer. 
+Using https://github.com/aloder/tojen is suggested way to generate jennifer code.

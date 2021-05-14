@@ -43,7 +43,7 @@ func (writer *Writer) write(into string, code *jen.File) error {
 	}
 
 	if err := code.Render(file); err != nil {
-		return fmt.Errorf("failed rending into file '%s': %v", into, err)
+		return fmt.Errorf("failed rendering into file '%s': %v", into, err)
 	}
 
 	if err := file.Close(); err != nil {

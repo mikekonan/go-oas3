@@ -94,3 +94,10 @@ components:
         RegexParam:
           type: string
           x-go-regex: ^[.?\d]+$
+        Amount:
+          type: number
+          minimum: 0.009
+          exclusiveMinimum: true
+        AmountCents:
+          type: integer
+          maximum: 100

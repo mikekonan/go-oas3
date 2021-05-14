@@ -5,6 +5,7 @@ package example
 import (
 	"encoding/json"
 	"fmt"
+	validation "github.com/go-ozzo/ozzo-validation/v4"
 	uuid "github.com/google/uuid"
 	countries "github.com/mikekonan/go-types/country"
 	currency "github.com/mikekonan/go-types/currency"
@@ -15,9 +16,9 @@ import (
 
 var createTransactionRequestRegexParamRegex = regexp.MustCompile("^[.?\\d]+$")
 
-type URL = url.URL
-
 type createTransactionRequest struct {
+	Amount        float64              `json:"amount"`
+	AmountCents   int                  `json:"amountCents"`
 	CallbackURL   url.URL              `json:"callbackURL"`
 	Country       countries.Alpha2Code `json:"country"`
 	Currency      currency.Code        `json:"currency"`
@@ -27,6 +28,8 @@ type createTransactionRequest struct {
 }
 
 type CreateTransactionRequest struct {
+	Amount        float64              `json:"amount"`
+	AmountCents   int                  `json:"amountCents"`
 	CallbackURL   url.URL              `json:"callbackURL"`
 	Country       countries.Alpha2Code `json:"country"`
 	Currency      currency.Code        `json:"currency"`
@@ -41,18 +44,24 @@ func (body *CreateTransactionRequest) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
+	body.Amount = value.Amount
+	body.AmountCents = value.AmountCents
+	body.CallbackURL = value.CallbackURL
+	body.Country = value.Country
 	body.Currency = value.Currency
 	body.Email = value.Email
 	if !createTransactionRequestRegexParamRegex.MatchString(body.RegexParam) {
 		return fmt.Errorf("RegexParam not matched by the '^[.?\\d]+$' regex")
 	}
-
 	body.RegexParam = value.RegexParam
 	body.TransactionID = value.TransactionID
-	body.CallbackURL = value.CallbackURL
-	body.Country = value.Country
 
 	return nil
+}
+func (body *CreateTransactionRequest) Validate() error {
+	return validation.ValidateStruct(&body,
+		validation.Field(&body.Amount, validation.Min(0.009).Exclusive()),
+		validation.Field(&body.Country, validation.RuneLength(2, 2)))
 }
 
 type Email = email.Email
@@ -75,6 +84,11 @@ func (body *GenericResponse) UnmarshalJSON(data []byte) error {
 
 	return nil
 }
+func (body *GenericResponse) Validate() error {
+	return nil
+}
+
+type URL = url.URL
 
 type GenericResponseResultEnum string
 
