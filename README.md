@@ -33,7 +33,7 @@ The result generated boilerplate and its client you can see at ./example.
 Path, query, component, header required fields are supported. Security schemas for http and apikey(header).
 
 ### Validation
-Schema validation supports following data types:
+Types validation supports following data types:
 - **string**: minLength, maxLength
 - **number**, **integer**: minimum, maximum, exclusiveMinimum, exclusiveMaximum
 
