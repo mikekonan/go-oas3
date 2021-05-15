@@ -9,7 +9,7 @@ The purpose of this project is to generate a clean server boilerplate code from 
 Take a note that path stubs generation relies on the **first tag** from your paths.
 ## Installation
 ```
-GO111MODULE=on go get github.com/mikekonan/go-oas3@v1.0.26
+GO111MODULE=on go get github.com/mikekonan/go-oas3@v1.0.27
 ```
 ## Program arguments
 ```
@@ -77,11 +77,8 @@ If you want to use your specific type(it has to declare function ```Parse{TYPENA
 ```
 
 ## Plans
-- [ ] Support more types.
 
 - [ ] Support cookies in security schemas.
-
-- [ ] Remove cast dependency from generated code.
 
 ## Have a question or need some functionality?
 Feel free to discuss it or do a PR.
