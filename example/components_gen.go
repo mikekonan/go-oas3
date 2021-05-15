@@ -16,6 +16,30 @@ import (
 
 var createTransactionRequestRegexParamRegex = regexp.MustCompile("^[.?\\d]+$")
 
+type genericResponse struct {
+	Result GenericResponseResultEnum `json:"result"`
+}
+
+type GenericResponse struct {
+	Result GenericResponseResultEnum `json:"result"`
+}
+
+func (body *GenericResponse) UnmarshalJSON(data []byte) error {
+	var value genericResponse
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+
+	body.Result = value.Result
+
+	return nil
+}
+func (body GenericResponse) Validate() error {
+	return nil
+}
+
+type URL = url.URL
+
 type createTransactionRequest struct {
 	Amount        float64              `json:"amount"`
 	AmountCents   int                  `json:"amountCents"`
@@ -44,51 +68,27 @@ func (body *CreateTransactionRequest) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	body.Amount = value.Amount
-	body.AmountCents = value.AmountCents
-	body.CallbackURL = value.CallbackURL
-	body.Country = value.Country
-	body.Currency = value.Currency
 	body.Email = value.Email
 	if !createTransactionRequestRegexParamRegex.MatchString(body.RegexParam) {
 		return fmt.Errorf("RegexParam not matched by the '^[.?\\d]+$' regex")
 	}
 	body.RegexParam = value.RegexParam
 	body.TransactionID = value.TransactionID
+	body.Amount = value.Amount
+	body.AmountCents = value.AmountCents
+	body.CallbackURL = value.CallbackURL
+	body.Country = value.Country
+	body.Currency = value.Currency
 
 	return nil
 }
-func (body *CreateTransactionRequest) Validate() error {
+func (body CreateTransactionRequest) Validate() error {
 	return validation.ValidateStruct(&body,
 		validation.Field(&body.Amount, validation.Min(0.009).Exclusive()),
 		validation.Field(&body.Country, validation.RuneLength(2, 2)))
 }
 
 type Email = email.Email
-
-type genericResponse struct {
-	Result GenericResponseResultEnum `json:"result"`
-}
-
-type GenericResponse struct {
-	Result GenericResponseResultEnum `json:"result"`
-}
-
-func (body *GenericResponse) UnmarshalJSON(data []byte) error {
-	var value genericResponse
-	if err := json.Unmarshal(data, &value); err != nil {
-		return err
-	}
-
-	body.Result = value.Result
-
-	return nil
-}
-func (body *GenericResponse) Validate() error {
-	return nil
-}
-
-type URL = url.URL
 
 type GenericResponseResultEnum string
 

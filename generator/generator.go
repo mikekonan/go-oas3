@@ -353,11 +353,18 @@ func (generator *Generator) requestParameterStruct(name string, contentType stri
 
 				typeName := name + "Request" + strings.Title(cast.ToString(group.Key))
 
+				var fieldValidationRules []jen.Code
+
 				linq.From(group.Group).
 					OrderByT(func(parameter *openapi3.ParameterRef) string { return parameter.Value.Name }).
 					SelectT(func(parameter *openapi3.ParameterRef) (result jen.Code) {
 						name := generator.normalizer.normalize(parameter.Value.Name)
 						var statement = jen.Func().Params(jen.Id(parameter.Value.In).Id(typeName)).Id("Get" + name).Params()
+
+						fvRule := generator.fieldValidationRuleFromSchema(parameter.Value.In, name, parameter.Value.Schema)
+						if fvRule != nil {
+							fieldValidationRules = append(fieldValidationRules, jen.Line().Add(fvRule))
+						}
 
 						if len(parameter.Value.Schema.Value.Enum) > 0 {
 							if len(parameter.Value.Schema.Ref) > 0 {
@@ -377,9 +384,12 @@ func (generator *Generator) requestParameterStruct(name string, contentType stri
 					}).
 					ToSlice(&getters)
 
+				validateFunc := generator.validationFuncFromRules(cast.ToString(group.Key), typeName, fieldValidationRules)
+
 				return jen.Type().Id(typeName).Struct(structFields...).
 					Line().Line().
-					Add(generator.normalizer.doubleLineAfterEachElement(getters...)...)
+					Add(generator.normalizer.doubleLineAfterEachElement(getters...)...).
+					Add(validateFunc)
 			}).
 		ToSlice(&parameterStructs)
 
@@ -504,19 +514,19 @@ func (generator *Generator) getXGoRegex(schema *openapi3.SchemaRef) string {
 	return ""
 }
 
-func (generator *Generator) validationFuncFromRules(name string, rules []jen.Code) jen.Code {
+func (generator *Generator) validationFuncFromRules(receiverName string, name string, rules []jen.Code) jen.Code {
 	block := jen.Return().Id("nil")
 	if len(rules) > 0 {
-		params := append([]jen.Code{jen.Op("&").Id("body")}, rules...)
+		params := append([]jen.Code{jen.Op("&").Id(receiverName)}, rules...)
 		block = jen.Return().Qual("github.com/go-ozzo/ozzo-validation/v4", "ValidateStruct").Call(params...)
 	}
 
 	return jen.Func().Params(
-		jen.Id("body").Op("*").Id(name)).Id("Validate").Params().Params(
+		jen.Id(receiverName).Id(name)).Id("Validate").Params().Params(
 		jen.Id("error")).Block(block)
 }
 
-func (generator *Generator) fieldValidationRuleFromSchema(propertyName string, schema *openapi3.SchemaRef) jen.Code {
+func (generator *Generator) fieldValidationRuleFromSchema(receiverName string, propertyName string, schema *openapi3.SchemaRef) jen.Code {
 	var fieldRule jen.Code
 	v := schema.Value
 	switch v.Type {
@@ -527,7 +537,7 @@ func (generator *Generator) fieldValidationRuleFromSchema(propertyName string, s
 				maxLength = *v.MaxLength
 			}
 			fieldRule = jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "Field").Call(
-				jen.Op("&").Id("body").Dot(propertyName), jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "RuneLength").Call(jen.Lit(int(v.MinLength)), jen.Lit(int(maxLength))))
+				jen.Op("&").Id(receiverName).Dot(propertyName), jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "RuneLength").Call(jen.Lit(int(v.MinLength)), jen.Lit(int(maxLength))))
 		}
 	case "integer", "number":
 		var rules []jen.Code
@@ -554,7 +564,7 @@ func (generator *Generator) fieldValidationRuleFromSchema(propertyName string, s
 			rules = append(rules)
 		}
 		if len(rules) > 0 {
-			params := append([]jen.Code{jen.Op("&").Id("body").Dot(propertyName)}, rules...)
+			params := append([]jen.Code{jen.Op("&").Id(receiverName).Dot(propertyName)}, rules...)
 			fieldRule = jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "Field").Call(params...)
 		}
 	}
@@ -600,7 +610,7 @@ func (generator *Generator) componentFromSchema(name string, parentSchema *opena
 							"Errorf").Call(jen.Lit(fmt.Sprintf(`%s not matched by the '%s' regex`, property, html.EscapeString(regex))))).Line())
 			}
 
-			fvRule := generator.fieldValidationRuleFromSchema(propertyName, schema)
+			fvRule := generator.fieldValidationRuleFromSchema("body", propertyName, schema)
 			if fvRule != nil {
 				fieldValidationRules = append(fieldValidationRules, jen.Line().Add(fvRule))
 			}
@@ -631,7 +641,7 @@ func (generator *Generator) componentFromSchema(name string, parentSchema *opena
 							"Errorf").Call(jen.Lit(fmt.Sprintf(`%s not matched by the '%s' regex`, property, html.EscapeString(regex))))).Line())
 			}
 
-			fvRule := generator.fieldValidationRuleFromSchema(propertyName, schema)
+			fvRule := generator.fieldValidationRuleFromSchema("body", propertyName, schema)
 			if fvRule != nil {
 				fieldValidationRules = append(fieldValidationRules, jen.Line().Add(fvRule))
 			}
@@ -661,7 +671,7 @@ func (generator *Generator) componentFromSchema(name string, parentSchema *opena
 			Add(unmarshalRequiredAssignments...).Line().Line().
 			Add(jen.Return().Id("nil"))).Line()
 
-	validateFunc := generator.validationFuncFromRules(name, fieldValidationRules)
+	validateFunc := generator.validationFuncFromRules("body", name, fieldValidationRules)
 
 	return jen.Add(componentHelperStruct).
 		Add(jen.Line().Line()).
@@ -830,6 +840,22 @@ func (generator *Generator) hooksStruct() jen.Code {
 			jen.Id("string"),
 			jen.Id("string"),
 			jen.Id("RequestProcessingResult")),
+		jen.Id("RequestBodyValidationFailed").Func().Params(jen.Op("*").Qual("net/http",
+			"Request"),
+			jen.Id("string"),
+			jen.Id("RequestProcessingResult")),
+		jen.Id("RequestHeaderValidationFailed").Func().Params(jen.Op("*").Qual("net/http",
+			"Request"),
+			jen.Id("string"),
+			jen.Id("RequestProcessingResult")),
+		jen.Id("RequestPathValidationFailed").Func().Params(jen.Op("*").Qual("net/http",
+			"Request"),
+			jen.Id("string"),
+			jen.Id("RequestProcessingResult")),
+		jen.Id("RequestQueryValidationFailed").Func().Params(jen.Op("*").Qual("net/http",
+			"Request"),
+			jen.Id("string"),
+			jen.Id("RequestProcessingResult")),
 		jen.Id("RequestBodyUnmarshalCompleted").Func().Params(jen.Op("*").Qual("net/http",
 			"Request"),
 			jen.Id("string")),
@@ -878,9 +904,13 @@ func (generator *Generator) requestProcessingResultType() jen.Code {
 		Add(jen.Line(), jen.Line()).
 		Add(jen.Const().Defs(
 			jen.Id("BodyUnmarshalFailed").Id("requestProcessingResultType").Op("=").Id("iota").Op("+").Lit(1),
+			jen.Id("BodyValidationFailed"),
 			jen.Id("HeaderParseFailed"),
+			jen.Id("HeaderValidationFailed"),
 			jen.Id("QueryParseFailed"),
+			jen.Id("QueryValidationFailed"),
 			jen.Id("PathParseFailed"),
+			jen.Id("PathValidationFailed"),
 			jen.Id("SecurityParseFailed"),
 			jen.Id("SecurityCheckFailed"),
 			jen.Id("ParseSucceed"),
@@ -1137,6 +1167,16 @@ func (generator *Generator) wrapperRequestParsers(wrapperName string, operation 
 
 				return generator.wrapperStr(in, name, paramName, wrapperName, parameter)
 			}).Concat(linq.From([]jen.Code{
+				jen.Line().Add(jen.If(jen.Id("err").Op(":=").Id("request").Dot(strings.Title(cast.ToString(group.Key))).Dot("Validate").Call(),
+					jen.Id("err").Op("!=").Id("nil")).
+						Block(jen.Id("request").Dot("ProcessingResult").Op("=").Id("RequestProcessingResult").Values(jen.Id("error").Op(":").Id("err"),
+							jen.Id("typee").Op(":").Id(strings.Title(cast.ToString(group.Key))+"ValidationFailed")),
+							jen.If(jen.Id("router").Dot("hooks").Dot("Request" + strings.Title(cast.ToString(group.Key)) + "ValidationFailed").Op("!=").Id("nil")).Block(
+								jen.Id("router").Dot("hooks").Dot("Request"+strings.Title(cast.ToString(group.Key))+"ValidationFailed").Call(
+								jen.Id("r"),
+								jen.Lit(wrapperName),
+								jen.Id("request").Dot("ProcessingResult"))),
+								jen.Line().Return())),
 				jen.Line().Add(jen.Line()).
 					Add(jen.If(jen.Id("router").Dot("hooks").Dot("Request" + strings.Title(cast.ToString(group.Key)) + "ParseCompleted").Op("!=").Id("nil")).Block(
 						jen.Id("router").Dot("hooks").Dot("Request"+strings.Title(cast.ToString(group.Key))+"ParseCompleted").Call(
@@ -1301,7 +1341,7 @@ func (generator *Generator) wrapperStr(in string, name string, paramName string,
 	if regex != "" {
 		regexVarName := generator.normalizer.decapitalize(wrapperName) + strings.Title(in) + name + "Regex"
 
-		result = result.Line().If(jen.Op("!").Id(regexVarName).Dot("MatchString").Call(jen.Id("request").Dot("Header").Dot(name))).Block(
+		result = result.Line().If(jen.Op("!").Id(regexVarName).Dot("MatchString").Call(jen.Id("request").Dot("Path").Dot(name))).Block(
 			jen.Id("err").Op(":=").Qual("fmt",
 				"Errorf").Call(jen.Lit(fmt.Sprintf("%s not matched by the '%s' regex", parameter.Value.Name, regex))),
 			jen.Line(),
@@ -1420,6 +1460,17 @@ func (generator *Generator) wrapperBody(method string, path string, contentType 
 			jen.Line().Return())).
 		Add(jen.Line(), jen.Line()).
 		Add(jen.Id("request").Dot("Body").Op("=").Id("body")).
+		Add(jen.Line(), jen.Line()).
+		Add(jen.If(jen.Id("err").Op(":=").Id("request").Dot("Body").Dot("Validate").Call(),
+			jen.Id("err").Op("!=").Id("nil")).
+			Block(jen.Id("request").Dot("ProcessingResult").Op("=").Id("RequestProcessingResult").Values(jen.Id("error").Op(":").Id("err"),
+				jen.Id("typee").Op(":").Id("BodyValidationFailed")),
+				jen.If(jen.Id("router").Dot("hooks").Dot("RequestBodyValidationFailed").Op("!=").Id("nil")).Block(
+					jen.Id("router").Dot("hooks").Dot("RequestBodyValidationFailed").Call(
+						jen.Id("r"),
+						jen.Lit(wrapperName),
+						jen.Id("request").Dot("ProcessingResult"))),
+				jen.Line().Return())).
 		Add(jen.Line(), jen.Line()).
 		Add(jen.If(jen.Id("router").Dot("hooks").Dot("RequestBodyUnmarshalCompleted").Op("!=").Id("nil")).Block(
 			jen.Id("router").Dot("hooks").Dot("RequestBodyUnmarshalCompleted").Call(

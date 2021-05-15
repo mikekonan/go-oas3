@@ -32,6 +32,11 @@ The result generated boilerplate and its client you can see at ./example.
 ### Required fields
 Path, query, component, header required fields are supported. Security schemas for http and apikey(header).
 
+### Validation
+Schema validation supports following data types:
+- **string**: minLength, maxLength
+- **number**, **integer**: minimum, maximum, exclusiveMinimum, exclusiveMaximum
+
 ### Custom types
 Generator supports few swagger types for components. 
 |openapi type|go type|

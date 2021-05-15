@@ -10,6 +10,12 @@ paths:
     post:
       tags:
         - transactions
+      parameters:
+        - in: header
+          name: x-signature
+          schema:
+            type: string
+            maxLength: 5
       requestBody:
         content:
           application/json:
@@ -29,11 +35,22 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/GenericResponse"
+        500:
+          description: unhandled error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericResponse"
   /transactions/{uuid}:
     delete:
       tags:
         - transactions
       parameters:
+        - in: header
+          name: x-signature
+          schema:
+            type: string
+            maxLength: 5
         - in: path
           name: uuid
           schema:
@@ -47,6 +64,7 @@ paths:
           schema:
             type: string
             x-go-regex: ^[.?\d]+$
+            minLength: 5
       responses:
         200:
           description: transaction deleted

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	chi "github.com/go-chi/chi"
+	validation "github.com/go-ozzo/ozzo-validation/v4"
 	"net/http"
 	"regexp"
 )
@@ -24,6 +25,10 @@ type Hooks struct {
 	RequestHeaderParseFailed      func(*http.Request, string, string, RequestProcessingResult)
 	RequestPathParseFailed        func(*http.Request, string, string, RequestProcessingResult)
 	RequestQueryParseFailed       func(*http.Request, string, string, RequestProcessingResult)
+	RequestBodyValidationFailed   func(*http.Request, string, RequestProcessingResult)
+	RequestHeaderValidationFailed func(*http.Request, string, RequestProcessingResult)
+	RequestPathValidationFailed   func(*http.Request, string, RequestProcessingResult)
+	RequestQueryValidationFailed  func(*http.Request, string, RequestProcessingResult)
 	RequestBodyUnmarshalCompleted func(*http.Request, string)
 	RequestHeaderParseCompleted   func(*http.Request, string)
 	RequestPathParseCompleted     func(*http.Request, string)
@@ -42,9 +47,13 @@ type requestProcessingResultType uint8
 
 const (
 	BodyUnmarshalFailed requestProcessingResultType = iota + 1
+	BodyValidationFailed
 	HeaderParseFailed
+	HeaderValidationFailed
 	QueryParseFailed
+	QueryValidationFailed
 	PathParseFailed
+	PathValidationFailed
 	SecurityParseFailed
 	SecurityCheckFailed
 	ParseSucceed
@@ -92,6 +101,22 @@ func (router *transactionsRouter) mount() {
 func (router *transactionsRouter) parsePostTransactionRequest(r *http.Request) (request PostTransactionRequest) {
 	request.ProcessingResult = RequestProcessingResult{typee: ParseSucceed}
 
+	headerXSignature := r.Header.Get("x-signature")
+	request.Header.XSignature = headerXSignature
+
+	if err := request.Header.Validate(); err != nil {
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderValidationFailed}
+		if router.hooks.RequestHeaderValidationFailed != nil {
+			router.hooks.RequestHeaderValidationFailed(r, "PostTransaction", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	if router.hooks.RequestHeaderParseCompleted != nil {
+		router.hooks.RequestHeaderParseCompleted(r, "PostTransaction")
+	}
+
 	var (
 		body      CreateTransactionRequest
 		decodeErr error
@@ -109,6 +134,15 @@ func (router *transactionsRouter) parsePostTransactionRequest(r *http.Request) (
 	}
 
 	request.Body = body
+
+	if err := request.Body.Validate(); err != nil {
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: BodyValidationFailed}
+		if router.hooks.RequestBodyValidationFailed != nil {
+			router.hooks.RequestBodyValidationFailed(r, "PostTransaction", request.ProcessingResult)
+		}
+
+		return
+	}
 
 	if router.hooks.RequestBodyUnmarshalCompleted != nil {
 		router.hooks.RequestBodyUnmarshalCompleted(r, "PostTransaction")
@@ -214,6 +248,22 @@ func (router *transactionsRouter) PostTransaction(w http.ResponseWriter, r *http
 func (router *transactionsRouter) parseDeleteTransactionsUUIDRequest(r *http.Request) (request DeleteTransactionsUUIDRequest) {
 	request.ProcessingResult = RequestProcessingResult{typee: ParseSucceed}
 
+	headerXSignature := r.Header.Get("x-signature")
+	request.Header.XSignature = headerXSignature
+
+	if err := request.Header.Validate(); err != nil {
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderValidationFailed}
+		if router.hooks.RequestHeaderValidationFailed != nil {
+			router.hooks.RequestHeaderValidationFailed(r, "DeleteTransactionsUUID", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	if router.hooks.RequestHeaderParseCompleted != nil {
+		router.hooks.RequestHeaderParseCompleted(r, "DeleteTransactionsUUID")
+	}
+
 	pathUUID := chi.URLParam(r, "uuid")
 	if pathUUID == "" {
 		err := fmt.Errorf("uuid is empty")
@@ -229,7 +279,7 @@ func (router *transactionsRouter) parseDeleteTransactionsUUIDRequest(r *http.Req
 	request.Path.UUID = pathUUID
 
 	pathRegexParam := chi.URLParam(r, "regexParam")
-	if !deleteTransactionsUUIDPathRegexParamRegex.MatchString(request.Header.RegexParam) {
+	if !deleteTransactionsUUIDPathRegexParamRegex.MatchString(request.Path.RegexParam) {
 		err := fmt.Errorf("regexParam not matched by the '^[.?\\d]+$' regex")
 
 		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathParseFailed}
@@ -241,6 +291,15 @@ func (router *transactionsRouter) parseDeleteTransactionsUUIDRequest(r *http.Req
 	}
 
 	request.Path.RegexParam = pathRegexParam
+
+	if err := request.Path.Validate(); err != nil {
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathValidationFailed}
+		if router.hooks.RequestPathValidationFailed != nil {
+			router.hooks.RequestPathValidationFailed(r, "DeleteTransactionsUUID", request.ProcessingResult)
+		}
+
+		return
+	}
 
 	if router.hooks.RequestPathParseCompleted != nil {
 		router.hooks.RequestPathParseCompleted(r, "DeleteTransactionsUUID")
@@ -429,40 +488,6 @@ func PostTransactionResponseBuilder() *postTransactionStatusCodeResponseBuilder 
 	return new(postTransactionStatusCodeResponseBuilder)
 }
 
-func (builder *postTransactionStatusCodeResponseBuilder) StatusCode400() *postTransaction400ContentTypeBuilder {
-	builder.response.statusCode = 400
-
-	return &postTransaction400ContentTypeBuilder{response: builder.response}
-}
-
-type postTransaction400ContentTypeBuilder struct {
-	response
-}
-
-type PostTransaction400ApplicationJsonResponseBuilder struct {
-	response
-}
-
-func (builder *PostTransaction400ApplicationJsonResponseBuilder) Build() PostTransactionResponse {
-	return postTransactionResponse{response: builder.response}
-}
-
-func (builder *postTransaction400ContentTypeBuilder) ApplicationJson() *postTransaction400ApplicationJsonBodyBuilder {
-	builder.response.contentType = "application/json"
-
-	return &postTransaction400ApplicationJsonBodyBuilder{response: builder.response}
-}
-
-type postTransaction400ApplicationJsonBodyBuilder struct {
-	response
-}
-
-func (builder *postTransaction400ApplicationJsonBodyBuilder) Body(body GenericResponse) *PostTransaction400ApplicationJsonResponseBuilder {
-	builder.response.body = body
-
-	return &PostTransaction400ApplicationJsonResponseBuilder{response: builder.response}
-}
-
 func (builder *postTransactionStatusCodeResponseBuilder) StatusCode201() *postTransaction201ContentTypeBuilder {
 	builder.response.statusCode = 201
 
@@ -497,46 +522,80 @@ func (builder *postTransaction201ApplicationJsonBodyBuilder) Body(body GenericRe
 	return &PostTransaction201ApplicationJsonResponseBuilder{response: builder.response}
 }
 
+func (builder *postTransactionStatusCodeResponseBuilder) StatusCode400() *postTransaction400ContentTypeBuilder {
+	builder.response.statusCode = 400
+
+	return &postTransaction400ContentTypeBuilder{response: builder.response}
+}
+
+type postTransaction400ContentTypeBuilder struct {
+	response
+}
+
+type PostTransaction400ApplicationJsonResponseBuilder struct {
+	response
+}
+
+func (builder *PostTransaction400ApplicationJsonResponseBuilder) Build() PostTransactionResponse {
+	return postTransactionResponse{response: builder.response}
+}
+
+func (builder *postTransaction400ContentTypeBuilder) ApplicationJson() *postTransaction400ApplicationJsonBodyBuilder {
+	builder.response.contentType = "application/json"
+
+	return &postTransaction400ApplicationJsonBodyBuilder{response: builder.response}
+}
+
+type postTransaction400ApplicationJsonBodyBuilder struct {
+	response
+}
+
+func (builder *postTransaction400ApplicationJsonBodyBuilder) Body(body GenericResponse) *PostTransaction400ApplicationJsonResponseBuilder {
+	builder.response.body = body
+
+	return &PostTransaction400ApplicationJsonResponseBuilder{response: builder.response}
+}
+
+func (builder *postTransactionStatusCodeResponseBuilder) StatusCode500() *postTransaction500ContentTypeBuilder {
+	builder.response.statusCode = 500
+
+	return &postTransaction500ContentTypeBuilder{response: builder.response}
+}
+
+type postTransaction500ContentTypeBuilder struct {
+	response
+}
+
+type PostTransaction500ApplicationJsonResponseBuilder struct {
+	response
+}
+
+func (builder *PostTransaction500ApplicationJsonResponseBuilder) Build() PostTransactionResponse {
+	return postTransactionResponse{response: builder.response}
+}
+
+func (builder *postTransaction500ContentTypeBuilder) ApplicationJson() *postTransaction500ApplicationJsonBodyBuilder {
+	builder.response.contentType = "application/json"
+
+	return &postTransaction500ApplicationJsonBodyBuilder{response: builder.response}
+}
+
+type postTransaction500ApplicationJsonBodyBuilder struct {
+	response
+}
+
+func (builder *postTransaction500ApplicationJsonBodyBuilder) Body(body GenericResponse) *PostTransaction500ApplicationJsonResponseBuilder {
+	builder.response.body = body
+
+	return &PostTransaction500ApplicationJsonResponseBuilder{response: builder.response}
+}
+
 type deleteTransactionsUUIDStatusCodeResponseBuilder struct {
 	response
 }
 
 func DeleteTransactionsUUIDResponseBuilder() *deleteTransactionsUUIDStatusCodeResponseBuilder {
 	return new(deleteTransactionsUUIDStatusCodeResponseBuilder)
-}
-
-func (builder *deleteTransactionsUUIDStatusCodeResponseBuilder) StatusCode200() *deleteTransactionsUUID200ContentTypeBuilder {
-	builder.response.statusCode = 200
-
-	return &deleteTransactionsUUID200ContentTypeBuilder{response: builder.response}
-}
-
-type deleteTransactionsUUID200ContentTypeBuilder struct {
-	response
-}
-
-type DeleteTransactionsUUID200ApplicationJsonResponseBuilder struct {
-	response
-}
-
-func (builder *DeleteTransactionsUUID200ApplicationJsonResponseBuilder) Build() DeleteTransactionsUUIDResponse {
-	return deleteTransactionsUUIDResponse{response: builder.response}
-}
-
-func (builder *deleteTransactionsUUID200ContentTypeBuilder) ApplicationJson() *deleteTransactionsUUID200ApplicationJsonBodyBuilder {
-	builder.response.contentType = "application/json"
-
-	return &deleteTransactionsUUID200ApplicationJsonBodyBuilder{response: builder.response}
-}
-
-type deleteTransactionsUUID200ApplicationJsonBodyBuilder struct {
-	response
-}
-
-func (builder *deleteTransactionsUUID200ApplicationJsonBodyBuilder) Body(body GenericResponse) *DeleteTransactionsUUID200ApplicationJsonResponseBuilder {
-	builder.response.body = body
-
-	return &DeleteTransactionsUUID200ApplicationJsonResponseBuilder{response: builder.response}
 }
 
 func (builder *deleteTransactionsUUIDStatusCodeResponseBuilder) StatusCode400() *deleteTransactionsUUID400ContentTypeBuilder {
@@ -573,14 +632,75 @@ func (builder *deleteTransactionsUUID400ApplicationJsonBodyBuilder) Body(body Ge
 	return &DeleteTransactionsUUID400ApplicationJsonResponseBuilder{response: builder.response}
 }
 
+func (builder *deleteTransactionsUUIDStatusCodeResponseBuilder) StatusCode200() *deleteTransactionsUUID200ContentTypeBuilder {
+	builder.response.statusCode = 200
+
+	return &deleteTransactionsUUID200ContentTypeBuilder{response: builder.response}
+}
+
+type deleteTransactionsUUID200ContentTypeBuilder struct {
+	response
+}
+
+type DeleteTransactionsUUID200ApplicationJsonResponseBuilder struct {
+	response
+}
+
+func (builder *DeleteTransactionsUUID200ApplicationJsonResponseBuilder) Build() DeleteTransactionsUUIDResponse {
+	return deleteTransactionsUUIDResponse{response: builder.response}
+}
+
+func (builder *deleteTransactionsUUID200ContentTypeBuilder) ApplicationJson() *deleteTransactionsUUID200ApplicationJsonBodyBuilder {
+	builder.response.contentType = "application/json"
+
+	return &deleteTransactionsUUID200ApplicationJsonBodyBuilder{response: builder.response}
+}
+
+type deleteTransactionsUUID200ApplicationJsonBodyBuilder struct {
+	response
+}
+
+func (builder *deleteTransactionsUUID200ApplicationJsonBodyBuilder) Body(body GenericResponse) *DeleteTransactionsUUID200ApplicationJsonResponseBuilder {
+	builder.response.body = body
+
+	return &DeleteTransactionsUUID200ApplicationJsonResponseBuilder{response: builder.response}
+}
+
 type TransactionsService interface {
 	PostTransaction(context.Context, PostTransactionRequest) PostTransactionResponse
 	DeleteTransactionsUUID(context.Context, DeleteTransactionsUUIDRequest) DeleteTransactionsUUIDResponse
 }
 
+type PostTransactionRequestHeader struct {
+	XSignature string
+}
+
+func (header PostTransactionRequestHeader) GetXSignature() string {
+	return header.XSignature
+}
+
+func (header PostTransactionRequestHeader) Validate() error {
+	return validation.ValidateStruct(&header,
+		validation.Field(&header.XSignature, validation.RuneLength(0, 5)))
+}
+
 type PostTransactionRequest struct {
 	Body             CreateTransactionRequest
+	Header           PostTransactionRequestHeader
 	ProcessingResult RequestProcessingResult
+}
+
+type DeleteTransactionsUUIDRequestHeader struct {
+	XSignature string
+}
+
+func (header DeleteTransactionsUUIDRequestHeader) GetXSignature() string {
+	return header.XSignature
+}
+
+func (header DeleteTransactionsUUIDRequestHeader) Validate() error {
+	return validation.ValidateStruct(&header,
+		validation.Field(&header.XSignature, validation.RuneLength(0, 5)))
 }
 
 type DeleteTransactionsUUIDRequestPath struct {
@@ -596,7 +716,13 @@ func (path DeleteTransactionsUUIDRequestPath) GetUUID() string {
 	return path.UUID
 }
 
+func (path DeleteTransactionsUUIDRequestPath) Validate() error {
+	return validation.ValidateStruct(&path,
+		validation.Field(&path.RegexParam, validation.RuneLength(5, 0)))
+}
+
 type DeleteTransactionsUUIDRequest struct {
+	Header           DeleteTransactionsUUIDRequestHeader
 	Path             DeleteTransactionsUUIDRequestPath
 	ProcessingResult RequestProcessingResult
 }
