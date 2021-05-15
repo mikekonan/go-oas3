@@ -587,7 +587,9 @@ func (generator *Generator) componentFromSchema(name string, parentSchema *opena
 		}
 
 		generator.typee.fillGoType(typeDeclaration, name, parentSchema, false, true)
+		//validateFunc := generator.validationFuncFromRules("body", name, nil)
 
+		//return typeDeclaration.Add(jen.Line(), validateFunc)
 		return typeDeclaration
 	}
 
@@ -1423,7 +1425,7 @@ func (generator *Generator) wrapperBody(method string, path string, contentType 
 		name = generator.normalizer.normalizeOperationName(path, method) + generator.normalizer.contentType(cast.ToString(contentType)) + "RequestBody"
 	}
 
-	return result.
+	result = result.
 		Add(jen.Var().Defs(
 			jen.Id("body").Qual(generator.config.ComponentsPackage, name),
 			jen.Id("decodeErr").Error(),
@@ -1438,11 +1440,12 @@ func (generator *Generator) wrapperBody(method string, path string, contentType 
 				return jen.Add(jen.Var().Defs(
 					jen.Id("buf").Interface(),
 					jen.Id("ok").Bool(),
+					jen.Id("readErr").Error(),
 				),
 					jen.Line(),
 					jen.If(
-						jen.List(jen.Id("buf"), jen.Id("err")).Op("=").Qual("io/ioutil", "ReadAll").Call(jen.Id("r").Dot("Body")),
-						jen.Id("err").Op("==").Nil(),
+						jen.List(jen.Id("buf"), jen.Id("readErr")).Op("=").Qual("io/ioutil", "ReadAll").Call(jen.Id("r").Dot("Body")),
+						jen.Id("readErr").Op("==").Nil(),
 					).Block(
 						jen.If(
 							jen.List(jen.Id("body"), jen.Id("ok")).Op("=").Id("buf").Assert(jen.Qual(generator.config.ComponentsPackage, name)),
@@ -1468,8 +1471,10 @@ func (generator *Generator) wrapperBody(method string, path string, contentType 
 			jen.Line().Return())).
 		Add(jen.Line(), jen.Line()).
 		Add(jen.Id("request").Dot("Body").Op("=").Id("body")).
-		Add(jen.Line(), jen.Line()).
-		Add(jen.If(jen.Id("err").Op(":=").Id("request").Dot("Body").Dot("Validate").Call(),
+		Add(jen.Line(), jen.Line())
+
+	if contentType != "application/octet-stream" {
+		result = result.Add(jen.If(jen.Id("err").Op(":=").Id("request").Dot("Body").Dot("Validate").Call(),
 			jen.Id("err").Op("!=").Id("nil")).
 			Block(jen.Id("request").Dot("ProcessingResult").Op("=").Id("RequestProcessingResult").Values(jen.Id("error").Op(":").Id("err"),
 				jen.Id("typee").Op(":").Id("BodyValidationFailed")),
@@ -1478,8 +1483,10 @@ func (generator *Generator) wrapperBody(method string, path string, contentType 
 						jen.Id("r"),
 						jen.Lit(wrapperName),
 						jen.Id("request").Dot("ProcessingResult"))),
-				jen.Line().Return())).
-		Add(jen.Line(), jen.Line()).
+				jen.Line().Return()))
+	}
+
+	return result.Add(jen.Line(), jen.Line()).
 		Add(jen.If(jen.Id("router").Dot("hooks").Dot("RequestBodyUnmarshalCompleted").Op("!=").Id("nil")).Block(
 			jen.Id("router").Dot("hooks").Dot("RequestBodyUnmarshalCompleted").Call(
 				jen.Id("r"),
