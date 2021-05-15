@@ -78,6 +78,33 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/GenericResponse"
+  /callbacks/{callbackType}:
+    post:
+      parameters:
+        - description: callback type
+          in: path
+          name: callbackType
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          content:
+            application/octet-stream:
+              schema:
+                $ref: '#/components/schemas/RawPayload'
+          description: OK
+      tags:
+        - callbacks
+      description: callbacks
+      requestBody:
+        content:
+          application/octet-stream:
+            schema:
+              $ref: '#/components/schemas/RawPayload'
+        description: Callback data
+        required: true
+      summary: Callback
 components:
   schemas:
     CurrencyCode:
@@ -96,6 +123,14 @@ components:
             - success
             - failed
           example: success
+    RawPayload:
+      type: string
+      format: binary
+    WithEnum:
+      type: string
+      enum:
+        - one
+        - two
     CreateTransactionRequest:
       properties:
         Currency:

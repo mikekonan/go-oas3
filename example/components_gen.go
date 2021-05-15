@@ -16,27 +16,7 @@ import (
 
 var createTransactionRequestRegexParamRegex = regexp.MustCompile("^[.?\\d]+$")
 
-type genericResponse struct {
-	Result GenericResponseResultEnum `json:"result"`
-}
-
-type GenericResponse struct {
-	Result GenericResponseResultEnum `json:"result"`
-}
-
-func (body *GenericResponse) UnmarshalJSON(data []byte) error {
-	var value genericResponse
-	if err := json.Unmarshal(data, &value); err != nil {
-		return err
-	}
-
-	body.Result = value.Result
-
-	return nil
-}
-func (body GenericResponse) Validate() error {
-	return nil
-}
+type RawPayload = []byte
 
 type URL = url.URL
 
@@ -68,7 +48,6 @@ func (body *CreateTransactionRequest) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	body.Email = value.Email
 	if !createTransactionRequestRegexParamRegex.MatchString(body.RegexParam) {
 		return fmt.Errorf("RegexParam not matched by the '^[.?\\d]+$' regex")
 	}
@@ -79,6 +58,7 @@ func (body *CreateTransactionRequest) UnmarshalJSON(data []byte) error {
 	body.CallbackURL = value.CallbackURL
 	body.Country = value.Country
 	body.Currency = value.Currency
+	body.Email = value.Email
 
 	return nil
 }
@@ -89,6 +69,28 @@ func (body CreateTransactionRequest) Validate() error {
 }
 
 type Email = email.Email
+
+type genericResponse struct {
+	Result GenericResponseResultEnum `json:"result"`
+}
+
+type GenericResponse struct {
+	Result GenericResponseResultEnum `json:"result"`
+}
+
+func (body *GenericResponse) UnmarshalJSON(data []byte) error {
+	var value genericResponse
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+
+	body.Result = value.Result
+
+	return nil
+}
+func (body GenericResponse) Validate() error {
+	return nil
+}
 
 type GenericResponseResultEnum string
 
@@ -112,6 +114,37 @@ func (enum *GenericResponseResultEnum) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	enumValue := GenericResponseResultEnum(strValue)
+	if err := enumValue.Check(); err != nil {
+
+		return err
+	}
+	*enum = enumValue
+
+	return nil
+}
+
+type WithEnum string
+
+var WithEnumOne WithEnum = "one"
+var WithEnumTwo WithEnum = "two"
+
+func (enum WithEnum) Check() error {
+	switch enum {
+	case WithEnumOne, WithEnumTwo:
+
+		return nil
+	}
+
+	return fmt.Errorf("invalid WithEnum enum value")
+}
+
+func (enum *WithEnum) UnmarshalJSON(data []byte) error {
+	var strValue string
+	if err := json.Unmarshal(data, &strValue); err != nil {
+
+		return err
+	}
+	enumValue := WithEnum(strValue)
 	if err := enumValue.Check(); err != nil {
 
 		return err

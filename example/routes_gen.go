@@ -10,6 +10,7 @@ import (
 	"fmt"
 	chi "github.com/go-chi/chi"
 	validation "github.com/go-ozzo/ozzo-validation/v4"
+	"io/ioutil"
 	"net/http"
 	"regexp"
 )
@@ -77,6 +78,182 @@ func (r RequestProcessingResult) Type() requestProcessingResultType {
 
 func (r RequestProcessingResult) Err() error {
 	return r.error
+}
+
+func CallbacksHandler(impl CallbacksService, r chi.Router, hooks *Hooks) http.Handler {
+	router := &callbacksRouter{router: r, service: impl, hooks: hooks}
+
+	router.mount()
+
+	return router.router
+}
+
+type callbacksRouter struct {
+	router  chi.Router
+	service CallbacksService
+	hooks   *Hooks
+}
+
+func (router *callbacksRouter) mount() {
+	router.router.Post("/callbacks/{callbackType}", router.PostCallbacksCallbackType)
+}
+
+func (router *callbacksRouter) parsePostCallbacksCallbackTypeRequest(r *http.Request) (request PostCallbacksCallbackTypeRequest) {
+	request.ProcessingResult = RequestProcessingResult{typee: ParseSucceed}
+
+	pathCallbackType := chi.URLParam(r, "callbackType")
+	if pathCallbackType == "" {
+		err := fmt.Errorf("callbackType is empty")
+
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathParseFailed}
+		if router.hooks.RequestPathParseFailed != nil {
+			router.hooks.RequestPathParseFailed(r, "PostCallbacksCallbackType", "callbackType", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	request.Path.CallbackType = pathCallbackType
+
+	if err := request.Path.Validate(); err != nil {
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathValidationFailed}
+		if router.hooks.RequestPathValidationFailed != nil {
+			router.hooks.RequestPathValidationFailed(r, "PostCallbacksCallbackType", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	if router.hooks.RequestPathParseCompleted != nil {
+		router.hooks.RequestPathParseCompleted(r, "PostCallbacksCallbackType")
+	}
+
+	var (
+		body      RawPayload
+		decodeErr error
+	)
+	var (
+		buf     interface{}
+		ok      bool
+		readErr error
+	)
+	if buf, readErr = ioutil.ReadAll(r.Body); readErr == nil {
+		if body, ok = buf.(RawPayload); !ok {
+			decodeErr = errors.New("body is not []byte")
+		}
+	}
+	if decodeErr != nil {
+		request.ProcessingResult = RequestProcessingResult{error: decodeErr, typee: BodyUnmarshalFailed}
+		if router.hooks.RequestBodyUnmarshalFailed != nil {
+			router.hooks.RequestBodyUnmarshalFailed(r, "PostCallbacksCallbackType", request.ProcessingResult)
+
+			return
+		}
+
+		return
+	}
+
+	request.Body = body
+
+	if router.hooks.RequestBodyUnmarshalCompleted != nil {
+		router.hooks.RequestBodyUnmarshalCompleted(r, "PostCallbacksCallbackType")
+	}
+
+	if router.hooks.RequestParseCompleted != nil {
+		router.hooks.RequestParseCompleted(r, "PostCallbacksCallbackType")
+	}
+
+	return
+}
+
+func (router *callbacksRouter) PostCallbacksCallbackType(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
+	response := router.service.PostCallbacksCallbackType(r.Context(), router.parsePostCallbacksCallbackTypeRequest(r))
+
+	if response.statusCode() == 302 && response.redirectURL() != "" {
+		if router.hooks.RequestRedirectStarted != nil {
+			router.hooks.RequestRedirectStarted(r, "PostCallbacksCallbackType", response.redirectURL())
+		}
+
+		http.Redirect(w, r, response.redirectURL(), 302)
+
+		if router.hooks.ServiceCompleted != nil {
+			router.hooks.ServiceCompleted(r, "PostCallbacksCallbackType")
+		}
+
+		return
+	}
+
+	for header, value := range response.headers() {
+		w.Header().Set(header, value)
+	}
+
+	if router.hooks.RequestProcessingCompleted != nil {
+		router.hooks.RequestProcessingCompleted(r, "PostCallbacksCallbackType")
+	}
+
+	if len(response.contentType()) > 0 {
+		w.Header().Set("content-type", response.contentType())
+	}
+
+	w.WriteHeader(response.statusCode())
+
+	if response.body() != nil {
+		var (
+			data []byte
+			err  error
+		)
+
+		switch response.contentType() {
+		case "application/xml":
+			data, err = xml.Marshal(response.body())
+		case "application/octet-stream":
+			var ok bool
+			if data, ok = (response.body()).([]byte); !ok {
+				err = errors.New("body is not []byte")
+			}
+		case "text/html":
+			data = []byte(fmt.Sprint(response.body()))
+		case "application/json":
+			fallthrough
+		default:
+			data, err = json.Marshal(response.body())
+		}
+
+		if err != nil {
+			if router.hooks.ResponseBodyMarshalFailed != nil {
+				router.hooks.ResponseBodyMarshalFailed(w, r, "PostCallbacksCallbackType", err)
+			}
+
+			return
+		}
+
+		if router.hooks.ResponseBodyMarshalCompleted != nil {
+			router.hooks.ResponseBodyMarshalCompleted(r, "PostCallbacksCallbackType")
+		}
+
+		count, err := w.Write(data)
+		if err != nil {
+			if router.hooks.ResponseBodyWriteFailed != nil {
+				router.hooks.ResponseBodyWriteFailed(r, "PostCallbacksCallbackType", count, err)
+			}
+
+			if router.hooks.ResponseBodyWriteCompleted != nil {
+				router.hooks.ResponseBodyWriteCompleted(r, "PostCallbacksCallbackType", count)
+			}
+
+			return
+		}
+
+		if router.hooks.ResponseBodyWriteCompleted != nil {
+			router.hooks.ResponseBodyWriteCompleted(r, "PostCallbacksCallbackType", count)
+		}
+	}
+
+	if router.hooks.ServiceCompleted != nil {
+		router.hooks.ServiceCompleted(r, "PostCallbacksCallbackType")
+	}
 }
 
 func TransactionsHandler(impl TransactionsService, r chi.Router, hooks *Hooks) http.Handler {
@@ -418,37 +595,6 @@ type responseInterface interface {
 	headers() map[string]string
 }
 
-type PostTransactionResponse interface {
-	responseInterface
-	postTransactionResponse()
-}
-
-type postTransactionResponse struct {
-	response
-}
-
-func (postTransactionResponse) postTransactionResponse() {}
-
-func (response postTransactionResponse) statusCode() int {
-	return response.response.statusCode
-}
-
-func (response postTransactionResponse) body() interface{} {
-	return response.response.body
-}
-
-func (response postTransactionResponse) contentType() string {
-	return response.response.contentType
-}
-
-func (response postTransactionResponse) redirectURL() string {
-	return response.response.redirectURL
-}
-
-func (response postTransactionResponse) headers() map[string]string {
-	return response.response.headers
-}
-
 type DeleteTransactionsUUIDResponse interface {
 	responseInterface
 	deleteTransactionsUUIDResponse()
@@ -480,46 +626,116 @@ func (response deleteTransactionsUUIDResponse) headers() map[string]string {
 	return response.response.headers
 }
 
+type PostCallbacksCallbackTypeResponse interface {
+	responseInterface
+	postCallbacksCallbackTypeResponse()
+}
+
+type postCallbacksCallbackTypeResponse struct {
+	response
+}
+
+func (postCallbacksCallbackTypeResponse) postCallbacksCallbackTypeResponse() {}
+
+func (response postCallbacksCallbackTypeResponse) statusCode() int {
+	return response.response.statusCode
+}
+
+func (response postCallbacksCallbackTypeResponse) body() interface{} {
+	return response.response.body
+}
+
+func (response postCallbacksCallbackTypeResponse) contentType() string {
+	return response.response.contentType
+}
+
+func (response postCallbacksCallbackTypeResponse) redirectURL() string {
+	return response.response.redirectURL
+}
+
+func (response postCallbacksCallbackTypeResponse) headers() map[string]string {
+	return response.response.headers
+}
+
+type PostTransactionResponse interface {
+	responseInterface
+	postTransactionResponse()
+}
+
+type postTransactionResponse struct {
+	response
+}
+
+func (postTransactionResponse) postTransactionResponse() {}
+
+func (response postTransactionResponse) statusCode() int {
+	return response.response.statusCode
+}
+
+func (response postTransactionResponse) body() interface{} {
+	return response.response.body
+}
+
+func (response postTransactionResponse) contentType() string {
+	return response.response.contentType
+}
+
+func (response postTransactionResponse) redirectURL() string {
+	return response.response.redirectURL
+}
+
+func (response postTransactionResponse) headers() map[string]string {
+	return response.response.headers
+}
+
+type postCallbacksCallbackTypeStatusCodeResponseBuilder struct {
+	response
+}
+
+func PostCallbacksCallbackTypeResponseBuilder() *postCallbacksCallbackTypeStatusCodeResponseBuilder {
+	return new(postCallbacksCallbackTypeStatusCodeResponseBuilder)
+}
+
+func (builder *postCallbacksCallbackTypeStatusCodeResponseBuilder) StatusCode200() *postCallbacksCallbackType200ContentTypeBuilder {
+	builder.response.statusCode = 200
+
+	return &postCallbacksCallbackType200ContentTypeBuilder{response: builder.response}
+}
+
+type postCallbacksCallbackType200ContentTypeBuilder struct {
+	response
+}
+
+type PostCallbacksCallbackType200ApplicationOctetStreamResponseBuilder struct {
+	response
+}
+
+func (builder *PostCallbacksCallbackType200ApplicationOctetStreamResponseBuilder) Build() PostCallbacksCallbackTypeResponse {
+	return postCallbacksCallbackTypeResponse{response: builder.response}
+}
+
+func (builder *postCallbacksCallbackType200ContentTypeBuilder) ApplicationOctetStream() *postCallbacksCallbackType200ApplicationOctetStreamBodyBuilder {
+	builder.response.contentType = "application/octet-stream"
+
+	return &postCallbacksCallbackType200ApplicationOctetStreamBodyBuilder{response: builder.response}
+}
+
+type postCallbacksCallbackType200ApplicationOctetStreamBodyBuilder struct {
+	response
+}
+
+func (builder *postCallbacksCallbackType200ApplicationOctetStreamBodyBuilder) Body(body RawPayload) *PostCallbacksCallbackType200ApplicationOctetStreamResponseBuilder {
+	builder.response.body = body
+
+	return &PostCallbacksCallbackType200ApplicationOctetStreamResponseBuilder{response: builder.response}
+}
+
 type postTransactionStatusCodeResponseBuilder struct {
 	response
 }
 
 func PostTransactionResponseBuilder() *postTransactionStatusCodeResponseBuilder {
 	return new(postTransactionStatusCodeResponseBuilder)
-}
-
-func (builder *postTransactionStatusCodeResponseBuilder) StatusCode201() *postTransaction201ContentTypeBuilder {
-	builder.response.statusCode = 201
-
-	return &postTransaction201ContentTypeBuilder{response: builder.response}
-}
-
-type postTransaction201ContentTypeBuilder struct {
-	response
-}
-
-type PostTransaction201ApplicationJsonResponseBuilder struct {
-	response
-}
-
-func (builder *PostTransaction201ApplicationJsonResponseBuilder) Build() PostTransactionResponse {
-	return postTransactionResponse{response: builder.response}
-}
-
-func (builder *postTransaction201ContentTypeBuilder) ApplicationJson() *postTransaction201ApplicationJsonBodyBuilder {
-	builder.response.contentType = "application/json"
-
-	return &postTransaction201ApplicationJsonBodyBuilder{response: builder.response}
-}
-
-type postTransaction201ApplicationJsonBodyBuilder struct {
-	response
-}
-
-func (builder *postTransaction201ApplicationJsonBodyBuilder) Body(body GenericResponse) *PostTransaction201ApplicationJsonResponseBuilder {
-	builder.response.body = body
-
-	return &PostTransaction201ApplicationJsonResponseBuilder{response: builder.response}
 }
 
 func (builder *postTransactionStatusCodeResponseBuilder) StatusCode400() *postTransaction400ContentTypeBuilder {
@@ -588,6 +804,40 @@ func (builder *postTransaction500ApplicationJsonBodyBuilder) Body(body GenericRe
 	builder.response.body = body
 
 	return &PostTransaction500ApplicationJsonResponseBuilder{response: builder.response}
+}
+
+func (builder *postTransactionStatusCodeResponseBuilder) StatusCode201() *postTransaction201ContentTypeBuilder {
+	builder.response.statusCode = 201
+
+	return &postTransaction201ContentTypeBuilder{response: builder.response}
+}
+
+type postTransaction201ContentTypeBuilder struct {
+	response
+}
+
+type PostTransaction201ApplicationJsonResponseBuilder struct {
+	response
+}
+
+func (builder *PostTransaction201ApplicationJsonResponseBuilder) Build() PostTransactionResponse {
+	return postTransactionResponse{response: builder.response}
+}
+
+func (builder *postTransaction201ContentTypeBuilder) ApplicationJson() *postTransaction201ApplicationJsonBodyBuilder {
+	builder.response.contentType = "application/json"
+
+	return &postTransaction201ApplicationJsonBodyBuilder{response: builder.response}
+}
+
+type postTransaction201ApplicationJsonBodyBuilder struct {
+	response
+}
+
+func (builder *postTransaction201ApplicationJsonBodyBuilder) Body(body GenericResponse) *PostTransaction201ApplicationJsonResponseBuilder {
+	builder.response.body = body
+
+	return &PostTransaction201ApplicationJsonResponseBuilder{response: builder.response}
 }
 
 type deleteTransactionsUUIDStatusCodeResponseBuilder struct {
@@ -666,9 +916,31 @@ func (builder *deleteTransactionsUUID200ApplicationJsonBodyBuilder) Body(body Ge
 	return &DeleteTransactionsUUID200ApplicationJsonResponseBuilder{response: builder.response}
 }
 
+type CallbacksService interface {
+	PostCallbacksCallbackType(context.Context, PostCallbacksCallbackTypeRequest) PostCallbacksCallbackTypeResponse
+}
+
 type TransactionsService interface {
 	PostTransaction(context.Context, PostTransactionRequest) PostTransactionResponse
 	DeleteTransactionsUUID(context.Context, DeleteTransactionsUUIDRequest) DeleteTransactionsUUIDResponse
+}
+
+type PostCallbacksCallbackTypeRequestPath struct {
+	CallbackType string
+}
+
+func (path PostCallbacksCallbackTypeRequestPath) GetCallbackType() string {
+	return path.CallbackType
+}
+
+func (path PostCallbacksCallbackTypeRequestPath) Validate() error {
+	return nil
+}
+
+type PostCallbacksCallbackTypeRequest struct {
+	Body             RawPayload
+	Path             PostCallbacksCallbackTypeRequestPath
+	ProcessingResult RequestProcessingResult
 }
 
 type PostTransactionRequestHeader struct {
