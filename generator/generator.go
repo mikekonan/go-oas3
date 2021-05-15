@@ -82,7 +82,9 @@ func (generator *Generator) requestParameters(paths map[string]*openapi3.PathIte
 
 						var contentTypeResult []jen.Code
 						linq.From(operation.RequestBody.Value.Content).
-							SelectT(func(kv linq.KeyValue) jen.Code { return generator.requestParameterStruct(name, cast.ToString(kv.Key), true, operation) }).
+							SelectT(func(kv linq.KeyValue) jen.Code {
+								return generator.requestParameterStruct(name, cast.ToString(kv.Key), true, operation)
+							}).
 							ToSlice(&contentTypeResult)
 
 						result = append(result, contentTypeResult...)
@@ -159,7 +161,9 @@ func (generator *Generator) components(swagger *openapi3.Swagger) jen.Code {
 
 						linq.From(operation.RequestBody.Value.Content).
 							ToMapByT(&result,
-								func(kv linq.KeyValue) string { return name + generator.normalizer.contentType(cast.ToString(kv.Key)+"RequestBody") },
+								func(kv linq.KeyValue) string {
+									return name + generator.normalizer.contentType(cast.ToString(kv.Key)+"RequestBody")
+								},
 								func(kv linq.KeyValue) jen.Code {
 									meType := kv.Value.(*openapi3.MediaType)
 
@@ -901,7 +905,9 @@ func (generator *Generator) wrappers(swagger *openapi3.Swagger) jen.Code {
 				}).ToSlice(&wrappers)
 
 			hasSecuritySchemas := linq.From(groupedOperations.operations).
-				AnyWithT(func(operation operationWithPath) bool { return operation.operation.Security != nil && len(*operation.operation.Security) > 0 })
+				AnyWithT(func(operation operationWithPath) bool {
+					return operation.operation.Security != nil && len(*operation.operation.Security) > 0
+				})
 
 			return jen.Null().
 				Add(generator.handler(strings.Title(tag)+"Handler", strings.Title(tag)+"Service", strings.ToLower(tag)+"Router", hasSecuritySchemas, groupedOperations.operations)).
@@ -988,7 +994,9 @@ func (generator *Generator) handler(name string, serviceName string, routerName 
 
 				return linq.From(*operation.operation.Security)
 			}).
-			SelectManyT(func(securityRequirement openapi3.SecurityRequirement) linq.Query { return linq.From(securityRequirement).SelectT(func(kv linq.KeyValue) interface{} { return kv.Key }) }).
+			SelectManyT(func(securityRequirement openapi3.SecurityRequirement) linq.Query {
+				return linq.From(securityRequirement).SelectT(func(kv linq.KeyValue) interface{} { return kv.Key })
+			}).
 			Distinct().
 			SelectT(func(name string) jen.Code {
 				name = strings.Title(name)

@@ -6,7 +6,7 @@ import (
 
 	"github.com/dave/jennifer/jen"
 	"github.com/getkin/kin-openapi/openapi3"
-
+	"github.com/imdario/mergo"
 	"github.com/mikekonan/go-oas3/configurator"
 )
 
@@ -46,7 +46,19 @@ func (typ *Type) fillGoType(into *jen.Statement, typeName string, schemaRef *ope
 
 	schema := schemaRef.Value
 
-	if schema.AnyOf != nil || schema.OneOf != nil || schema.AllOf != nil {
+	if len(schema.AllOf) > 0 {
+		allOfSchema := schema.AllOf[0]
+
+		for i := 1; i < len(schema.AllOf); i++ {
+			mergo.Merge(&allOfSchema, schema.AllOf[i])
+		}
+
+		typ.fillGoType(into, typeName, allOfSchema, false, needAliasing)
+
+		return
+	}
+
+	if schema.AnyOf != nil || schema.OneOf != nil {
 		into.Interface()
 		return
 	}
