@@ -23,10 +23,19 @@ func (t transactionsService) PostTransaction(ctx context.Context, request PostTr
 
 	log.Printf("creating transaction - '%v'\n", request.Body)
 
+	res := GenericResponse{Result: GenericResponseResultEnumSuccess}
+	if err := res.Validate(); err != nil {
+		return PostTransactionResponseBuilder().
+			StatusCode500().
+			ApplicationJson().
+			Body(GenericResponse{Result: GenericResponseResultEnumFailed}).
+			Build()
+	}
+
 	return PostTransactionResponseBuilder().
 		StatusCode201().
 		ApplicationJson().
-		Body(GenericResponse{Result: GenericResponseResultEnumSuccess}).
+		Body(res).
 		Build()
 }
 

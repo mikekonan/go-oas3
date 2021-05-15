@@ -32,6 +32,11 @@ The result generated boilerplate and its client you can see at ./example.
 ### Required fields
 Path, query, component, header required fields are supported. Security schemas for http and apikey(header).
 
+### Validation
+Schema validation supports following data types:
+- **string**: minLength, maxLength
+- **number**, **integer**: minimum, maximum, exclusiveMinimum, exclusiveMaximum
+
 ### Custom types
 Generator supports few swagger types for components. 
 |openapi type|go type|
@@ -80,3 +85,7 @@ If you want to use your specific type(it has to declare function ```Parse{TYPENA
 
 ## Have a question or need some functionality?
 Feel free to discuss it or do a PR.
+
+## Contribution
+Go OpenAPI v3 server codegenerator uses https://github.com/dave/jennifer. 
+Using https://github.com/aloder/tojen is suggested way to generate jennifer code.
