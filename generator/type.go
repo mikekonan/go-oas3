@@ -39,12 +39,17 @@ func (typ *Type) fillGoType(into *jen.Statement, typeName string, schemaRef *ope
 		return
 	}
 
+	schema := schemaRef.Value
+
+	if schema.AnyOf != nil || schema.OneOf != nil {
+		into.Interface()
+		return
+	}
+
 	if schemaRef.Ref != "" {
 		into.Qual(typ.config.ComponentsPackage, typ.normalizer.extractNameFromRef(schemaRef.Ref))
 		return
 	}
-
-	schema := schemaRef.Value
 
 	if len(schema.AllOf) > 0 {
 		allOfSchema := schema.AllOf[0]
@@ -55,11 +60,6 @@ func (typ *Type) fillGoType(into *jen.Statement, typeName string, schemaRef *ope
 
 		typ.fillGoType(into, typeName, allOfSchema, false, needAliasing)
 
-		return
-	}
-
-	if schema.AnyOf != nil || schema.OneOf != nil {
-		into.Interface()
 		return
 	}
 
