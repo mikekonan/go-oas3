@@ -365,7 +365,7 @@ func (generator *Generator) requestParameterStruct(name string, contentType stri
 						name := generator.normalizer.normalize(parameter.Value.Name)
 						var statement = jen.Func().Params(jen.Id(parameter.Value.In).Id(typeName)).Id("Get" + name).Params()
 
-						fvRule := generator.fieldValidationRuleFromSchema(parameter.Value.In, name, parameter.Value.Schema)
+						fvRule := generator.fieldValidationRuleFromSchema(parameter.Value.In, name, parameter.Value.Schema, parameter.Value.Required)
 						if fvRule != nil {
 							fieldValidationRules = append(fieldValidationRules, jen.Line().Add(fvRule))
 						}
@@ -530,7 +530,7 @@ func (generator *Generator) validationFuncFromRules(receiverName string, name st
 		jen.Id("error")).Block(block)
 }
 
-func (generator *Generator) fieldValidationRuleFromSchema(receiverName string, propertyName string, schema *openapi3.SchemaRef) jen.Code {
+func (generator *Generator) fieldValidationRuleFromSchema(receiverName string, propertyName string, schema *openapi3.SchemaRef, required bool) jen.Code {
 	var fieldRule jen.Code
 	v := schema.Value
 	switch v.Type {
@@ -540,8 +540,12 @@ func (generator *Generator) fieldValidationRuleFromSchema(receiverName string, p
 			if v.MaxLength != nil {
 				maxLength = *v.MaxLength
 			}
-			fieldRule = jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "Field").Call(
-				jen.Op("&").Id(receiverName).Dot(propertyName), jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "RuneLength").Call(jen.Lit(int(v.MinLength)), jen.Lit(int(maxLength))))
+			var params = []jen.Code{jen.Op("&").Id(receiverName).Dot(propertyName)}
+			if v.MinLength > 0 && required {
+				params = append(params, jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "Required"))
+			}
+			params = append(params, jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "RuneLength").Call(jen.Lit(int(v.MinLength)), jen.Lit(int(maxLength))))
+			fieldRule = jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "Field").Call(params...)
 		}
 	case "integer", "number":
 		var rules []jen.Code
@@ -616,7 +620,7 @@ func (generator *Generator) componentFromSchema(name string, parentSchema *opena
 							"Errorf").Call(jen.Lit(fmt.Sprintf(`%s not matched by the '%s' regex`, property, html.EscapeString(regex))))).Line())
 			}
 
-			fvRule := generator.fieldValidationRuleFromSchema("body", propertyName, schema)
+			fvRule := generator.fieldValidationRuleFromSchema("body", propertyName, schema, false)
 			if fvRule != nil {
 				fieldValidationRules = append(fieldValidationRules, jen.Line().Add(fvRule))
 			}
@@ -647,7 +651,7 @@ func (generator *Generator) componentFromSchema(name string, parentSchema *opena
 							"Errorf").Call(jen.Lit(fmt.Sprintf(`%s not matched by the '%s' regex`, property, html.EscapeString(regex))))).Line())
 			}
 
-			fvRule := generator.fieldValidationRuleFromSchema("body", propertyName, schema)
+			fvRule := generator.fieldValidationRuleFromSchema("body", propertyName, schema, true)
 			if fvRule != nil {
 				fieldValidationRules = append(fieldValidationRules, jen.Line().Add(fvRule))
 			}
@@ -1179,14 +1183,14 @@ func (generator *Generator) wrapperRequestParsers(wrapperName string, operation 
 			}).Concat(linq.From([]jen.Code{
 				jen.Line().Add(jen.If(jen.Id("err").Op(":=").Id("request").Dot(strings.Title(cast.ToString(group.Key))).Dot("Validate").Call(),
 					jen.Id("err").Op("!=").Id("nil")).
-						Block(jen.Id("request").Dot("ProcessingResult").Op("=").Id("RequestProcessingResult").Values(jen.Id("error").Op(":").Id("err"),
-							jen.Id("typee").Op(":").Id(strings.Title(cast.ToString(group.Key))+"ValidationFailed")),
-							jen.If(jen.Id("router").Dot("hooks").Dot("Request" + strings.Title(cast.ToString(group.Key)) + "ValidationFailed").Op("!=").Id("nil")).Block(
-								jen.Id("router").Dot("hooks").Dot("Request"+strings.Title(cast.ToString(group.Key))+"ValidationFailed").Call(
+					Block(jen.Id("request").Dot("ProcessingResult").Op("=").Id("RequestProcessingResult").Values(jen.Id("error").Op(":").Id("err"),
+						jen.Id("typee").Op(":").Id(strings.Title(cast.ToString(group.Key))+"ValidationFailed")),
+						jen.If(jen.Id("router").Dot("hooks").Dot("Request"+strings.Title(cast.ToString(group.Key))+"ValidationFailed").Op("!=").Id("nil")).Block(
+							jen.Id("router").Dot("hooks").Dot("Request"+strings.Title(cast.ToString(group.Key))+"ValidationFailed").Call(
 								jen.Id("r"),
 								jen.Lit(wrapperName),
 								jen.Id("request").Dot("ProcessingResult"))),
-								jen.Line().Return())),
+						jen.Line().Return())),
 				jen.Line().Add(jen.Line()).
 					Add(jen.If(jen.Id("router").Dot("hooks").Dot("Request" + strings.Title(cast.ToString(group.Key)) + "ParseCompleted").Op("!=").Id("nil")).Block(
 						jen.Id("router").Dot("hooks").Dot("Request"+strings.Title(cast.ToString(group.Key))+"ParseCompleted").Call(

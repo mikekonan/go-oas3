@@ -61,6 +61,7 @@ paths:
           x-go-type-string-parse: "github.com/satori/go.uuid.FromString"
         - in: path
           name: regexParam
+          required: true
           schema:
             type: string
             x-go-regex: ^[.?\d]+$
@@ -154,3 +155,13 @@ components:
         AmountCents:
           type: integer
           maximum: 100
+        Description:
+          type: string
+          minLength: 8
+          maxLength: 100
+        Title:
+          type: string
+          minLength: 8
+          maxLength: 50
+      required:
+        - Description

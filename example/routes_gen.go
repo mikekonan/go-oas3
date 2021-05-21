@@ -80,182 +80,6 @@ func (r RequestProcessingResult) Err() error {
 	return r.error
 }
 
-func CallbacksHandler(impl CallbacksService, r chi.Router, hooks *Hooks) http.Handler {
-	router := &callbacksRouter{router: r, service: impl, hooks: hooks}
-
-	router.mount()
-
-	return router.router
-}
-
-type callbacksRouter struct {
-	router  chi.Router
-	service CallbacksService
-	hooks   *Hooks
-}
-
-func (router *callbacksRouter) mount() {
-	router.router.Post("/callbacks/{callbackType}", router.PostCallbacksCallbackType)
-}
-
-func (router *callbacksRouter) parsePostCallbacksCallbackTypeRequest(r *http.Request) (request PostCallbacksCallbackTypeRequest) {
-	request.ProcessingResult = RequestProcessingResult{typee: ParseSucceed}
-
-	pathCallbackType := chi.URLParam(r, "callbackType")
-	if pathCallbackType == "" {
-		err := fmt.Errorf("callbackType is empty")
-
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathParseFailed}
-		if router.hooks.RequestPathParseFailed != nil {
-			router.hooks.RequestPathParseFailed(r, "PostCallbacksCallbackType", "callbackType", request.ProcessingResult)
-		}
-
-		return
-	}
-
-	request.Path.CallbackType = pathCallbackType
-
-	if err := request.Path.Validate(); err != nil {
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathValidationFailed}
-		if router.hooks.RequestPathValidationFailed != nil {
-			router.hooks.RequestPathValidationFailed(r, "PostCallbacksCallbackType", request.ProcessingResult)
-		}
-
-		return
-	}
-
-	if router.hooks.RequestPathParseCompleted != nil {
-		router.hooks.RequestPathParseCompleted(r, "PostCallbacksCallbackType")
-	}
-
-	var (
-		body      RawPayload
-		decodeErr error
-	)
-	var (
-		buf     interface{}
-		ok      bool
-		readErr error
-	)
-	if buf, readErr = ioutil.ReadAll(r.Body); readErr == nil {
-		if body, ok = buf.(RawPayload); !ok {
-			decodeErr = errors.New("body is not []byte")
-		}
-	}
-	if decodeErr != nil {
-		request.ProcessingResult = RequestProcessingResult{error: decodeErr, typee: BodyUnmarshalFailed}
-		if router.hooks.RequestBodyUnmarshalFailed != nil {
-			router.hooks.RequestBodyUnmarshalFailed(r, "PostCallbacksCallbackType", request.ProcessingResult)
-
-			return
-		}
-
-		return
-	}
-
-	request.Body = body
-
-	if router.hooks.RequestBodyUnmarshalCompleted != nil {
-		router.hooks.RequestBodyUnmarshalCompleted(r, "PostCallbacksCallbackType")
-	}
-
-	if router.hooks.RequestParseCompleted != nil {
-		router.hooks.RequestParseCompleted(r, "PostCallbacksCallbackType")
-	}
-
-	return
-}
-
-func (router *callbacksRouter) PostCallbacksCallbackType(w http.ResponseWriter, r *http.Request) {
-	defer r.Body.Close()
-
-	response := router.service.PostCallbacksCallbackType(r.Context(), router.parsePostCallbacksCallbackTypeRequest(r))
-
-	if response.statusCode() == 302 && response.redirectURL() != "" {
-		if router.hooks.RequestRedirectStarted != nil {
-			router.hooks.RequestRedirectStarted(r, "PostCallbacksCallbackType", response.redirectURL())
-		}
-
-		http.Redirect(w, r, response.redirectURL(), 302)
-
-		if router.hooks.ServiceCompleted != nil {
-			router.hooks.ServiceCompleted(r, "PostCallbacksCallbackType")
-		}
-
-		return
-	}
-
-	for header, value := range response.headers() {
-		w.Header().Set(header, value)
-	}
-
-	if router.hooks.RequestProcessingCompleted != nil {
-		router.hooks.RequestProcessingCompleted(r, "PostCallbacksCallbackType")
-	}
-
-	if len(response.contentType()) > 0 {
-		w.Header().Set("content-type", response.contentType())
-	}
-
-	w.WriteHeader(response.statusCode())
-
-	if response.body() != nil {
-		var (
-			data []byte
-			err  error
-		)
-
-		switch response.contentType() {
-		case "application/xml":
-			data, err = xml.Marshal(response.body())
-		case "application/octet-stream":
-			var ok bool
-			if data, ok = (response.body()).([]byte); !ok {
-				err = errors.New("body is not []byte")
-			}
-		case "text/html":
-			data = []byte(fmt.Sprint(response.body()))
-		case "application/json":
-			fallthrough
-		default:
-			data, err = json.Marshal(response.body())
-		}
-
-		if err != nil {
-			if router.hooks.ResponseBodyMarshalFailed != nil {
-				router.hooks.ResponseBodyMarshalFailed(w, r, "PostCallbacksCallbackType", err)
-			}
-
-			return
-		}
-
-		if router.hooks.ResponseBodyMarshalCompleted != nil {
-			router.hooks.ResponseBodyMarshalCompleted(r, "PostCallbacksCallbackType")
-		}
-
-		count, err := w.Write(data)
-		if err != nil {
-			if router.hooks.ResponseBodyWriteFailed != nil {
-				router.hooks.ResponseBodyWriteFailed(r, "PostCallbacksCallbackType", count, err)
-			}
-
-			if router.hooks.ResponseBodyWriteCompleted != nil {
-				router.hooks.ResponseBodyWriteCompleted(r, "PostCallbacksCallbackType", count)
-			}
-
-			return
-		}
-
-		if router.hooks.ResponseBodyWriteCompleted != nil {
-			router.hooks.ResponseBodyWriteCompleted(r, "PostCallbacksCallbackType", count)
-		}
-	}
-
-	if router.hooks.ServiceCompleted != nil {
-		router.hooks.ServiceCompleted(r, "PostCallbacksCallbackType")
-	}
-}
-
 func TransactionsHandler(impl TransactionsService, r chi.Router, hooks *Hooks) http.Handler {
 	router := &transactionsRouter{router: r, service: impl, hooks: hooks}
 
@@ -456,6 +280,17 @@ func (router *transactionsRouter) parseDeleteTransactionsUUIDRequest(r *http.Req
 	request.Path.UUID = pathUUID
 
 	pathRegexParam := chi.URLParam(r, "regexParam")
+	if pathRegexParam == "" {
+		err := fmt.Errorf("regexParam is empty")
+
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathParseFailed}
+		if router.hooks.RequestPathParseFailed != nil {
+			router.hooks.RequestPathParseFailed(r, "DeleteTransactionsUUID", "regexParam", request.ProcessingResult)
+		}
+
+		return
+	}
+
 	if !deleteTransactionsUUIDPathRegexParamRegex.MatchString(request.Path.RegexParam) {
 		err := fmt.Errorf("regexParam not matched by the '^[.?\\d]+$' regex")
 
@@ -579,6 +414,182 @@ func (router *transactionsRouter) DeleteTransactionsUUID(w http.ResponseWriter, 
 	}
 }
 
+func CallbacksHandler(impl CallbacksService, r chi.Router, hooks *Hooks) http.Handler {
+	router := &callbacksRouter{router: r, service: impl, hooks: hooks}
+
+	router.mount()
+
+	return router.router
+}
+
+type callbacksRouter struct {
+	router  chi.Router
+	service CallbacksService
+	hooks   *Hooks
+}
+
+func (router *callbacksRouter) mount() {
+	router.router.Post("/callbacks/{callbackType}", router.PostCallbacksCallbackType)
+}
+
+func (router *callbacksRouter) parsePostCallbacksCallbackTypeRequest(r *http.Request) (request PostCallbacksCallbackTypeRequest) {
+	request.ProcessingResult = RequestProcessingResult{typee: ParseSucceed}
+
+	pathCallbackType := chi.URLParam(r, "callbackType")
+	if pathCallbackType == "" {
+		err := fmt.Errorf("callbackType is empty")
+
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathParseFailed}
+		if router.hooks.RequestPathParseFailed != nil {
+			router.hooks.RequestPathParseFailed(r, "PostCallbacksCallbackType", "callbackType", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	request.Path.CallbackType = pathCallbackType
+
+	if err := request.Path.Validate(); err != nil {
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathValidationFailed}
+		if router.hooks.RequestPathValidationFailed != nil {
+			router.hooks.RequestPathValidationFailed(r, "PostCallbacksCallbackType", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	if router.hooks.RequestPathParseCompleted != nil {
+		router.hooks.RequestPathParseCompleted(r, "PostCallbacksCallbackType")
+	}
+
+	var (
+		body      RawPayload
+		decodeErr error
+	)
+	var (
+		buf     interface{}
+		ok      bool
+		readErr error
+	)
+	if buf, readErr = ioutil.ReadAll(r.Body); readErr == nil {
+		if body, ok = buf.(RawPayload); !ok {
+			decodeErr = errors.New("body is not []byte")
+		}
+	}
+	if decodeErr != nil {
+		request.ProcessingResult = RequestProcessingResult{error: decodeErr, typee: BodyUnmarshalFailed}
+		if router.hooks.RequestBodyUnmarshalFailed != nil {
+			router.hooks.RequestBodyUnmarshalFailed(r, "PostCallbacksCallbackType", request.ProcessingResult)
+
+			return
+		}
+
+		return
+	}
+
+	request.Body = body
+
+	if router.hooks.RequestBodyUnmarshalCompleted != nil {
+		router.hooks.RequestBodyUnmarshalCompleted(r, "PostCallbacksCallbackType")
+	}
+
+	if router.hooks.RequestParseCompleted != nil {
+		router.hooks.RequestParseCompleted(r, "PostCallbacksCallbackType")
+	}
+
+	return
+}
+
+func (router *callbacksRouter) PostCallbacksCallbackType(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
+	response := router.service.PostCallbacksCallbackType(r.Context(), router.parsePostCallbacksCallbackTypeRequest(r))
+
+	if response.statusCode() == 302 && response.redirectURL() != "" {
+		if router.hooks.RequestRedirectStarted != nil {
+			router.hooks.RequestRedirectStarted(r, "PostCallbacksCallbackType", response.redirectURL())
+		}
+
+		http.Redirect(w, r, response.redirectURL(), 302)
+
+		if router.hooks.ServiceCompleted != nil {
+			router.hooks.ServiceCompleted(r, "PostCallbacksCallbackType")
+		}
+
+		return
+	}
+
+	for header, value := range response.headers() {
+		w.Header().Set(header, value)
+	}
+
+	if router.hooks.RequestProcessingCompleted != nil {
+		router.hooks.RequestProcessingCompleted(r, "PostCallbacksCallbackType")
+	}
+
+	if len(response.contentType()) > 0 {
+		w.Header().Set("content-type", response.contentType())
+	}
+
+	w.WriteHeader(response.statusCode())
+
+	if response.body() != nil {
+		var (
+			data []byte
+			err  error
+		)
+
+		switch response.contentType() {
+		case "application/xml":
+			data, err = xml.Marshal(response.body())
+		case "application/octet-stream":
+			var ok bool
+			if data, ok = (response.body()).([]byte); !ok {
+				err = errors.New("body is not []byte")
+			}
+		case "text/html":
+			data = []byte(fmt.Sprint(response.body()))
+		case "application/json":
+			fallthrough
+		default:
+			data, err = json.Marshal(response.body())
+		}
+
+		if err != nil {
+			if router.hooks.ResponseBodyMarshalFailed != nil {
+				router.hooks.ResponseBodyMarshalFailed(w, r, "PostCallbacksCallbackType", err)
+			}
+
+			return
+		}
+
+		if router.hooks.ResponseBodyMarshalCompleted != nil {
+			router.hooks.ResponseBodyMarshalCompleted(r, "PostCallbacksCallbackType")
+		}
+
+		count, err := w.Write(data)
+		if err != nil {
+			if router.hooks.ResponseBodyWriteFailed != nil {
+				router.hooks.ResponseBodyWriteFailed(r, "PostCallbacksCallbackType", count, err)
+			}
+
+			if router.hooks.ResponseBodyWriteCompleted != nil {
+				router.hooks.ResponseBodyWriteCompleted(r, "PostCallbacksCallbackType", count)
+			}
+
+			return
+		}
+
+		if router.hooks.ResponseBodyWriteCompleted != nil {
+			router.hooks.ResponseBodyWriteCompleted(r, "PostCallbacksCallbackType", count)
+		}
+	}
+
+	if router.hooks.ServiceCompleted != nil {
+		router.hooks.ServiceCompleted(r, "PostCallbacksCallbackType")
+	}
+}
+
 type response struct {
 	statusCode  int
 	body        interface{}
@@ -593,37 +604,6 @@ type responseInterface interface {
 	contentType() string
 	redirectURL() string
 	headers() map[string]string
-}
-
-type DeleteTransactionsUUIDResponse interface {
-	responseInterface
-	deleteTransactionsUUIDResponse()
-}
-
-type deleteTransactionsUUIDResponse struct {
-	response
-}
-
-func (deleteTransactionsUUIDResponse) deleteTransactionsUUIDResponse() {}
-
-func (response deleteTransactionsUUIDResponse) statusCode() int {
-	return response.response.statusCode
-}
-
-func (response deleteTransactionsUUIDResponse) body() interface{} {
-	return response.response.body
-}
-
-func (response deleteTransactionsUUIDResponse) contentType() string {
-	return response.response.contentType
-}
-
-func (response deleteTransactionsUUIDResponse) redirectURL() string {
-	return response.response.redirectURL
-}
-
-func (response deleteTransactionsUUIDResponse) headers() map[string]string {
-	return response.response.headers
 }
 
 type PostCallbacksCallbackTypeResponse interface {
@@ -688,6 +668,37 @@ func (response postTransactionResponse) headers() map[string]string {
 	return response.response.headers
 }
 
+type DeleteTransactionsUUIDResponse interface {
+	responseInterface
+	deleteTransactionsUUIDResponse()
+}
+
+type deleteTransactionsUUIDResponse struct {
+	response
+}
+
+func (deleteTransactionsUUIDResponse) deleteTransactionsUUIDResponse() {}
+
+func (response deleteTransactionsUUIDResponse) statusCode() int {
+	return response.response.statusCode
+}
+
+func (response deleteTransactionsUUIDResponse) body() interface{} {
+	return response.response.body
+}
+
+func (response deleteTransactionsUUIDResponse) contentType() string {
+	return response.response.contentType
+}
+
+func (response deleteTransactionsUUIDResponse) redirectURL() string {
+	return response.response.redirectURL
+}
+
+func (response deleteTransactionsUUIDResponse) headers() map[string]string {
+	return response.response.headers
+}
+
 type postCallbacksCallbackTypeStatusCodeResponseBuilder struct {
 	response
 }
@@ -736,6 +747,40 @@ type postTransactionStatusCodeResponseBuilder struct {
 
 func PostTransactionResponseBuilder() *postTransactionStatusCodeResponseBuilder {
 	return new(postTransactionStatusCodeResponseBuilder)
+}
+
+func (builder *postTransactionStatusCodeResponseBuilder) StatusCode201() *postTransaction201ContentTypeBuilder {
+	builder.response.statusCode = 201
+
+	return &postTransaction201ContentTypeBuilder{response: builder.response}
+}
+
+type postTransaction201ContentTypeBuilder struct {
+	response
+}
+
+type PostTransaction201ApplicationJsonResponseBuilder struct {
+	response
+}
+
+func (builder *PostTransaction201ApplicationJsonResponseBuilder) Build() PostTransactionResponse {
+	return postTransactionResponse{response: builder.response}
+}
+
+func (builder *postTransaction201ContentTypeBuilder) ApplicationJson() *postTransaction201ApplicationJsonBodyBuilder {
+	builder.response.contentType = "application/json"
+
+	return &postTransaction201ApplicationJsonBodyBuilder{response: builder.response}
+}
+
+type postTransaction201ApplicationJsonBodyBuilder struct {
+	response
+}
+
+func (builder *postTransaction201ApplicationJsonBodyBuilder) Body(body GenericResponse) *PostTransaction201ApplicationJsonResponseBuilder {
+	builder.response.body = body
+
+	return &PostTransaction201ApplicationJsonResponseBuilder{response: builder.response}
 }
 
 func (builder *postTransactionStatusCodeResponseBuilder) StatusCode400() *postTransaction400ContentTypeBuilder {
@@ -806,80 +851,12 @@ func (builder *postTransaction500ApplicationJsonBodyBuilder) Body(body GenericRe
 	return &PostTransaction500ApplicationJsonResponseBuilder{response: builder.response}
 }
 
-func (builder *postTransactionStatusCodeResponseBuilder) StatusCode201() *postTransaction201ContentTypeBuilder {
-	builder.response.statusCode = 201
-
-	return &postTransaction201ContentTypeBuilder{response: builder.response}
-}
-
-type postTransaction201ContentTypeBuilder struct {
-	response
-}
-
-type PostTransaction201ApplicationJsonResponseBuilder struct {
-	response
-}
-
-func (builder *PostTransaction201ApplicationJsonResponseBuilder) Build() PostTransactionResponse {
-	return postTransactionResponse{response: builder.response}
-}
-
-func (builder *postTransaction201ContentTypeBuilder) ApplicationJson() *postTransaction201ApplicationJsonBodyBuilder {
-	builder.response.contentType = "application/json"
-
-	return &postTransaction201ApplicationJsonBodyBuilder{response: builder.response}
-}
-
-type postTransaction201ApplicationJsonBodyBuilder struct {
-	response
-}
-
-func (builder *postTransaction201ApplicationJsonBodyBuilder) Body(body GenericResponse) *PostTransaction201ApplicationJsonResponseBuilder {
-	builder.response.body = body
-
-	return &PostTransaction201ApplicationJsonResponseBuilder{response: builder.response}
-}
-
 type deleteTransactionsUUIDStatusCodeResponseBuilder struct {
 	response
 }
 
 func DeleteTransactionsUUIDResponseBuilder() *deleteTransactionsUUIDStatusCodeResponseBuilder {
 	return new(deleteTransactionsUUIDStatusCodeResponseBuilder)
-}
-
-func (builder *deleteTransactionsUUIDStatusCodeResponseBuilder) StatusCode400() *deleteTransactionsUUID400ContentTypeBuilder {
-	builder.response.statusCode = 400
-
-	return &deleteTransactionsUUID400ContentTypeBuilder{response: builder.response}
-}
-
-type deleteTransactionsUUID400ContentTypeBuilder struct {
-	response
-}
-
-type DeleteTransactionsUUID400ApplicationJsonResponseBuilder struct {
-	response
-}
-
-func (builder *DeleteTransactionsUUID400ApplicationJsonResponseBuilder) Build() DeleteTransactionsUUIDResponse {
-	return deleteTransactionsUUIDResponse{response: builder.response}
-}
-
-func (builder *deleteTransactionsUUID400ContentTypeBuilder) ApplicationJson() *deleteTransactionsUUID400ApplicationJsonBodyBuilder {
-	builder.response.contentType = "application/json"
-
-	return &deleteTransactionsUUID400ApplicationJsonBodyBuilder{response: builder.response}
-}
-
-type deleteTransactionsUUID400ApplicationJsonBodyBuilder struct {
-	response
-}
-
-func (builder *deleteTransactionsUUID400ApplicationJsonBodyBuilder) Body(body GenericResponse) *DeleteTransactionsUUID400ApplicationJsonResponseBuilder {
-	builder.response.body = body
-
-	return &DeleteTransactionsUUID400ApplicationJsonResponseBuilder{response: builder.response}
 }
 
 func (builder *deleteTransactionsUUIDStatusCodeResponseBuilder) StatusCode200() *deleteTransactionsUUID200ContentTypeBuilder {
@@ -914,6 +891,40 @@ func (builder *deleteTransactionsUUID200ApplicationJsonBodyBuilder) Body(body Ge
 	builder.response.body = body
 
 	return &DeleteTransactionsUUID200ApplicationJsonResponseBuilder{response: builder.response}
+}
+
+func (builder *deleteTransactionsUUIDStatusCodeResponseBuilder) StatusCode400() *deleteTransactionsUUID400ContentTypeBuilder {
+	builder.response.statusCode = 400
+
+	return &deleteTransactionsUUID400ContentTypeBuilder{response: builder.response}
+}
+
+type deleteTransactionsUUID400ContentTypeBuilder struct {
+	response
+}
+
+type DeleteTransactionsUUID400ApplicationJsonResponseBuilder struct {
+	response
+}
+
+func (builder *DeleteTransactionsUUID400ApplicationJsonResponseBuilder) Build() DeleteTransactionsUUIDResponse {
+	return deleteTransactionsUUIDResponse{response: builder.response}
+}
+
+func (builder *deleteTransactionsUUID400ContentTypeBuilder) ApplicationJson() *deleteTransactionsUUID400ApplicationJsonBodyBuilder {
+	builder.response.contentType = "application/json"
+
+	return &deleteTransactionsUUID400ApplicationJsonBodyBuilder{response: builder.response}
+}
+
+type deleteTransactionsUUID400ApplicationJsonBodyBuilder struct {
+	response
+}
+
+func (builder *deleteTransactionsUUID400ApplicationJsonBodyBuilder) Body(body GenericResponse) *DeleteTransactionsUUID400ApplicationJsonResponseBuilder {
+	builder.response.body = body
+
+	return &DeleteTransactionsUUID400ApplicationJsonResponseBuilder{response: builder.response}
 }
 
 type CallbacksService interface {
@@ -990,7 +1001,7 @@ func (path DeleteTransactionsUUIDRequestPath) GetUUID() string {
 
 func (path DeleteTransactionsUUIDRequestPath) Validate() error {
 	return validation.ValidateStruct(&path,
-		validation.Field(&path.RegexParam, validation.RuneLength(5, 0)))
+		validation.Field(&path.RegexParam, validation.Required, validation.RuneLength(5, 0)))
 }
 
 type DeleteTransactionsUUIDRequest struct {
