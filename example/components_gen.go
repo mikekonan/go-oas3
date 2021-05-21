@@ -16,18 +16,16 @@ import (
 
 var createTransactionRequestRegexParamRegex = regexp.MustCompile("^[.?\\d]+$")
 
-type RawPayload = []byte
-
-type URL = url.URL
-
 type createTransactionRequest struct {
 	Amount        float64              `json:"amount"`
 	AmountCents   int                  `json:"amountCents"`
 	CallbackURL   url.URL              `json:"callbackURL"`
 	Country       countries.Alpha2Code `json:"country"`
 	Currency      currency.Code        `json:"currency"`
+	Description   *string              `json:"description"`
 	Email         email.Email          `json:"email"`
 	RegexParam    string               `json:"regexParam"`
+	Title         string               `json:"title"`
 	TransactionID uuid.UUID            `json:"transactionID"`
 }
 
@@ -37,8 +35,10 @@ type CreateTransactionRequest struct {
 	CallbackURL   url.URL              `json:"callbackURL"`
 	Country       countries.Alpha2Code `json:"country"`
 	Currency      currency.Code        `json:"currency"`
+	Description   string               `json:"description"`
 	Email         email.Email          `json:"email"`
 	RegexParam    string               `json:"regexParam"`
+	Title         string               `json:"title"`
 	TransactionID uuid.UUID            `json:"transactionID"`
 }
 
@@ -48,24 +48,33 @@ func (body *CreateTransactionRequest) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
+	body.CallbackURL = value.CallbackURL
+	body.Amount = value.Amount
+	body.AmountCents = value.AmountCents
+	body.Email = value.Email
 	if !createTransactionRequestRegexParamRegex.MatchString(body.RegexParam) {
 		return fmt.Errorf("RegexParam not matched by the '^[.?\\d]+$' regex")
 	}
 	body.RegexParam = value.RegexParam
+	body.Title = value.Title
 	body.TransactionID = value.TransactionID
-	body.Amount = value.Amount
-	body.AmountCents = value.AmountCents
-	body.CallbackURL = value.CallbackURL
 	body.Country = value.Country
 	body.Currency = value.Currency
-	body.Email = value.Email
+
+	if value.Description == nil {
+		return fmt.Errorf("Description is required")
+	}
+
+	body.Description = *value.Description
 
 	return nil
 }
 func (body CreateTransactionRequest) Validate() error {
 	return validation.ValidateStruct(&body,
 		validation.Field(&body.Amount, validation.Min(0.009).Exclusive()),
-		validation.Field(&body.Country, validation.RuneLength(2, 2)))
+		validation.Field(&body.Title, validation.RuneLength(8, 50)),
+		validation.Field(&body.Country, validation.RuneLength(2, 2)),
+		validation.Field(&body.Description, validation.Required, validation.RuneLength(8, 100)))
 }
 
 type Email = email.Email
@@ -91,6 +100,10 @@ func (body *GenericResponse) UnmarshalJSON(data []byte) error {
 func (body GenericResponse) Validate() error {
 	return nil
 }
+
+type RawPayload = []byte
+
+type URL = url.URL
 
 type GenericResponseResultEnum string
 
