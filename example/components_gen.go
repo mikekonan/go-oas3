@@ -5,16 +5,45 @@ package example
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
+
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 	uuid "github.com/google/uuid"
 	countries "github.com/mikekonan/go-types/country"
 	currency "github.com/mikekonan/go-types/currency"
 	email "github.com/mikekonan/go-types/email"
 	url "github.com/mikekonan/go-types/url"
-	"regexp"
 )
 
 var createTransactionRequestRegexParamRegex = regexp.MustCompile("^[.?\\d]+$")
+
+type Email = email.Email
+
+type genericResponse struct {
+	Result GenericResponseResultEnum `json:"result"`
+}
+
+type GenericResponse struct {
+	Result GenericResponseResultEnum `json:"result"`
+}
+
+func (body *GenericResponse) UnmarshalJSON(data []byte) error {
+	var value genericResponse
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+
+	body.Result = value.Result
+
+	return nil
+}
+func (body GenericResponse) Validate() error {
+	return nil
+}
+
+type RawPayload = []byte
+
+type URL = url.URL
 
 type createTransactionRequest struct {
 	Amount        float64              `json:"amount"`
@@ -48,18 +77,18 @@ func (body *CreateTransactionRequest) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	body.CallbackURL = value.CallbackURL
-	body.Amount = value.Amount
-	body.AmountCents = value.AmountCents
 	body.Email = value.Email
+	body.TransactionID = value.TransactionID
+	body.CallbackURL = value.CallbackURL
+	body.Country = value.Country
+	body.Currency = value.Currency
 	if !createTransactionRequestRegexParamRegex.MatchString(body.RegexParam) {
 		return fmt.Errorf("RegexParam not matched by the '^[.?\\d]+$' regex")
 	}
 	body.RegexParam = value.RegexParam
 	body.Title = value.Title
-	body.TransactionID = value.TransactionID
-	body.Country = value.Country
-	body.Currency = value.Currency
+	body.Amount = value.Amount
+	body.AmountCents = value.AmountCents
 
 	if value.Description == nil {
 		return fmt.Errorf("Description is required")
@@ -71,39 +100,11 @@ func (body *CreateTransactionRequest) UnmarshalJSON(data []byte) error {
 }
 func (body CreateTransactionRequest) Validate() error {
 	return validation.ValidateStruct(&body,
-		validation.Field(&body.Amount, validation.Min(0.009).Exclusive()),
-		validation.Field(&body.Title, validation.RuneLength(8, 50)),
 		validation.Field(&body.Country, validation.RuneLength(2, 2)),
+		validation.Field(&body.Title, validation.RuneLength(8, 50)),
+		validation.Field(&body.Amount, validation.Min(0.009).Exclusive()),
 		validation.Field(&body.Description, validation.Required, validation.RuneLength(8, 100)))
 }
-
-type Email = email.Email
-
-type genericResponse struct {
-	Result GenericResponseResultEnum `json:"result"`
-}
-
-type GenericResponse struct {
-	Result GenericResponseResultEnum `json:"result"`
-}
-
-func (body *GenericResponse) UnmarshalJSON(data []byte) error {
-	var value genericResponse
-	if err := json.Unmarshal(data, &value); err != nil {
-		return err
-	}
-
-	body.Result = value.Result
-
-	return nil
-}
-func (body GenericResponse) Validate() error {
-	return nil
-}
-
-type RawPayload = []byte
-
-type URL = url.URL
 
 type GenericResponseResultEnum string
 

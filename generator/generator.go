@@ -66,7 +66,9 @@ func (generator *Generator) requestParameters(paths map[string]*openapi3.PathIte
 
 			linq.From(kv.Value.(*openapi3.PathItem).Operations()).
 				GroupByT(
-					func(kv linq.KeyValue) string { return kv.Value.(*openapi3.Operation).Tags[0] },
+					func(kv linq.KeyValue) string {
+						return generator.normalizer.normalize(kv.Value.(*openapi3.Operation).Tags[0])
+					},
 					func(kv linq.KeyValue) (result []jen.Code) {
 						name := generator.normalizer.normalizeOperationName(path, cast.ToString(kv.Key))
 						operation := kv.Value.(*openapi3.Operation)
@@ -129,11 +131,10 @@ func (generator *Generator) components(swagger *openapi3.Swagger) jen.Code {
 		SelectT(func(kv linq.KeyValue) jen.Code {
 			schemaRef := kv.Value.(*openapi3.SchemaRef)
 			return generator.componentFromSchema(cast.ToString(kv.Key), schemaRef)
-		},
-		).ToSlice(&componentsResult)
+		}).
+		ToSlice(&componentsResult)
 
 	var componentsFromPathsResult []jen.Code
-
 	linq.From(swagger.Paths).
 		SelectManyT(func(kv linq.KeyValue) linq.Query {
 			path := cast.ToString(kv.Key)
@@ -341,14 +342,14 @@ func (generator *Generator) requestParameterStruct(name string, contentType stri
 
 						if len(parameter.Value.Schema.Value.Enum) > 0 {
 							if len(parameter.Value.Schema.Ref) > 0 {
-								generator.typee.fillGoType(statement, generator.normalizer.extractNameFromRef(parameter.Value.Schema.Ref), parameter.Value.Schema, false, false)
+								generator.typee.fillGoType(statement, "", generator.normalizer.extractNameFromRef(parameter.Value.Schema.Ref), parameter.Value.Schema, false, false)
 								return statement
 							}
 
 							//todo: generate enum for anonymous type
 						}
 
-						generator.typee.fillGoType(statement, name, parameter.Value.Schema, false, false)
+						generator.typee.fillGoType(statement, "", name, parameter.Value.Schema, false, false)
 						return statement
 					}).
 					ToSlice(&structFields)
@@ -373,7 +374,7 @@ func (generator *Generator) requestParameterStruct(name string, contentType stri
 						if len(parameter.Value.Schema.Value.Enum) > 0 {
 							if len(parameter.Value.Schema.Ref) > 0 {
 								var returnType = jen.Null()
-								generator.typee.fillGoType(returnType, generator.normalizer.extractNameFromRef(parameter.Value.Schema.Ref), parameter.Value.Schema, false, false)
+								generator.typee.fillGoType(returnType, "", generator.normalizer.extractNameFromRef(parameter.Value.Schema.Ref), parameter.Value.Schema, false, false)
 								statement = statement.Params(returnType).Block(jen.Return().Id(parameter.Value.In).Dot(name))
 								return statement
 							}
@@ -382,7 +383,7 @@ func (generator *Generator) requestParameterStruct(name string, contentType stri
 						}
 
 						var returnType = jen.Null()
-						generator.typee.fillGoType(returnType, name, parameter.Value.Schema, false, false)
+						generator.typee.fillGoType(returnType, "", name, parameter.Value.Schema, false, false)
 						statement = statement.Params(returnType).Block(jen.Return().Id(parameter.Value.In).Dot(name))
 						return statement
 					}).
@@ -414,14 +415,14 @@ func (generator *Generator) requestParameterStruct(name string, contentType stri
 
 						if len(parameter.Value.Schema.Value.Enum) > 0 {
 							if len(parameter.Value.Schema.Ref) > 0 {
-								generator.typee.fillGoType(statement, generator.normalizer.extractNameFromRef(parameter.Value.Schema.Ref), parameter.Value.Schema, false, false)
+								generator.typee.fillGoType(statement, "", generator.normalizer.extractNameFromRef(parameter.Value.Schema.Ref), parameter.Value.Schema, false, false)
 								return statement
 							}
 
 							//todo: generate enum for anonymous type
 						}
 
-						generator.typee.fillGoType(statement, name, parameter.Value.Schema, false, false)
+						generator.typee.fillGoType(statement, "", name, parameter.Value.Schema, false, false)
 						return statement
 					}).
 					ToSlice(&structFields)
@@ -586,12 +587,12 @@ func (generator *Generator) componentFromSchema(name string, parentSchema *opena
 
 	if len(parentSchema.Value.Properties) == 0 {
 		if len(parentSchema.Value.Enum) > 0 {
-			generator.typee.fillGoType(typeDeclaration, name+"Enum", parentSchema, false, false)
+			generator.typee.fillGoType(typeDeclaration, "", name+"Enum", parentSchema, false, false)
 			return typeDeclaration
 		}
 
-		generator.typee.fillGoType(typeDeclaration, name, parentSchema, false, true)
 		//validateFunc := generator.validationFuncFromRules("body", name, nil)
+		generator.typee.fillGoType(typeDeclaration, "", name, parentSchema, false, true)
 
 		//return typeDeclaration.Add(jen.Line(), validateFunc)
 		return typeDeclaration
@@ -697,6 +698,7 @@ func (generator *Generator) typeProperties(typeName string, schema *openapi3.Sch
 		SelectT(func(kv linq.KeyValue) interface{} {
 			originName := cast.ToString(kv.Key)
 			name := generator.normalizer.normalize(originName)
+
 			parameter := jen.Id(name)
 			schemaRef := kv.Value.(*openapi3.SchemaRef)
 			if len(schemaRef.Value.Enum) > 0 {
@@ -709,7 +711,7 @@ func (generator *Generator) typeProperties(typeName string, schema *openapi3.Sch
 
 			asPointer := pointersForRequired && linq.From(schema.Required).Contains(originName)
 
-			generator.typee.fillGoType(parameter, name, schemaRef, asPointer, false)
+			generator.typee.fillGoType(parameter, typeName, name, schemaRef, asPointer, false)
 			generator.typee.fillJsonTag(parameter, originName)
 			return parameter
 		}).ToSlice(&parameters)
@@ -957,7 +959,7 @@ func (generator *Generator) wrappers(swagger *openapi3.Swagger) jen.Code {
 
 	linq.From(generator.groupedOperations(swagger)).
 		SelectT(func(groupedOperations groupedOperations) jen.Code {
-			tag := cast.ToString(groupedOperations.tag)
+			tag := generator.normalizer.normalize(cast.ToString(groupedOperations.tag))
 
 			var routes []jen.Code
 			linq.From(groupedOperations.operations).
@@ -1829,7 +1831,9 @@ func (generator *Generator) handlersInterfaces(swagger *openapi3.Swagger) jen.Co
 				taggedInterfaceMethods := map[string][]jen.Code{}
 
 				linq.From(kv.Value.(*openapi3.PathItem).Operations()).
-					GroupByT(func(kv linq.KeyValue) string { return kv.Value.(*openapi3.Operation).Tags[0] },
+					GroupByT(func(kv linq.KeyValue) string {
+						return generator.normalizer.normalize(kv.Value.(*openapi3.Operation).Tags[0])
+					},
 						func(kv linq.KeyValue) []jen.Code {
 							name := generator.normalizer.normalizeOperationName(path, cast.ToString(kv.Key))
 							operation := kv.Value.(*openapi3.Operation)
@@ -2307,7 +2311,7 @@ func (generator *Generator) headersStruct(name string, headers map[string]*opena
 		name := generator.normalizer.normalize(cast.ToString(kv.Key))
 		field := jen.Id(name)
 
-		generator.typee.fillGoType(field, name, kv.Value.(*openapi3.HeaderRef).Value.Schema, false, false)
+		generator.typee.fillGoType(field, "", name, kv.Value.(*openapi3.HeaderRef).Value.Schema, false, false)
 
 		return field
 	}).ToSlice(&headersCode)

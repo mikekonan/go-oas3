@@ -25,7 +25,7 @@ func (typ *Type) fillJsonTag(into *jen.Statement, name string) {
 	into.Tag(map[string]string{"json": strings.ToLower(name[:1]) + name[1:]})
 }
 
-func (typ *Type) fillGoType(into *jen.Statement, typeName string, schemaRef *openapi3.SchemaRef, asPointer bool, needAliasing bool) {
+func (typ *Type) fillGoType(into *jen.Statement, parentTypeName string, typeName string, schemaRef *openapi3.SchemaRef, asPointer bool, needAliasing bool) {
 	if asPointer {
 		into.Op("*")
 	}
@@ -58,7 +58,7 @@ func (typ *Type) fillGoType(into *jen.Statement, typeName string, schemaRef *ope
 			mergo.Merge(&allOfSchema, schema.AllOf[i])
 		}
 
-		typ.fillGoType(into, typeName, allOfSchema, false, needAliasing)
+		typ.fillGoType(into, parentTypeName, typeName, allOfSchema, false, needAliasing)
 
 		return
 	}
@@ -78,7 +78,12 @@ func (typ *Type) fillGoType(into *jen.Statement, typeName string, schemaRef *ope
 
 		if schema.AdditionalProperties != nil {
 			into.Map(jen.Id("string"))
-			typ.fillGoType(into, typeName, schema.AdditionalProperties, false, needAliasing)
+			if schema.AdditionalProperties.Ref != "" {
+				typ.fillGoType(into, parentTypeName, typeName, schema.AdditionalProperties, false, needAliasing)
+				return
+			}
+
+			into.Qual(typ.config.ComponentsPackage, parentTypeName+typeName+"MapEntry")
 			return
 		}
 
@@ -89,7 +94,13 @@ func (typ *Type) fillGoType(into *jen.Statement, typeName string, schemaRef *ope
 		return
 	case "array":
 		into.Index()
-		typ.fillGoType(into, typeName, schema.Items, false, needAliasing)
+		if schema.Items.Ref != "" {
+			typ.fillGoType(into, parentTypeName, typeName, schema.Items, false, needAliasing)
+			return
+		}
+
+		into.Qual(typ.config.ComponentsPackage, parentTypeName+typeName+"SliceElement")
+		//typ.fillGoType(into, parentTypeName, typeName, schema.Items, false, needAliasing)
 		return
 	case "integer":
 		into.Int()
