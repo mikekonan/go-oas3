@@ -78,12 +78,17 @@ func (typ *Type) fillGoType(into *jen.Statement, parentTypeName string, typeName
 
 		if schema.AdditionalProperties != nil {
 			into.Map(jen.Id("string"))
-			if schema.AdditionalProperties.Ref != "" {
-				typ.fillGoType(into, parentTypeName, typeName, schema.AdditionalProperties, false, needAliasing)
-				return
-			}
 
-			into.Qual(typ.config.ComponentsPackage, parentTypeName+typeName+"MapEntry")
+			typ.fillGoType(into, parentTypeName, typeName, schema.AdditionalProperties, false, needAliasing)
+
+			//TODO: ANONYMOUS MAP ENTRIES
+			//if schema.AdditionalProperties.Ref != "" {
+			//	typ.fillGoType(into, parentTypeName, typeName, schema.AdditionalProperties, false, needAliasing)
+			//	return
+			//}
+
+			//into.Qual(typ.config.ComponentsPackage, parentTypeName+typeName+"MapEntry")
+
 			return
 		}
 
@@ -94,13 +99,16 @@ func (typ *Type) fillGoType(into *jen.Statement, parentTypeName string, typeName
 		return
 	case "array":
 		into.Index()
-		if schema.Items.Ref != "" {
-			typ.fillGoType(into, parentTypeName, typeName, schema.Items, false, needAliasing)
-			return
-		}
 
-		into.Qual(typ.config.ComponentsPackage, parentTypeName+typeName+"SliceElement")
-		//typ.fillGoType(into, parentTypeName, typeName, schema.Items, false, needAliasing)
+		//TODO: ANONYMOUS SLICES
+		//if schema.Items.Ref != "" {
+		//	typ.fillGoType(into, parentTypeName, typeName, schema.Items, false, needAliasing)
+		//	return
+		//}
+
+		//into.Qual(typ.config.ComponentsPackage, parentTypeName+typeName+"SliceElement")
+
+		typ.fillGoType(into, parentTypeName, typeName, schema.Items, false, needAliasing)
 		return
 	case "integer":
 		into.Int()
