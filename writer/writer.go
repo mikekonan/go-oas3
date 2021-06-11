@@ -24,6 +24,10 @@ func (writer *Writer) Write(result *generator.Result) error {
 		return err
 	}
 
+	if err := writer.write(path.Join(writer.config.Path, "spec_gen.go"), result.SpecCode); err != nil {
+		return err
+	}
+
 	if err := writer.write(path.Join(writer.config.ComponentsPath, "components_gen.go"), result.ComponentsCode); err != nil {
 		return err
 	}
@@ -39,7 +43,7 @@ func (writer *Writer) write(into string, code *jen.File) error {
 	}
 
 	if err := code.Render(file); err != nil {
-		return fmt.Errorf("failed rending into file '%s': %v", into, err)
+		return fmt.Errorf("failed rendering into file '%s': %v", into, err)
 	}
 
 	if err := file.Close(); err != nil {

@@ -1,0 +1,167 @@
+openapi: 3.0.0
+info:
+  title: go-oas3 example
+  description: go-oas3 example
+  version: 1.0.0
+servers:
+  - url: 'https://example.com'
+paths:
+  /transaction:
+    post:
+      tags:
+        - transactions
+      parameters:
+        - in: header
+          name: x-signature
+          schema:
+            type: string
+            maxLength: 5
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTransactionRequest"
+        description: address to observe
+      responses:
+        201:
+          description: transaction created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericResponse"
+        400:
+          description: bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericResponse"
+        500:
+          description: unhandled error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericResponse"
+  /transactions/{uuid}:
+    delete:
+      tags:
+        - transactions
+      parameters:
+        - in: header
+          name: x-signature
+          schema:
+            type: string
+            maxLength: 5
+        - in: path
+          name: uuid
+          schema:
+            type: string
+          required: true
+          description: uuid
+          x-go-type: "github.com/satori/go.uuid.UUID"
+          x-go-type-string-parse: "github.com/satori/go.uuid.FromString"
+        - in: path
+          name: regexParam
+          required: true
+          schema:
+            type: string
+            x-go-regex: ^[.?\d]+$
+            minLength: 5
+      responses:
+        200:
+          description: transaction deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericResponse"
+        400:
+          description: bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericResponse"
+  /callbacks/{callbackType}:
+    post:
+      parameters:
+        - description: callback type
+          in: path
+          name: callbackType
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          content:
+            application/octet-stream:
+              schema:
+                $ref: '#/components/schemas/RawPayload'
+          description: OK
+      tags:
+        - callbacks
+      description: callbacks
+      requestBody:
+        content:
+          application/octet-stream:
+            schema:
+              $ref: '#/components/schemas/RawPayload'
+        description: Callback data
+        required: true
+      summary: Callback
+components:
+  schemas:
+    CurrencyCode:
+      $ref: "https://raw.githubusercontent.com/mikekonan/go-types/main/swagger.yaml#/components/schemas/CurrencyCode"
+    CountryAlpha2:
+      $ref: "https://raw.githubusercontent.com/mikekonan/go-types/main/swagger.yaml#/components/schemas/CountryAlpha2"
+    Email:
+      $ref: "https://raw.githubusercontent.com/mikekonan/go-types/main/swagger.yaml#/components/schemas/Email"
+    URL:
+      $ref: "https://raw.githubusercontent.com/mikekonan/go-types/main/swagger.yaml#/components/schemas/URL"
+    GenericResponse:
+      properties:
+        result:
+          type: string
+          enum:
+            - success
+            - failed
+          example: success
+    RawPayload:
+      type: string
+      format: binary
+    WithEnum:
+      type: string
+      enum:
+        - one
+        - two
+    CreateTransactionRequest:
+      properties:
+        Currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        Country:
+          $ref: '#/components/schemas/CountryAlpha2'
+        Email:
+          $ref: '#/components/schemas/Email'
+        CallbackURL:
+          $ref: '#/components/schemas/URL'
+        TransactionID:
+          type: string
+          format: uuid
+        RegexParam:
+          type: string
+          x-go-regex: ^[.?\d]+$
+        Amount:
+          type: number
+          minimum: 0.009
+          exclusiveMinimum: true
+        AmountCents:
+          type: integer
+          maximum: 100
+        Description:
+          type: string
+          minLength: 8
+          maxLength: 100
+        Title:
+          type: string
+          minLength: 8
+          maxLength: 50
+      required:
+        - Description

@@ -5,17 +5,32 @@ package example
 import (
 	"context"
 	"encoding/json"
+	"encoding/xml"
+	"errors"
 	"fmt"
-	chi "github.com/go-chi/chi"
-	cast "github.com/spf13/cast"
+	"io/ioutil"
 	"net/http"
+	"regexp"
+
+	chi "github.com/go-chi/chi"
+	validation "github.com/go-ozzo/ozzo-validation/v4"
 )
 
+var deleteTransactionsUUIDPathRegexParamRegex = regexp.MustCompile("^[.?\\d]+$")
+
 type Hooks struct {
+	RequestSecurityParseFailed    func(*http.Request, string, RequestProcessingResult)
+	RequestSecurityParseCompleted func(*http.Request, string)
+	RequestSecurityCheckFailed    func(*http.Request, string, string, RequestProcessingResult)
+	RequestSecurityCheckCompleted func(*http.Request, string, string)
 	RequestBodyUnmarshalFailed    func(*http.Request, string, RequestProcessingResult)
 	RequestHeaderParseFailed      func(*http.Request, string, string, RequestProcessingResult)
 	RequestPathParseFailed        func(*http.Request, string, string, RequestProcessingResult)
 	RequestQueryParseFailed       func(*http.Request, string, string, RequestProcessingResult)
+	RequestBodyValidationFailed   func(*http.Request, string, RequestProcessingResult)
+	RequestHeaderValidationFailed func(*http.Request, string, RequestProcessingResult)
+	RequestPathValidationFailed   func(*http.Request, string, RequestProcessingResult)
+	RequestQueryValidationFailed  func(*http.Request, string, RequestProcessingResult)
 	RequestBodyUnmarshalCompleted func(*http.Request, string)
 	RequestHeaderParseCompleted   func(*http.Request, string)
 	RequestPathParseCompleted     func(*http.Request, string)
@@ -34,15 +49,28 @@ type requestProcessingResultType uint8
 
 const (
 	BodyUnmarshalFailed requestProcessingResultType = iota + 1
+	BodyValidationFailed
 	HeaderParseFailed
+	HeaderValidationFailed
 	QueryParseFailed
+	QueryValidationFailed
 	PathParseFailed
+	PathValidationFailed
+	SecurityParseFailed
+	SecurityCheckFailed
 	ParseSucceed
 )
 
 type RequestProcessingResult struct {
 	error error
 	typee requestProcessingResultType
+}
+
+func NewRequestProcessingResult(t requestProcessingResultType, err error) RequestProcessingResult {
+	return RequestProcessingResult{
+		error: err,
+		typee: t,
+	}
 }
 
 func (r RequestProcessingResult) Type() requestProcessingResultType {
@@ -53,209 +81,107 @@ func (r RequestProcessingResult) Err() error {
 	return r.error
 }
 
-func PetsHandler(impl PetsService, r chi.Router, hooks *Hooks) http.Handler {
-	router := &petsRouter{router: r, service: impl, hooks: hooks}
+func CallbacksHandler(impl CallbacksService, r chi.Router, hooks *Hooks) http.Handler {
+	router := &callbacksRouter{router: r, service: impl, hooks: hooks}
+
 	router.mount()
 
 	return router.router
 }
 
-type petsRouter struct {
+type callbacksRouter struct {
 	router  chi.Router
-	service PetsService
+	service CallbacksService
 	hooks   *Hooks
 }
 
-func (router *petsRouter) mount() {
-	router.router.Get("/pets", router.GetPets)
-	router.router.Post("/pets", router.PostPets)
-	router.router.Get("/pets/{petId}", router.GetPetsPetID)
+func (router *callbacksRouter) mount() {
+	router.router.Post("/callbacks/{callbackType}", router.PostCallbacksCallbackType)
 }
 
-func (router *petsRouter) parseGetPetsRequest(r *http.Request) (request GetPetsRequest) {
+func (router *callbacksRouter) parsePostCallbacksCallbackTypeRequest(r *http.Request) (request PostCallbacksCallbackTypeRequest) {
 	request.ProcessingResult = RequestProcessingResult{typee: ParseSucceed}
 
-	queryLimit := r.URL.Query().Get("limit")
-	request.Query.Limit = cast.ToInt(queryLimit)
-
-	if router.hooks.RequestQueryParseCompleted != nil {
-		router.hooks.RequestQueryParseCompleted(r, "GetPets")
-	}
-
-	if router.hooks.RequestParseCompleted != nil {
-		router.hooks.RequestParseCompleted(r, "GetPets")
-	}
-
-	return
-}
-
-func (router *petsRouter) GetPets(w http.ResponseWriter, r *http.Request) {
-	response := router.service.GetPets(r.Context(), router.parseGetPetsRequest(r))
-
-	if response.statusCode() == 302 && response.redirectURL() != "" {
-		if router.hooks.RequestRedirectStarted != nil {
-			router.hooks.RequestRedirectStarted(r, "GetPets", response.redirectURL())
-		}
-
-		http.Redirect(w, r, response.redirectURL(), 302)
-
-		return
-	}
-
-	for header, value := range response.headers() {
-		w.Header().Set(header, value)
-	}
-
-	if router.hooks.RequestProcessingCompleted != nil {
-		router.hooks.RequestProcessingCompleted(r, "GetPets")
-	}
-
-	w.WriteHeader(response.statusCode())
-
-	if len(response.contentType()) > 0 {
-		w.Header().Set("content-type", response.contentType())
-	}
-
-	if response.body() != nil {
-		data, err := json.Marshal(response.body())
-		if err != nil {
-			if router.hooks.ResponseBodyMarshalFailed != nil {
-				router.hooks.ResponseBodyMarshalFailed(w, r, "GetPets", err)
-			}
-
-			return
-		}
-
-		if router.hooks.ResponseBodyMarshalCompleted != nil {
-			router.hooks.ResponseBodyMarshalCompleted(r, "GetPets")
-		}
-
-		count, err := w.Write(data)
-		if err != nil {
-			if router.hooks.ResponseBodyWriteFailed != nil {
-				router.hooks.ResponseBodyWriteFailed(r, "GetPets", count, err)
-			}
-
-			return
-		}
-
-		if router.hooks.ResponseBodyWriteCompleted != nil {
-			router.hooks.ResponseBodyWriteCompleted(r, "GetPets", count)
-		}
-	}
-
-	if router.hooks.ServiceCompleted != nil {
-		router.hooks.ServiceCompleted(r, "GetPets")
-	}
-}
-
-func (router *petsRouter) parsePostPetsRequest(r *http.Request) (request PostPetsRequest) {
-	request.ProcessingResult = RequestProcessingResult{typee: ParseSucceed}
-
-	if router.hooks.RequestParseCompleted != nil {
-		router.hooks.RequestParseCompleted(r, "PostPets")
-	}
-
-	return
-}
-
-func (router *petsRouter) PostPets(w http.ResponseWriter, r *http.Request) {
-	response := router.service.PostPets(r.Context(), router.parsePostPetsRequest(r))
-
-	if response.statusCode() == 302 && response.redirectURL() != "" {
-		if router.hooks.RequestRedirectStarted != nil {
-			router.hooks.RequestRedirectStarted(r, "PostPets", response.redirectURL())
-		}
-
-		http.Redirect(w, r, response.redirectURL(), 302)
-
-		return
-	}
-
-	for header, value := range response.headers() {
-		w.Header().Set(header, value)
-	}
-
-	if router.hooks.RequestProcessingCompleted != nil {
-		router.hooks.RequestProcessingCompleted(r, "PostPets")
-	}
-
-	w.WriteHeader(response.statusCode())
-
-	if len(response.contentType()) > 0 {
-		w.Header().Set("content-type", response.contentType())
-	}
-
-	if response.body() != nil {
-		data, err := json.Marshal(response.body())
-		if err != nil {
-			if router.hooks.ResponseBodyMarshalFailed != nil {
-				router.hooks.ResponseBodyMarshalFailed(w, r, "PostPets", err)
-			}
-
-			return
-		}
-
-		if router.hooks.ResponseBodyMarshalCompleted != nil {
-			router.hooks.ResponseBodyMarshalCompleted(r, "PostPets")
-		}
-
-		count, err := w.Write(data)
-		if err != nil {
-			if router.hooks.ResponseBodyWriteFailed != nil {
-				router.hooks.ResponseBodyWriteFailed(r, "PostPets", count, err)
-			}
-
-			return
-		}
-
-		if router.hooks.ResponseBodyWriteCompleted != nil {
-			router.hooks.ResponseBodyWriteCompleted(r, "PostPets", count)
-		}
-	}
-
-	if router.hooks.ServiceCompleted != nil {
-		router.hooks.ServiceCompleted(r, "PostPets")
-	}
-}
-
-func (router *petsRouter) parseGetPetsPetIDRequest(r *http.Request) (request GetPetsPetIDRequest) {
-	request.ProcessingResult = RequestProcessingResult{typee: ParseSucceed}
-
-	pathPetID := chi.URLParam(r, "petId")
-	if pathPetID == "" {
-		err := fmt.Errorf("petId is empty")
+	pathCallbackType := chi.URLParam(r, "callbackType")
+	if pathCallbackType == "" {
+		err := fmt.Errorf("callbackType is empty")
 
 		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathParseFailed}
 		if router.hooks.RequestPathParseFailed != nil {
-			router.hooks.RequestPathParseFailed(r, "GetPetsPetID", "petId", request.ProcessingResult)
+			router.hooks.RequestPathParseFailed(r, "PostCallbacksCallbackType", "callbackType", request.ProcessingResult)
 		}
 
 		return
 	}
 
-	request.Path.PetID = pathPetID
+	request.Path.CallbackType = pathCallbackType
+
+	if err := request.Path.Validate(); err != nil {
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathValidationFailed}
+		if router.hooks.RequestPathValidationFailed != nil {
+			router.hooks.RequestPathValidationFailed(r, "PostCallbacksCallbackType", request.ProcessingResult)
+		}
+
+		return
+	}
 
 	if router.hooks.RequestPathParseCompleted != nil {
-		router.hooks.RequestPathParseCompleted(r, "GetPetsPetID")
+		router.hooks.RequestPathParseCompleted(r, "PostCallbacksCallbackType")
+	}
+
+	var (
+		body      RawPayload
+		decodeErr error
+	)
+	var (
+		buf     interface{}
+		ok      bool
+		readErr error
+	)
+	if buf, readErr = ioutil.ReadAll(r.Body); readErr == nil {
+		if body, ok = buf.(RawPayload); !ok {
+			decodeErr = errors.New("body is not []byte")
+		}
+	}
+	if decodeErr != nil {
+		request.ProcessingResult = RequestProcessingResult{error: decodeErr, typee: BodyUnmarshalFailed}
+		if router.hooks.RequestBodyUnmarshalFailed != nil {
+			router.hooks.RequestBodyUnmarshalFailed(r, "PostCallbacksCallbackType", request.ProcessingResult)
+
+			return
+		}
+
+		return
+	}
+
+	request.Body = body
+
+	if router.hooks.RequestBodyUnmarshalCompleted != nil {
+		router.hooks.RequestBodyUnmarshalCompleted(r, "PostCallbacksCallbackType")
 	}
 
 	if router.hooks.RequestParseCompleted != nil {
-		router.hooks.RequestParseCompleted(r, "GetPetsPetID")
+		router.hooks.RequestParseCompleted(r, "PostCallbacksCallbackType")
 	}
 
 	return
 }
 
-func (router *petsRouter) GetPetsPetID(w http.ResponseWriter, r *http.Request) {
-	response := router.service.GetPetsPetID(r.Context(), router.parseGetPetsPetIDRequest(r))
+func (router *callbacksRouter) PostCallbacksCallbackType(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
+	response := router.service.PostCallbacksCallbackType(r.Context(), router.parsePostCallbacksCallbackTypeRequest(r))
 
 	if response.statusCode() == 302 && response.redirectURL() != "" {
 		if router.hooks.RequestRedirectStarted != nil {
-			router.hooks.RequestRedirectStarted(r, "GetPetsPetID", response.redirectURL())
+			router.hooks.RequestRedirectStarted(r, "PostCallbacksCallbackType", response.redirectURL())
 		}
 
 		http.Redirect(w, r, response.redirectURL(), 302)
+
+		if router.hooks.ServiceCompleted != nil {
+			router.hooks.ServiceCompleted(r, "PostCallbacksCallbackType")
+		}
 
 		return
 	}
@@ -265,45 +191,403 @@ func (router *petsRouter) GetPetsPetID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if router.hooks.RequestProcessingCompleted != nil {
-		router.hooks.RequestProcessingCompleted(r, "GetPetsPetID")
+		router.hooks.RequestProcessingCompleted(r, "PostCallbacksCallbackType")
 	}
-
-	w.WriteHeader(response.statusCode())
 
 	if len(response.contentType()) > 0 {
 		w.Header().Set("content-type", response.contentType())
 	}
 
+	w.WriteHeader(response.statusCode())
+
 	if response.body() != nil {
-		data, err := json.Marshal(response.body())
+		var (
+			data []byte
+			err  error
+		)
+
+		switch response.contentType() {
+		case "application/xml":
+			data, err = xml.Marshal(response.body())
+		case "application/octet-stream":
+			var ok bool
+			if data, ok = (response.body()).([]byte); !ok {
+				err = errors.New("body is not []byte")
+			}
+		case "text/html":
+			data = []byte(fmt.Sprint(response.body()))
+		case "application/json":
+			fallthrough
+		default:
+			data, err = json.Marshal(response.body())
+		}
+
 		if err != nil {
 			if router.hooks.ResponseBodyMarshalFailed != nil {
-				router.hooks.ResponseBodyMarshalFailed(w, r, "GetPetsPetID", err)
+				router.hooks.ResponseBodyMarshalFailed(w, r, "PostCallbacksCallbackType", err)
 			}
 
 			return
 		}
 
 		if router.hooks.ResponseBodyMarshalCompleted != nil {
-			router.hooks.ResponseBodyMarshalCompleted(r, "GetPetsPetID")
+			router.hooks.ResponseBodyMarshalCompleted(r, "PostCallbacksCallbackType")
 		}
 
 		count, err := w.Write(data)
 		if err != nil {
 			if router.hooks.ResponseBodyWriteFailed != nil {
-				router.hooks.ResponseBodyWriteFailed(r, "GetPetsPetID", count, err)
+				router.hooks.ResponseBodyWriteFailed(r, "PostCallbacksCallbackType", count, err)
+			}
+
+			if router.hooks.ResponseBodyWriteCompleted != nil {
+				router.hooks.ResponseBodyWriteCompleted(r, "PostCallbacksCallbackType", count)
 			}
 
 			return
 		}
 
 		if router.hooks.ResponseBodyWriteCompleted != nil {
-			router.hooks.ResponseBodyWriteCompleted(r, "GetPetsPetID", count)
+			router.hooks.ResponseBodyWriteCompleted(r, "PostCallbacksCallbackType", count)
 		}
 	}
 
 	if router.hooks.ServiceCompleted != nil {
-		router.hooks.ServiceCompleted(r, "GetPetsPetID")
+		router.hooks.ServiceCompleted(r, "PostCallbacksCallbackType")
+	}
+}
+
+func TransactionsHandler(impl TransactionsService, r chi.Router, hooks *Hooks) http.Handler {
+	router := &transactionsRouter{router: r, service: impl, hooks: hooks}
+
+	router.mount()
+
+	return router.router
+}
+
+type transactionsRouter struct {
+	router  chi.Router
+	service TransactionsService
+	hooks   *Hooks
+}
+
+func (router *transactionsRouter) mount() {
+	router.router.Post("/transaction", router.PostTransaction)
+	router.router.Delete("/transactions/{uuid}", router.DeleteTransactionsUUID)
+}
+
+func (router *transactionsRouter) parsePostTransactionRequest(r *http.Request) (request PostTransactionRequest) {
+	request.ProcessingResult = RequestProcessingResult{typee: ParseSucceed}
+
+	headerXSignature := r.Header.Get("x-signature")
+	request.Header.XSignature = headerXSignature
+
+	if err := request.Header.Validate(); err != nil {
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderValidationFailed}
+		if router.hooks.RequestHeaderValidationFailed != nil {
+			router.hooks.RequestHeaderValidationFailed(r, "PostTransaction", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	if router.hooks.RequestHeaderParseCompleted != nil {
+		router.hooks.RequestHeaderParseCompleted(r, "PostTransaction")
+	}
+
+	var (
+		body      CreateTransactionRequest
+		decodeErr error
+	)
+	decodeErr = json.NewDecoder(r.Body).Decode(&body)
+	if decodeErr != nil {
+		request.ProcessingResult = RequestProcessingResult{error: decodeErr, typee: BodyUnmarshalFailed}
+		if router.hooks.RequestBodyUnmarshalFailed != nil {
+			router.hooks.RequestBodyUnmarshalFailed(r, "PostTransaction", request.ProcessingResult)
+
+			return
+		}
+
+		return
+	}
+
+	request.Body = body
+
+	if err := request.Body.Validate(); err != nil {
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: BodyValidationFailed}
+		if router.hooks.RequestBodyValidationFailed != nil {
+			router.hooks.RequestBodyValidationFailed(r, "PostTransaction", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	if router.hooks.RequestBodyUnmarshalCompleted != nil {
+		router.hooks.RequestBodyUnmarshalCompleted(r, "PostTransaction")
+	}
+
+	if router.hooks.RequestParseCompleted != nil {
+		router.hooks.RequestParseCompleted(r, "PostTransaction")
+	}
+
+	return
+}
+
+func (router *transactionsRouter) PostTransaction(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
+	response := router.service.PostTransaction(r.Context(), router.parsePostTransactionRequest(r))
+
+	if response.statusCode() == 302 && response.redirectURL() != "" {
+		if router.hooks.RequestRedirectStarted != nil {
+			router.hooks.RequestRedirectStarted(r, "PostTransaction", response.redirectURL())
+		}
+
+		http.Redirect(w, r, response.redirectURL(), 302)
+
+		if router.hooks.ServiceCompleted != nil {
+			router.hooks.ServiceCompleted(r, "PostTransaction")
+		}
+
+		return
+	}
+
+	for header, value := range response.headers() {
+		w.Header().Set(header, value)
+	}
+
+	if router.hooks.RequestProcessingCompleted != nil {
+		router.hooks.RequestProcessingCompleted(r, "PostTransaction")
+	}
+
+	if len(response.contentType()) > 0 {
+		w.Header().Set("content-type", response.contentType())
+	}
+
+	w.WriteHeader(response.statusCode())
+
+	if response.body() != nil {
+		var (
+			data []byte
+			err  error
+		)
+
+		switch response.contentType() {
+		case "application/xml":
+			data, err = xml.Marshal(response.body())
+		case "application/octet-stream":
+			var ok bool
+			if data, ok = (response.body()).([]byte); !ok {
+				err = errors.New("body is not []byte")
+			}
+		case "text/html":
+			data = []byte(fmt.Sprint(response.body()))
+		case "application/json":
+			fallthrough
+		default:
+			data, err = json.Marshal(response.body())
+		}
+
+		if err != nil {
+			if router.hooks.ResponseBodyMarshalFailed != nil {
+				router.hooks.ResponseBodyMarshalFailed(w, r, "PostTransaction", err)
+			}
+
+			return
+		}
+
+		if router.hooks.ResponseBodyMarshalCompleted != nil {
+			router.hooks.ResponseBodyMarshalCompleted(r, "PostTransaction")
+		}
+
+		count, err := w.Write(data)
+		if err != nil {
+			if router.hooks.ResponseBodyWriteFailed != nil {
+				router.hooks.ResponseBodyWriteFailed(r, "PostTransaction", count, err)
+			}
+
+			if router.hooks.ResponseBodyWriteCompleted != nil {
+				router.hooks.ResponseBodyWriteCompleted(r, "PostTransaction", count)
+			}
+
+			return
+		}
+
+		if router.hooks.ResponseBodyWriteCompleted != nil {
+			router.hooks.ResponseBodyWriteCompleted(r, "PostTransaction", count)
+		}
+	}
+
+	if router.hooks.ServiceCompleted != nil {
+		router.hooks.ServiceCompleted(r, "PostTransaction")
+	}
+}
+
+func (router *transactionsRouter) parseDeleteTransactionsUUIDRequest(r *http.Request) (request DeleteTransactionsUUIDRequest) {
+	request.ProcessingResult = RequestProcessingResult{typee: ParseSucceed}
+
+	headerXSignature := r.Header.Get("x-signature")
+	request.Header.XSignature = headerXSignature
+
+	if err := request.Header.Validate(); err != nil {
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderValidationFailed}
+		if router.hooks.RequestHeaderValidationFailed != nil {
+			router.hooks.RequestHeaderValidationFailed(r, "DeleteTransactionsUUID", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	if router.hooks.RequestHeaderParseCompleted != nil {
+		router.hooks.RequestHeaderParseCompleted(r, "DeleteTransactionsUUID")
+	}
+
+	pathUUID := chi.URLParam(r, "uuid")
+	if pathUUID == "" {
+		err := fmt.Errorf("uuid is empty")
+
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathParseFailed}
+		if router.hooks.RequestPathParseFailed != nil {
+			router.hooks.RequestPathParseFailed(r, "DeleteTransactionsUUID", "uuid", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	request.Path.UUID = pathUUID
+
+	pathRegexParam := chi.URLParam(r, "regexParam")
+	if pathRegexParam == "" {
+		err := fmt.Errorf("regexParam is empty")
+
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathParseFailed}
+		if router.hooks.RequestPathParseFailed != nil {
+			router.hooks.RequestPathParseFailed(r, "DeleteTransactionsUUID", "regexParam", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	if !deleteTransactionsUUIDPathRegexParamRegex.MatchString(request.Path.RegexParam) {
+		err := fmt.Errorf("regexParam not matched by the '^[.?\\d]+$' regex")
+
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathParseFailed}
+		if router.hooks.RequestPathParseFailed != nil {
+			router.hooks.RequestPathParseFailed(r, "DeleteTransactionsUUID", "regexParam", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	request.Path.RegexParam = pathRegexParam
+
+	if err := request.Path.Validate(); err != nil {
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathValidationFailed}
+		if router.hooks.RequestPathValidationFailed != nil {
+			router.hooks.RequestPathValidationFailed(r, "DeleteTransactionsUUID", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	if router.hooks.RequestPathParseCompleted != nil {
+		router.hooks.RequestPathParseCompleted(r, "DeleteTransactionsUUID")
+	}
+
+	if router.hooks.RequestParseCompleted != nil {
+		router.hooks.RequestParseCompleted(r, "DeleteTransactionsUUID")
+	}
+
+	return
+}
+
+func (router *transactionsRouter) DeleteTransactionsUUID(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
+	response := router.service.DeleteTransactionsUUID(r.Context(), router.parseDeleteTransactionsUUIDRequest(r))
+
+	if response.statusCode() == 302 && response.redirectURL() != "" {
+		if router.hooks.RequestRedirectStarted != nil {
+			router.hooks.RequestRedirectStarted(r, "DeleteTransactionsUUID", response.redirectURL())
+		}
+
+		http.Redirect(w, r, response.redirectURL(), 302)
+
+		if router.hooks.ServiceCompleted != nil {
+			router.hooks.ServiceCompleted(r, "DeleteTransactionsUUID")
+		}
+
+		return
+	}
+
+	for header, value := range response.headers() {
+		w.Header().Set(header, value)
+	}
+
+	if router.hooks.RequestProcessingCompleted != nil {
+		router.hooks.RequestProcessingCompleted(r, "DeleteTransactionsUUID")
+	}
+
+	if len(response.contentType()) > 0 {
+		w.Header().Set("content-type", response.contentType())
+	}
+
+	w.WriteHeader(response.statusCode())
+
+	if response.body() != nil {
+		var (
+			data []byte
+			err  error
+		)
+
+		switch response.contentType() {
+		case "application/xml":
+			data, err = xml.Marshal(response.body())
+		case "application/octet-stream":
+			var ok bool
+			if data, ok = (response.body()).([]byte); !ok {
+				err = errors.New("body is not []byte")
+			}
+		case "text/html":
+			data = []byte(fmt.Sprint(response.body()))
+		case "application/json":
+			fallthrough
+		default:
+			data, err = json.Marshal(response.body())
+		}
+
+		if err != nil {
+			if router.hooks.ResponseBodyMarshalFailed != nil {
+				router.hooks.ResponseBodyMarshalFailed(w, r, "DeleteTransactionsUUID", err)
+			}
+
+			return
+		}
+
+		if router.hooks.ResponseBodyMarshalCompleted != nil {
+			router.hooks.ResponseBodyMarshalCompleted(r, "DeleteTransactionsUUID")
+		}
+
+		count, err := w.Write(data)
+		if err != nil {
+			if router.hooks.ResponseBodyWriteFailed != nil {
+				router.hooks.ResponseBodyWriteFailed(r, "DeleteTransactionsUUID", count, err)
+			}
+
+			if router.hooks.ResponseBodyWriteCompleted != nil {
+				router.hooks.ResponseBodyWriteCompleted(r, "DeleteTransactionsUUID", count)
+			}
+
+			return
+		}
+
+		if router.hooks.ResponseBodyWriteCompleted != nil {
+			router.hooks.ResponseBodyWriteCompleted(r, "DeleteTransactionsUUID", count)
+		}
+	}
+
+	if router.hooks.ServiceCompleted != nil {
+		router.hooks.ServiceCompleted(r, "DeleteTransactionsUUID")
 	}
 }
 
@@ -323,358 +607,425 @@ type responseInterface interface {
 	headers() map[string]string
 }
 
-type GetPetsResponse interface {
+type PostCallbacksCallbackTypeResponse interface {
 	responseInterface
-	getPetsResponse()
+	postCallbacksCallbackTypeResponse()
 }
 
-type getPetsResponse struct {
+type postCallbacksCallbackTypeResponse struct {
 	response
 }
 
-func (getPetsResponse) getPetsResponse() {}
+func (postCallbacksCallbackTypeResponse) postCallbacksCallbackTypeResponse() {}
 
-func (response getPetsResponse) statusCode() int {
+func (response postCallbacksCallbackTypeResponse) statusCode() int {
 	return response.response.statusCode
 }
 
-func (response getPetsResponse) body() interface{} {
+func (response postCallbacksCallbackTypeResponse) body() interface{} {
 	return response.response.body
 }
 
-func (response getPetsResponse) contentType() string {
+func (response postCallbacksCallbackTypeResponse) contentType() string {
 	return response.response.contentType
 }
 
-func (response getPetsResponse) redirectURL() string {
+func (response postCallbacksCallbackTypeResponse) redirectURL() string {
 	return response.response.redirectURL
 }
 
-func (response getPetsResponse) headers() map[string]string {
+func (response postCallbacksCallbackTypeResponse) headers() map[string]string {
 	return response.response.headers
 }
 
-type PostPetsResponse interface {
+type PostTransactionResponse interface {
 	responseInterface
-	postPetsResponse()
+	postTransactionResponse()
 }
 
-type postPetsResponse struct {
+type postTransactionResponse struct {
 	response
 }
 
-func (postPetsResponse) postPetsResponse() {}
+func (postTransactionResponse) postTransactionResponse() {}
 
-func (response postPetsResponse) statusCode() int {
+func (response postTransactionResponse) statusCode() int {
 	return response.response.statusCode
 }
 
-func (response postPetsResponse) body() interface{} {
+func (response postTransactionResponse) body() interface{} {
 	return response.response.body
 }
 
-func (response postPetsResponse) contentType() string {
+func (response postTransactionResponse) contentType() string {
 	return response.response.contentType
 }
 
-func (response postPetsResponse) redirectURL() string {
+func (response postTransactionResponse) redirectURL() string {
 	return response.response.redirectURL
 }
 
-func (response postPetsResponse) headers() map[string]string {
+func (response postTransactionResponse) headers() map[string]string {
 	return response.response.headers
 }
 
-type GetPetsPetIDResponse interface {
+type DeleteTransactionsUUIDResponse interface {
 	responseInterface
-	getPetsPetIDResponse()
+	deleteTransactionsUUIDResponse()
 }
 
-type getPetsPetIDResponse struct {
+type deleteTransactionsUUIDResponse struct {
 	response
 }
 
-func (getPetsPetIDResponse) getPetsPetIDResponse() {}
+func (deleteTransactionsUUIDResponse) deleteTransactionsUUIDResponse() {}
 
-func (response getPetsPetIDResponse) statusCode() int {
+func (response deleteTransactionsUUIDResponse) statusCode() int {
 	return response.response.statusCode
 }
 
-func (response getPetsPetIDResponse) body() interface{} {
+func (response deleteTransactionsUUIDResponse) body() interface{} {
 	return response.response.body
 }
 
-func (response getPetsPetIDResponse) contentType() string {
+func (response deleteTransactionsUUIDResponse) contentType() string {
 	return response.response.contentType
 }
 
-func (response getPetsPetIDResponse) redirectURL() string {
+func (response deleteTransactionsUUIDResponse) redirectURL() string {
 	return response.response.redirectURL
 }
 
-func (response getPetsPetIDResponse) headers() map[string]string {
+func (response deleteTransactionsUUIDResponse) headers() map[string]string {
 	return response.response.headers
 }
 
-type getPetsStatusCodeResponseBuilder struct {
+type postCallbacksCallbackTypeStatusCodeResponseBuilder struct {
 	response
 }
 
-func GetPetsResponseBuilder() *getPetsStatusCodeResponseBuilder {
-	return new(getPetsStatusCodeResponseBuilder)
+func PostCallbacksCallbackTypeResponseBuilder() *postCallbacksCallbackTypeStatusCodeResponseBuilder {
+	return new(postCallbacksCallbackTypeStatusCodeResponseBuilder)
 }
 
-func (builder *getPetsStatusCodeResponseBuilder) StatusCode200() *getPets200HeadersBuilder {
+func (builder *postCallbacksCallbackTypeStatusCodeResponseBuilder) StatusCode200() *postCallbacksCallbackType200ContentTypeBuilder {
 	builder.response.statusCode = 200
 
-	return &getPets200HeadersBuilder{response: builder.response}
+	return &postCallbacksCallbackType200ContentTypeBuilder{response: builder.response}
 }
 
-type GetPets200Headers struct {
-	XNext string
-}
-
-func (headers GetPets200Headers) toMap() map[string]string {
-
-	return map[string]string{"XNext": cast.ToString(headers.XNext)}
-}
-
-type getPets200HeadersBuilder struct {
+type postCallbacksCallbackType200ContentTypeBuilder struct {
 	response
 }
 
-func (builder *getPets200HeadersBuilder) Headers(headers GetPets200Headers) *getPets200ContentTypeBuilder {
-	builder.headers = headers.toMap()
-
-	return &getPets200ContentTypeBuilder{response: builder.response}
-}
-
-type getPets200ContentTypeBuilder struct {
+type PostCallbacksCallbackType200ApplicationOctetStreamResponseBuilder struct {
 	response
 }
 
-type GetPets200ApplicationJsonResponseBuilder struct {
+func (builder *PostCallbacksCallbackType200ApplicationOctetStreamResponseBuilder) Build() PostCallbacksCallbackTypeResponse {
+	return postCallbacksCallbackTypeResponse{response: builder.response}
+}
+
+func (builder *postCallbacksCallbackType200ContentTypeBuilder) ApplicationOctetStream() *postCallbacksCallbackType200ApplicationOctetStreamBodyBuilder {
+	builder.response.contentType = "application/octet-stream"
+
+	return &postCallbacksCallbackType200ApplicationOctetStreamBodyBuilder{response: builder.response}
+}
+
+type postCallbacksCallbackType200ApplicationOctetStreamBodyBuilder struct {
 	response
 }
 
-func (builder *GetPets200ApplicationJsonResponseBuilder) Build() GetPetsResponse {
-	return getPetsResponse{response: builder.response}
-}
-
-func (builder *getPets200ContentTypeBuilder) ApplicationJson() *getPets200ApplicationJsonBodyBuilder {
-	builder.response.contentType = "application/json"
-
-	return &getPets200ApplicationJsonBodyBuilder{response: builder.response}
-}
-
-type getPets200ApplicationJsonBodyBuilder struct {
-	response
-}
-
-func (builder *getPets200ApplicationJsonBodyBuilder) Body(body Pets) *GetPets200ApplicationJsonResponseBuilder {
+func (builder *postCallbacksCallbackType200ApplicationOctetStreamBodyBuilder) Body(body RawPayload) *PostCallbacksCallbackType200ApplicationOctetStreamResponseBuilder {
 	builder.response.body = body
 
-	return &GetPets200ApplicationJsonResponseBuilder{response: builder.response}
+	return &PostCallbacksCallbackType200ApplicationOctetStreamResponseBuilder{response: builder.response}
 }
 
-func (builder *getPetsStatusCodeResponseBuilder) StatusCodedefault() *getPetsdefaultContentTypeBuilder {
-	builder.response.statusCode = 0
-
-	return &getPetsdefaultContentTypeBuilder{response: builder.response}
-}
-
-type getPetsdefaultContentTypeBuilder struct {
+type postTransactionStatusCodeResponseBuilder struct {
 	response
 }
 
-type GetPetsdefaultApplicationJsonResponseBuilder struct {
+func PostTransactionResponseBuilder() *postTransactionStatusCodeResponseBuilder {
+	return new(postTransactionStatusCodeResponseBuilder)
+}
+
+func (builder *postTransactionStatusCodeResponseBuilder) StatusCode400() *postTransaction400ContentTypeBuilder {
+	builder.response.statusCode = 400
+
+	return &postTransaction400ContentTypeBuilder{response: builder.response}
+}
+
+type postTransaction400ContentTypeBuilder struct {
 	response
 }
 
-func (builder *GetPetsdefaultApplicationJsonResponseBuilder) Build() GetPetsResponse {
-	return getPetsResponse{response: builder.response}
+type PostTransaction400ApplicationJsonResponseBuilder struct {
+	response
 }
 
-func (builder *getPetsdefaultContentTypeBuilder) ApplicationJson() *getPetsdefaultApplicationJsonBodyBuilder {
+func (builder *PostTransaction400ApplicationJsonResponseBuilder) Build() PostTransactionResponse {
+	return postTransactionResponse{response: builder.response}
+}
+
+func (builder *postTransaction400ContentTypeBuilder) ApplicationJson() *postTransaction400ApplicationJsonBodyBuilder {
 	builder.response.contentType = "application/json"
 
-	return &getPetsdefaultApplicationJsonBodyBuilder{response: builder.response}
+	return &postTransaction400ApplicationJsonBodyBuilder{response: builder.response}
 }
 
-type getPetsdefaultApplicationJsonBodyBuilder struct {
+type postTransaction400ApplicationJsonBodyBuilder struct {
 	response
 }
 
-func (builder *getPetsdefaultApplicationJsonBodyBuilder) Body(body Error) *GetPetsdefaultApplicationJsonResponseBuilder {
+func (builder *postTransaction400ApplicationJsonBodyBuilder) Body(body GenericResponse) *PostTransaction400ApplicationJsonResponseBuilder {
 	builder.response.body = body
 
-	return &GetPetsdefaultApplicationJsonResponseBuilder{response: builder.response}
+	return &PostTransaction400ApplicationJsonResponseBuilder{response: builder.response}
 }
 
-type postPetsStatusCodeResponseBuilder struct {
+func (builder *postTransactionStatusCodeResponseBuilder) StatusCode500() *postTransaction500ContentTypeBuilder {
+	builder.response.statusCode = 500
+
+	return &postTransaction500ContentTypeBuilder{response: builder.response}
+}
+
+type postTransaction500ContentTypeBuilder struct {
 	response
 }
 
-func PostPetsResponseBuilder() *postPetsStatusCodeResponseBuilder {
-	return new(postPetsStatusCodeResponseBuilder)
-}
-
-func (builder *postPetsStatusCodeResponseBuilder) StatusCodedefault() *postPetsdefaultContentTypeBuilder {
-	builder.response.statusCode = 0
-
-	return &postPetsdefaultContentTypeBuilder{response: builder.response}
-}
-
-type postPetsdefaultContentTypeBuilder struct {
+type PostTransaction500ApplicationJsonResponseBuilder struct {
 	response
 }
 
-type PostPetsdefaultApplicationJsonResponseBuilder struct {
-	response
+func (builder *PostTransaction500ApplicationJsonResponseBuilder) Build() PostTransactionResponse {
+	return postTransactionResponse{response: builder.response}
 }
 
-func (builder *PostPetsdefaultApplicationJsonResponseBuilder) Build() PostPetsResponse {
-	return postPetsResponse{response: builder.response}
-}
-
-func (builder *postPetsdefaultContentTypeBuilder) ApplicationJson() *postPetsdefaultApplicationJsonBodyBuilder {
+func (builder *postTransaction500ContentTypeBuilder) ApplicationJson() *postTransaction500ApplicationJsonBodyBuilder {
 	builder.response.contentType = "application/json"
 
-	return &postPetsdefaultApplicationJsonBodyBuilder{response: builder.response}
+	return &postTransaction500ApplicationJsonBodyBuilder{response: builder.response}
 }
 
-type postPetsdefaultApplicationJsonBodyBuilder struct {
+type postTransaction500ApplicationJsonBodyBuilder struct {
 	response
 }
 
-func (builder *postPetsdefaultApplicationJsonBodyBuilder) Body(body Error) *PostPetsdefaultApplicationJsonResponseBuilder {
+func (builder *postTransaction500ApplicationJsonBodyBuilder) Body(body GenericResponse) *PostTransaction500ApplicationJsonResponseBuilder {
 	builder.response.body = body
 
-	return &PostPetsdefaultApplicationJsonResponseBuilder{response: builder.response}
+	return &PostTransaction500ApplicationJsonResponseBuilder{response: builder.response}
 }
 
-type PostPets201ResponseBuilder struct {
-	response
-}
-
-func (builder *postPetsStatusCodeResponseBuilder) StatusCode201() *PostPets201ResponseBuilder {
+func (builder *postTransactionStatusCodeResponseBuilder) StatusCode201() *postTransaction201ContentTypeBuilder {
 	builder.response.statusCode = 201
 
-	return &PostPets201ResponseBuilder{response: builder.response}
+	return &postTransaction201ContentTypeBuilder{response: builder.response}
 }
 
-func (builder *PostPets201ResponseBuilder) Build() PostPetsResponse {
-	return postPetsResponse{response: builder.response}
-}
-
-type getPetsPetIDStatusCodeResponseBuilder struct {
+type postTransaction201ContentTypeBuilder struct {
 	response
 }
 
-func GetPetsPetIDResponseBuilder() *getPetsPetIDStatusCodeResponseBuilder {
-	return new(getPetsPetIDStatusCodeResponseBuilder)
+type PostTransaction201ApplicationJsonResponseBuilder struct {
+	response
 }
 
-func (builder *getPetsPetIDStatusCodeResponseBuilder) StatusCode200() *getPetsPetID200ContentTypeBuilder {
+func (builder *PostTransaction201ApplicationJsonResponseBuilder) Build() PostTransactionResponse {
+	return postTransactionResponse{response: builder.response}
+}
+
+func (builder *postTransaction201ContentTypeBuilder) ApplicationJson() *postTransaction201ApplicationJsonBodyBuilder {
+	builder.response.contentType = "application/json"
+
+	return &postTransaction201ApplicationJsonBodyBuilder{response: builder.response}
+}
+
+type postTransaction201ApplicationJsonBodyBuilder struct {
+	response
+}
+
+func (builder *postTransaction201ApplicationJsonBodyBuilder) Body(body GenericResponse) *PostTransaction201ApplicationJsonResponseBuilder {
+	builder.response.body = body
+
+	return &PostTransaction201ApplicationJsonResponseBuilder{response: builder.response}
+}
+
+type deleteTransactionsUUIDStatusCodeResponseBuilder struct {
+	response
+}
+
+func DeleteTransactionsUUIDResponseBuilder() *deleteTransactionsUUIDStatusCodeResponseBuilder {
+	return new(deleteTransactionsUUIDStatusCodeResponseBuilder)
+}
+
+func (builder *deleteTransactionsUUIDStatusCodeResponseBuilder) StatusCode200() *deleteTransactionsUUID200ContentTypeBuilder {
 	builder.response.statusCode = 200
 
-	return &getPetsPetID200ContentTypeBuilder{response: builder.response}
+	return &deleteTransactionsUUID200ContentTypeBuilder{response: builder.response}
 }
 
-type getPetsPetID200ContentTypeBuilder struct {
+type deleteTransactionsUUID200ContentTypeBuilder struct {
 	response
 }
 
-type GetPetsPetID200ApplicationJsonResponseBuilder struct {
+type DeleteTransactionsUUID200ApplicationJsonResponseBuilder struct {
 	response
 }
 
-func (builder *GetPetsPetID200ApplicationJsonResponseBuilder) Build() GetPetsPetIDResponse {
-	return getPetsPetIDResponse{response: builder.response}
+func (builder *DeleteTransactionsUUID200ApplicationJsonResponseBuilder) Build() DeleteTransactionsUUIDResponse {
+	return deleteTransactionsUUIDResponse{response: builder.response}
 }
 
-func (builder *getPetsPetID200ContentTypeBuilder) ApplicationJson() *getPetsPetID200ApplicationJsonBodyBuilder {
+func (builder *deleteTransactionsUUID200ContentTypeBuilder) ApplicationJson() *deleteTransactionsUUID200ApplicationJsonBodyBuilder {
 	builder.response.contentType = "application/json"
 
-	return &getPetsPetID200ApplicationJsonBodyBuilder{response: builder.response}
+	return &deleteTransactionsUUID200ApplicationJsonBodyBuilder{response: builder.response}
 }
 
-type getPetsPetID200ApplicationJsonBodyBuilder struct {
+type deleteTransactionsUUID200ApplicationJsonBodyBuilder struct {
 	response
 }
 
-func (builder *getPetsPetID200ApplicationJsonBodyBuilder) Body(body Pet) *GetPetsPetID200ApplicationJsonResponseBuilder {
+func (builder *deleteTransactionsUUID200ApplicationJsonBodyBuilder) Body(body GenericResponse) *DeleteTransactionsUUID200ApplicationJsonResponseBuilder {
 	builder.response.body = body
 
-	return &GetPetsPetID200ApplicationJsonResponseBuilder{response: builder.response}
+	return &DeleteTransactionsUUID200ApplicationJsonResponseBuilder{response: builder.response}
 }
 
-func (builder *getPetsPetIDStatusCodeResponseBuilder) StatusCodedefault() *getPetsPetIDdefaultContentTypeBuilder {
-	builder.response.statusCode = 0
+func (builder *deleteTransactionsUUIDStatusCodeResponseBuilder) StatusCode400() *deleteTransactionsUUID400ContentTypeBuilder {
+	builder.response.statusCode = 400
 
-	return &getPetsPetIDdefaultContentTypeBuilder{response: builder.response}
+	return &deleteTransactionsUUID400ContentTypeBuilder{response: builder.response}
 }
 
-type getPetsPetIDdefaultContentTypeBuilder struct {
+type deleteTransactionsUUID400ContentTypeBuilder struct {
 	response
 }
 
-type GetPetsPetIDdefaultApplicationJsonResponseBuilder struct {
+type DeleteTransactionsUUID400ApplicationJsonResponseBuilder struct {
 	response
 }
 
-func (builder *GetPetsPetIDdefaultApplicationJsonResponseBuilder) Build() GetPetsPetIDResponse {
-	return getPetsPetIDResponse{response: builder.response}
+func (builder *DeleteTransactionsUUID400ApplicationJsonResponseBuilder) Build() DeleteTransactionsUUIDResponse {
+	return deleteTransactionsUUIDResponse{response: builder.response}
 }
 
-func (builder *getPetsPetIDdefaultContentTypeBuilder) ApplicationJson() *getPetsPetIDdefaultApplicationJsonBodyBuilder {
+func (builder *deleteTransactionsUUID400ContentTypeBuilder) ApplicationJson() *deleteTransactionsUUID400ApplicationJsonBodyBuilder {
 	builder.response.contentType = "application/json"
 
-	return &getPetsPetIDdefaultApplicationJsonBodyBuilder{response: builder.response}
+	return &deleteTransactionsUUID400ApplicationJsonBodyBuilder{response: builder.response}
 }
 
-type getPetsPetIDdefaultApplicationJsonBodyBuilder struct {
+type deleteTransactionsUUID400ApplicationJsonBodyBuilder struct {
 	response
 }
 
-func (builder *getPetsPetIDdefaultApplicationJsonBodyBuilder) Body(body Error) *GetPetsPetIDdefaultApplicationJsonResponseBuilder {
+func (builder *deleteTransactionsUUID400ApplicationJsonBodyBuilder) Body(body GenericResponse) *DeleteTransactionsUUID400ApplicationJsonResponseBuilder {
 	builder.response.body = body
 
-	return &GetPetsPetIDdefaultApplicationJsonResponseBuilder{response: builder.response}
+	return &DeleteTransactionsUUID400ApplicationJsonResponseBuilder{response: builder.response}
 }
 
-type PetsService interface {
-	GetPets(context.Context, GetPetsRequest) GetPetsResponse
-	PostPets(context.Context, PostPetsRequest) PostPetsResponse
-	GetPetsPetID(context.Context, GetPetsPetIDRequest) GetPetsPetIDResponse
+type CallbacksService interface {
+	PostCallbacksCallbackType(context.Context, PostCallbacksCallbackTypeRequest) PostCallbacksCallbackTypeResponse
 }
 
-type GetPetsRequestQuery struct {
-	Limit int
+type TransactionsService interface {
+	PostTransaction(context.Context, PostTransactionRequest) PostTransactionResponse
+	DeleteTransactionsUUID(context.Context, DeleteTransactionsUUIDRequest) DeleteTransactionsUUIDResponse
 }
 
-func (query GetPetsRequestQuery) GetLimit() int {
-	return query.Limit
+type PostCallbacksCallbackTypeRequestPath struct {
+	CallbackType string
 }
 
-type GetPetsRequest struct {
-	Query            GetPetsRequestQuery
+func (path PostCallbacksCallbackTypeRequestPath) GetCallbackType() string {
+	return path.CallbackType
+}
+
+func (path PostCallbacksCallbackTypeRequestPath) Validate() error {
+	return nil
+}
+
+type PostCallbacksCallbackTypeRequest struct {
+	Body             RawPayload
+	Path             PostCallbacksCallbackTypeRequestPath
 	ProcessingResult RequestProcessingResult
 }
 
-type PostPetsRequest struct {
+type PostTransactionRequestHeader struct {
+	XSignature string
+}
+
+func (header PostTransactionRequestHeader) GetXSignature() string {
+	return header.XSignature
+}
+
+func (header PostTransactionRequestHeader) Validate() error {
+	return validation.ValidateStruct(&header,
+		validation.Field(&header.XSignature, validation.RuneLength(0, 5)))
+}
+
+type PostTransactionRequest struct {
+	Body             CreateTransactionRequest
+	Header           PostTransactionRequestHeader
 	ProcessingResult RequestProcessingResult
 }
 
-type GetPetsPetIDRequestPath struct {
-	PetID string
+type DeleteTransactionsUUIDRequestHeader struct {
+	XSignature string
 }
 
-func (path GetPetsPetIDRequestPath) GetPetID() string {
-	return path.PetID
+func (header DeleteTransactionsUUIDRequestHeader) GetXSignature() string {
+	return header.XSignature
 }
 
-type GetPetsPetIDRequest struct {
-	Path             GetPetsPetIDRequestPath
+func (header DeleteTransactionsUUIDRequestHeader) Validate() error {
+	return validation.ValidateStruct(&header,
+		validation.Field(&header.XSignature, validation.RuneLength(0, 5)))
+}
+
+type DeleteTransactionsUUIDRequestPath struct {
+	RegexParam string
+	UUID       string
+}
+
+func (path DeleteTransactionsUUIDRequestPath) GetRegexParam() string {
+	return path.RegexParam
+}
+
+func (path DeleteTransactionsUUIDRequestPath) GetUUID() string {
+	return path.UUID
+}
+
+func (path DeleteTransactionsUUIDRequestPath) Validate() error {
+	return validation.ValidateStruct(&path,
+		validation.Field(&path.RegexParam, validation.Required, validation.RuneLength(5, 0)))
+}
+
+type DeleteTransactionsUUIDRequest struct {
+	Header           DeleteTransactionsUUIDRequestHeader
+	Path             DeleteTransactionsUUIDRequestPath
 	ProcessingResult RequestProcessingResult
+}
+
+type SecurityScheme string
+
+const ()
+
+type securityProcessor struct {
+	scheme  SecurityScheme
+	extract func(r *http.Request) (string, bool)
+	handle  func(r *http.Request, scheme SecurityScheme, value string) error
+}
+
+var securityExtractorsFuncs = map[SecurityScheme]func(r *http.Request) (string, bool){}
+
+type SecuritySchemas interface{}
+
+type SecurityCheckResult struct {
+	Scheme SecurityScheme
+	Value  string
 }

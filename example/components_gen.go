@@ -2,15 +2,168 @@
 
 package example
 
-type Error struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
+import (
+	"encoding/json"
+	"fmt"
+	"regexp"
+
+	validation "github.com/go-ozzo/ozzo-validation/v4"
+	uuid "github.com/google/uuid"
+	countries "github.com/mikekonan/go-types/country"
+	currency "github.com/mikekonan/go-types/currency"
+	email "github.com/mikekonan/go-types/email"
+	url "github.com/mikekonan/go-types/url"
+)
+
+var createTransactionRequestRegexParamRegex = regexp.MustCompile("^[.?\\d]+$")
+
+type Email = email.Email
+
+type genericResponse struct {
+	Result GenericResponseResultEnum `json:"result"`
 }
 
-type Pet struct {
-	ID   int    `json:"id"`
-	Name string `json:"name"`
-	Tag  string `json:"tag"`
+type GenericResponse struct {
+	Result GenericResponseResultEnum `json:"result"`
 }
 
-type Pets []Pet
+func (body *GenericResponse) UnmarshalJSON(data []byte) error {
+	var value genericResponse
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+
+	body.Result = value.Result
+
+	return nil
+}
+func (body GenericResponse) Validate() error {
+	return nil
+}
+
+type RawPayload = []byte
+
+type URL = url.URL
+
+type createTransactionRequest struct {
+	Amount        float64              `json:"amount"`
+	AmountCents   int                  `json:"amountCents"`
+	CallbackURL   url.URL              `json:"callbackURL"`
+	Country       countries.Alpha2Code `json:"country"`
+	Currency      currency.Code        `json:"currency"`
+	Description   *string              `json:"description"`
+	Email         email.Email          `json:"email"`
+	RegexParam    string               `json:"regexParam"`
+	Title         string               `json:"title"`
+	TransactionID uuid.UUID            `json:"transactionID"`
+}
+
+type CreateTransactionRequest struct {
+	Amount        float64              `json:"amount"`
+	AmountCents   int                  `json:"amountCents"`
+	CallbackURL   url.URL              `json:"callbackURL"`
+	Country       countries.Alpha2Code `json:"country"`
+	Currency      currency.Code        `json:"currency"`
+	Description   string               `json:"description"`
+	Email         email.Email          `json:"email"`
+	RegexParam    string               `json:"regexParam"`
+	Title         string               `json:"title"`
+	TransactionID uuid.UUID            `json:"transactionID"`
+}
+
+func (body *CreateTransactionRequest) UnmarshalJSON(data []byte) error {
+	var value createTransactionRequest
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+
+	body.Email = value.Email
+	body.TransactionID = value.TransactionID
+	body.CallbackURL = value.CallbackURL
+	body.Country = value.Country
+	body.Currency = value.Currency
+	if !createTransactionRequestRegexParamRegex.MatchString(body.RegexParam) {
+		return fmt.Errorf("RegexParam not matched by the '^[.?\\d]+$' regex")
+	}
+	body.RegexParam = value.RegexParam
+	body.Title = value.Title
+	body.Amount = value.Amount
+	body.AmountCents = value.AmountCents
+
+	if value.Description == nil {
+		return fmt.Errorf("Description is required")
+	}
+
+	body.Description = *value.Description
+
+	return nil
+}
+func (body CreateTransactionRequest) Validate() error {
+	return validation.ValidateStruct(&body,
+		validation.Field(&body.Country, validation.RuneLength(2, 2)),
+		validation.Field(&body.Title, validation.RuneLength(8, 50)),
+		validation.Field(&body.Amount, validation.Min(0.009).Exclusive()),
+		validation.Field(&body.Description, validation.Required, validation.RuneLength(8, 100)))
+}
+
+type GenericResponseResultEnum string
+
+var GenericResponseResultEnumSuccess GenericResponseResultEnum = "success"
+var GenericResponseResultEnumFailed GenericResponseResultEnum = "failed"
+
+func (enum GenericResponseResultEnum) Check() error {
+	switch enum {
+	case GenericResponseResultEnumSuccess, GenericResponseResultEnumFailed:
+
+		return nil
+	}
+
+	return fmt.Errorf("invalid GenericResponseResultEnum enum value")
+}
+
+func (enum *GenericResponseResultEnum) UnmarshalJSON(data []byte) error {
+	var strValue string
+	if err := json.Unmarshal(data, &strValue); err != nil {
+
+		return err
+	}
+	enumValue := GenericResponseResultEnum(strValue)
+	if err := enumValue.Check(); err != nil {
+
+		return err
+	}
+	*enum = enumValue
+
+	return nil
+}
+
+type WithEnum string
+
+var WithEnumOne WithEnum = "one"
+var WithEnumTwo WithEnum = "two"
+
+func (enum WithEnum) Check() error {
+	switch enum {
+	case WithEnumOne, WithEnumTwo:
+
+		return nil
+	}
+
+	return fmt.Errorf("invalid WithEnum enum value")
+}
+
+func (enum *WithEnum) UnmarshalJSON(data []byte) error {
+	var strValue string
+	if err := json.Unmarshal(data, &strValue); err != nil {
+
+		return err
+	}
+	enumValue := WithEnum(strValue)
+	if err := enumValue.Check(); err != nil {
+
+		return err
+	}
+	*enum = enumValue
+
+	return nil
+}

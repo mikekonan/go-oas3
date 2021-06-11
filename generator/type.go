@@ -2,12 +2,11 @@ package generator
 
 import (
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	"github.com/dave/jennifer/jen"
 	"github.com/getkin/kin-openapi/openapi3"
-
+	"github.com/imdario/mergo"
 	"github.com/mikekonan/go-oas3/configurator"
 )
 
@@ -26,10 +25,7 @@ func (typ *Type) fillJsonTag(into *jen.Statement, name string) {
 	into.Tag(map[string]string{"json": strings.ToLower(name[:1]) + name[1:]})
 }
 
-func (typ *Type) fillGoType(into *jen.Statement, typeName string, schemaRef *openapi3.SchemaRef, asPointer bool, needAliasing bool) {
-	if typeName == "CurrencyCode" {
-		fmt.Print()
-	}
+func (typ *Type) fillGoType(into *jen.Statement, parentTypeName string, typeName string, schemaRef *openapi3.SchemaRef, asPointer bool, needAliasing bool) {
 	if asPointer {
 		into.Op("*")
 	}
@@ -43,15 +39,27 @@ func (typ *Type) fillGoType(into *jen.Statement, typeName string, schemaRef *ope
 		return
 	}
 
+	schema := schemaRef.Value
+
+	if schema.AnyOf != nil || schema.OneOf != nil {
+		into.Interface()
+		return
+	}
+
 	if schemaRef.Ref != "" {
 		into.Qual(typ.config.ComponentsPackage, typ.normalizer.extractNameFromRef(schemaRef.Ref))
 		return
 	}
 
-	schema := schemaRef.Value
+	if len(schema.AllOf) > 0 {
+		allOfSchema := schema.AllOf[0]
 
-	if schema.AnyOf != nil || schema.OneOf != nil || schema.AllOf != nil {
-		into.Interface()
+		for i := 1; i < len(schema.AllOf); i++ {
+			mergo.Merge(&allOfSchema, schema.AllOf[i])
+		}
+
+		typ.fillGoType(into, parentTypeName, typeName, allOfSchema, false, needAliasing)
+
 		return
 	}
 
@@ -70,7 +78,17 @@ func (typ *Type) fillGoType(into *jen.Statement, typeName string, schemaRef *ope
 
 		if schema.AdditionalProperties != nil {
 			into.Map(jen.Id("string"))
-			typ.fillGoType(into, typeName, schema.AdditionalProperties, false, needAliasing)
+
+			typ.fillGoType(into, parentTypeName, typeName, schema.AdditionalProperties, false, needAliasing)
+
+			//TODO: ANONYMOUS MAP ENTRIES
+			//if schema.AdditionalProperties.Ref != "" {
+			//	typ.fillGoType(into, parentTypeName, typeName, schema.AdditionalProperties, false, needAliasing)
+			//	return
+			//}
+
+			//into.Qual(typ.config.ComponentsPackage, parentTypeName+typeName+"MapEntry")
+
 			return
 		}
 
@@ -81,7 +99,16 @@ func (typ *Type) fillGoType(into *jen.Statement, typeName string, schemaRef *ope
 		return
 	case "array":
 		into.Index()
-		typ.fillGoType(into, typeName, schema.Items, false, needAliasing)
+
+		//TODO: ANONYMOUS SLICES
+		//if schema.Items.Ref != "" {
+		//	typ.fillGoType(into, parentTypeName, typeName, schema.Items, false, needAliasing)
+		//	return
+		//}
+
+		//into.Qual(typ.config.ComponentsPackage, parentTypeName+typeName+"SliceElement")
+
+		typ.fillGoType(into, parentTypeName, typeName, schema.Items, false, needAliasing)
 		return
 	case "integer":
 		into.Int()
@@ -114,13 +141,13 @@ func (typ *Type) fillGoType(into *jen.Statement, typeName string, schemaRef *ope
 			into.String()
 			return
 		case "iso4217-currency-code":
-			into.Qual("github.com/mikekonan/go-currencies", "Code")
+			into.Qual("github.com/mikekonan/go-types/currency", "Code")
 			return
 		case "iso3166-alpha-2":
-			into.Qual("github.com/mikekonan/go-countries", "Alpha2Code")
+			into.Qual("github.com/mikekonan/go-types/country", "Alpha2Code")
 			return
 		case "iso3166-alpha-3":
-			into.Qual("github.com/mikekonan/go-countries", "Alpha3Code")
+			into.Qual("github.com/mikekonan/go-types/country", "Alpha3Code")
 			return
 		case "uuid":
 			into.Qual("github.com/google/uuid", "UUID")
