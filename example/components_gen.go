@@ -52,6 +52,7 @@ type createTransactionRequest struct {
 	Country       countries.Alpha2Code `json:"country"`
 	Currency      currency.Code        `json:"currency"`
 	Description   *string              `json:"description"`
+	Details       *string              `json:"details"`
 	Email         email.Email          `json:"email"`
 	RegexParam    string               `json:"regexParam"`
 	Title         string               `json:"title"`
@@ -65,6 +66,7 @@ type CreateTransactionRequest struct {
 	Country       countries.Alpha2Code `json:"country"`
 	Currency      currency.Code        `json:"currency"`
 	Description   string               `json:"description"`
+	Details       *string              `json:"details"`
 	Email         email.Email          `json:"email"`
 	RegexParam    string               `json:"regexParam"`
 	Title         string               `json:"title"`
@@ -77,18 +79,19 @@ func (body *CreateTransactionRequest) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	body.Email = value.Email
-	body.TransactionID = value.TransactionID
+	body.AmountCents = value.AmountCents
 	body.CallbackURL = value.CallbackURL
-	body.Country = value.Country
-	body.Currency = value.Currency
+	body.Email = value.Email
 	if !createTransactionRequestRegexParamRegex.MatchString(body.RegexParam) {
 		return fmt.Errorf("RegexParam not matched by the '^[.?\\d]+$' regex")
 	}
 	body.RegexParam = value.RegexParam
 	body.Title = value.Title
+	body.TransactionID = value.TransactionID
 	body.Amount = value.Amount
-	body.AmountCents = value.AmountCents
+	body.Country = value.Country
+	body.Currency = value.Currency
+	body.Details = value.Details
 
 	if value.Description == nil {
 		return fmt.Errorf("Description is required")
@@ -100,41 +103,10 @@ func (body *CreateTransactionRequest) UnmarshalJSON(data []byte) error {
 }
 func (body CreateTransactionRequest) Validate() error {
 	return validation.ValidateStruct(&body,
-		validation.Field(&body.Country, validation.RuneLength(2, 2)),
 		validation.Field(&body.Title, validation.RuneLength(8, 50)),
 		validation.Field(&body.Amount, validation.Min(0.009).Exclusive()),
+		validation.Field(&body.Country, validation.RuneLength(2, 2)),
 		validation.Field(&body.Description, validation.Required, validation.RuneLength(8, 100)))
-}
-
-type GenericResponseResultEnum string
-
-var GenericResponseResultEnumSuccess GenericResponseResultEnum = "success"
-var GenericResponseResultEnumFailed GenericResponseResultEnum = "failed"
-
-func (enum GenericResponseResultEnum) Check() error {
-	switch enum {
-	case GenericResponseResultEnumSuccess, GenericResponseResultEnumFailed:
-
-		return nil
-	}
-
-	return fmt.Errorf("invalid GenericResponseResultEnum enum value")
-}
-
-func (enum *GenericResponseResultEnum) UnmarshalJSON(data []byte) error {
-	var strValue string
-	if err := json.Unmarshal(data, &strValue); err != nil {
-
-		return err
-	}
-	enumValue := GenericResponseResultEnum(strValue)
-	if err := enumValue.Check(); err != nil {
-
-		return err
-	}
-	*enum = enumValue
-
-	return nil
 }
 
 type WithEnum string
@@ -159,6 +131,37 @@ func (enum *WithEnum) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	enumValue := WithEnum(strValue)
+	if err := enumValue.Check(); err != nil {
+
+		return err
+	}
+	*enum = enumValue
+
+	return nil
+}
+
+type GenericResponseResultEnum string
+
+var GenericResponseResultEnumSuccess GenericResponseResultEnum = "success"
+var GenericResponseResultEnumFailed GenericResponseResultEnum = "failed"
+
+func (enum GenericResponseResultEnum) Check() error {
+	switch enum {
+	case GenericResponseResultEnumSuccess, GenericResponseResultEnumFailed:
+
+		return nil
+	}
+
+	return fmt.Errorf("invalid GenericResponseResultEnum enum value")
+}
+
+func (enum *GenericResponseResultEnum) UnmarshalJSON(data []byte) error {
+	var strValue string
+	if err := json.Unmarshal(data, &strValue); err != nil {
+
+		return err
+	}
+	enumValue := GenericResponseResultEnum(strValue)
 	if err := enumValue.Check(); err != nil {
 
 		return err

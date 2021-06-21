@@ -750,6 +750,40 @@ func PostTransactionResponseBuilder() *postTransactionStatusCodeResponseBuilder 
 	return new(postTransactionStatusCodeResponseBuilder)
 }
 
+func (builder *postTransactionStatusCodeResponseBuilder) StatusCode201() *postTransaction201ContentTypeBuilder {
+	builder.response.statusCode = 201
+
+	return &postTransaction201ContentTypeBuilder{response: builder.response}
+}
+
+type postTransaction201ContentTypeBuilder struct {
+	response
+}
+
+type PostTransaction201ApplicationJsonResponseBuilder struct {
+	response
+}
+
+func (builder *PostTransaction201ApplicationJsonResponseBuilder) Build() PostTransactionResponse {
+	return postTransactionResponse{response: builder.response}
+}
+
+func (builder *postTransaction201ContentTypeBuilder) ApplicationJson() *postTransaction201ApplicationJsonBodyBuilder {
+	builder.response.contentType = "application/json"
+
+	return &postTransaction201ApplicationJsonBodyBuilder{response: builder.response}
+}
+
+type postTransaction201ApplicationJsonBodyBuilder struct {
+	response
+}
+
+func (builder *postTransaction201ApplicationJsonBodyBuilder) Body(body GenericResponse) *PostTransaction201ApplicationJsonResponseBuilder {
+	builder.response.body = body
+
+	return &PostTransaction201ApplicationJsonResponseBuilder{response: builder.response}
+}
+
 func (builder *postTransactionStatusCodeResponseBuilder) StatusCode400() *postTransaction400ContentTypeBuilder {
 	builder.response.statusCode = 400
 
@@ -816,40 +850,6 @@ func (builder *postTransaction500ApplicationJsonBodyBuilder) Body(body GenericRe
 	builder.response.body = body
 
 	return &PostTransaction500ApplicationJsonResponseBuilder{response: builder.response}
-}
-
-func (builder *postTransactionStatusCodeResponseBuilder) StatusCode201() *postTransaction201ContentTypeBuilder {
-	builder.response.statusCode = 201
-
-	return &postTransaction201ContentTypeBuilder{response: builder.response}
-}
-
-type postTransaction201ContentTypeBuilder struct {
-	response
-}
-
-type PostTransaction201ApplicationJsonResponseBuilder struct {
-	response
-}
-
-func (builder *PostTransaction201ApplicationJsonResponseBuilder) Build() PostTransactionResponse {
-	return postTransactionResponse{response: builder.response}
-}
-
-func (builder *postTransaction201ContentTypeBuilder) ApplicationJson() *postTransaction201ApplicationJsonBodyBuilder {
-	builder.response.contentType = "application/json"
-
-	return &postTransaction201ApplicationJsonBodyBuilder{response: builder.response}
-}
-
-type postTransaction201ApplicationJsonBodyBuilder struct {
-	response
-}
-
-func (builder *postTransaction201ApplicationJsonBodyBuilder) Body(body GenericResponse) *PostTransaction201ApplicationJsonResponseBuilder {
-	builder.response.body = body
-
-	return &PostTransaction201ApplicationJsonResponseBuilder{response: builder.response}
 }
 
 type deleteTransactionsUUIDStatusCodeResponseBuilder struct {
@@ -937,43 +937,6 @@ type TransactionsService interface {
 	DeleteTransactionsUUID(context.Context, DeleteTransactionsUUIDRequest) DeleteTransactionsUUIDResponse
 }
 
-type PostCallbacksCallbackTypeRequestPath struct {
-	CallbackType string
-}
-
-func (path PostCallbacksCallbackTypeRequestPath) GetCallbackType() string {
-	return path.CallbackType
-}
-
-func (path PostCallbacksCallbackTypeRequestPath) Validate() error {
-	return nil
-}
-
-type PostCallbacksCallbackTypeRequest struct {
-	Body             RawPayload
-	Path             PostCallbacksCallbackTypeRequestPath
-	ProcessingResult RequestProcessingResult
-}
-
-type PostTransactionRequestHeader struct {
-	XSignature string
-}
-
-func (header PostTransactionRequestHeader) GetXSignature() string {
-	return header.XSignature
-}
-
-func (header PostTransactionRequestHeader) Validate() error {
-	return validation.ValidateStruct(&header,
-		validation.Field(&header.XSignature, validation.RuneLength(0, 5)))
-}
-
-type PostTransactionRequest struct {
-	Body             CreateTransactionRequest
-	Header           PostTransactionRequestHeader
-	ProcessingResult RequestProcessingResult
-}
-
 type DeleteTransactionsUUIDRequestHeader struct {
 	XSignature string
 }
@@ -1008,6 +971,43 @@ func (path DeleteTransactionsUUIDRequestPath) Validate() error {
 type DeleteTransactionsUUIDRequest struct {
 	Header           DeleteTransactionsUUIDRequestHeader
 	Path             DeleteTransactionsUUIDRequestPath
+	ProcessingResult RequestProcessingResult
+}
+
+type PostTransactionRequestHeader struct {
+	XSignature string
+}
+
+func (header PostTransactionRequestHeader) GetXSignature() string {
+	return header.XSignature
+}
+
+func (header PostTransactionRequestHeader) Validate() error {
+	return validation.ValidateStruct(&header,
+		validation.Field(&header.XSignature, validation.RuneLength(0, 5)))
+}
+
+type PostTransactionRequest struct {
+	Body             CreateTransactionRequest
+	Header           PostTransactionRequestHeader
+	ProcessingResult RequestProcessingResult
+}
+
+type PostCallbacksCallbackTypeRequestPath struct {
+	CallbackType string
+}
+
+func (path PostCallbacksCallbackTypeRequestPath) GetCallbackType() string {
+	return path.CallbackType
+}
+
+func (path PostCallbacksCallbackTypeRequestPath) Validate() error {
+	return nil
+}
+
+type PostCallbacksCallbackTypeRequest struct {
+	Body             RawPayload
+	Path             PostCallbacksCallbackTypeRequestPath
 	ProcessingResult RequestProcessingResult
 }
 

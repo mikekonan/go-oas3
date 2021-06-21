@@ -56,6 +56,15 @@ Specify a go type with:
           x-go-type: encoding/json.RawMessage
 ```
 
+Forcing pointer usage for the field:
+```
+    Component:
+      properties:
+        amount:
+          type: int
+          x-go-pointer: true
+```
+
 Specify a regex to match a string:
 ```
     Parameter:
