@@ -43,6 +43,9 @@ paths:
                 $ref: "#/components/schemas/GenericResponse"
   /transactions/{uuid}:
     delete:
+      security:
+        - Bearer: []
+        - Cookie: []
       tags:
         - transactions
       parameters:
@@ -90,11 +93,23 @@ paths:
             type: string
       responses:
         '200':
+          headers:
+            x-jws-signature:
+              schema:
+                type: string
+              description: response signature
+            Set-Cookie:
+              schema:
+                type: string
+              description: response signature cookie
+              example: JSESSIONID=abcde12345; Path=/; HttpOnly
           content:
             application/octet-stream:
               schema:
                 $ref: '#/components/schemas/RawPayload'
           description: OK
+      security:
+        - Cookie: []
       tags:
         - callbacks
       description: callbacks
@@ -107,6 +122,21 @@ paths:
         required: true
       summary: Callback
 components:
+  securitySchemes:
+    Bearer:
+      type: apiKey
+      scheme: bearer
+      name: Authorization
+      in: header
+    Cookie:
+      type: apiKey
+      in: cookie
+      name: JSESSIONID
+    Basic:
+      type: http
+      scheme: bearer
+      name: Authorization
+      in: header
   schemas:
     CurrencyCode:
       $ref: "https://raw.githubusercontent.com/mikekonan/go-types/main/swagger.yaml#/components/schemas/CurrencyCode"

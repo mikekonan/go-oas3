@@ -8,12 +8,13 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	chi "github.com/go-chi/chi"
+	validation "github.com/go-ozzo/ozzo-validation/v4"
+	cast "github.com/spf13/cast"
 	"io/ioutil"
 	"net/http"
 	"regexp"
-
-	chi "github.com/go-chi/chi"
-	validation "github.com/go-ozzo/ozzo-validation/v4"
+	"strings"
 )
 
 var deleteTransactionsUUIDPathRegexParamRegex = regexp.MustCompile("^[.?\\d]+$")
@@ -81,8 +82,16 @@ func (r RequestProcessingResult) Err() error {
 	return r.error
 }
 
-func CallbacksHandler(impl CallbacksService, r chi.Router, hooks *Hooks) http.Handler {
+func CallbacksHandler(impl CallbacksService, r chi.Router, hooks *Hooks, securitySchemas SecuritySchemas) http.Handler {
 	router := &callbacksRouter{router: r, service: impl, hooks: hooks}
+
+	router.securityHandlers = map[SecurityScheme]securityProcessor{
+		SecuritySchemeCookie: {
+			scheme:  SecuritySchemeCookie,
+			extract: securityExtractorsFuncs[SecuritySchemeCookie],
+			handle:  securitySchemas.SecuritySchemeCookie,
+		},
+	}
 
 	router.mount()
 
@@ -90,9 +99,10 @@ func CallbacksHandler(impl CallbacksService, r chi.Router, hooks *Hooks) http.Ha
 }
 
 type callbacksRouter struct {
-	router  chi.Router
-	service CallbacksService
-	hooks   *Hooks
+	router           chi.Router
+	service          CallbacksService
+	hooks            *Hooks
+	securityHandlers map[SecurityScheme]securityProcessor
 }
 
 func (router *callbacksRouter) mount() {
@@ -101,6 +111,61 @@ func (router *callbacksRouter) mount() {
 
 func (router *callbacksRouter) parsePostCallbacksCallbackTypeRequest(r *http.Request) (request PostCallbacksCallbackTypeRequest) {
 	request.ProcessingResult = RequestProcessingResult{typee: ParseSucceed}
+
+	isSecurityCheckPassed := false
+	for _, processors := range [][]securityProcessor{{router.securityHandlers[SecuritySchemeCookie]}} {
+		isLinkedChecksValid := true
+
+		for _, processor := range processors {
+			name, value, isExtracted := processor.extract(r)
+
+			if !isExtracted {
+				isLinkedChecksValid = false
+				break
+			}
+
+			if err := processor.handle(r, processor.scheme, name, value); err != nil {
+				if router.hooks.RequestSecurityCheckFailed != nil {
+					router.hooks.RequestSecurityCheckFailed(r, "PostCallbacksCallbackType", string(processor.scheme), RequestProcessingResult{error: err, typee: SecurityCheckFailed})
+				}
+
+				isLinkedChecksValid = false
+
+				break
+			}
+
+			if router.hooks.RequestSecurityCheckCompleted != nil {
+				router.hooks.RequestSecurityCheckCompleted(r, "PostCallbacksCallbackType", string(processor.scheme))
+			}
+
+			if len(request.SecurityCheckResults) == 0 {
+				request.SecurityCheckResults = map[SecurityScheme]string{}
+			}
+
+			request.SecurityCheckResults[processor.scheme] = value
+		}
+
+		if isLinkedChecksValid {
+			isSecurityCheckPassed = true
+			break
+		}
+	}
+
+	if !isSecurityCheckPassed {
+		err := fmt.Errorf("failed passing security checks")
+
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: SecurityParseFailed}
+
+		if router.hooks.RequestSecurityParseFailed != nil {
+			router.hooks.RequestSecurityParseFailed(r, "PostCallbacksCallbackType", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	if router.hooks.RequestSecurityParseCompleted != nil {
+		router.hooks.RequestSecurityParseCompleted(r, "PostCallbacksCallbackType")
+	}
 
 	pathCallbackType := chi.URLParam(r, "callbackType")
 	if pathCallbackType == "" {
@@ -257,8 +322,21 @@ func (router *callbacksRouter) PostCallbacksCallbackType(w http.ResponseWriter, 
 	}
 }
 
-func TransactionsHandler(impl TransactionsService, r chi.Router, hooks *Hooks) http.Handler {
+func TransactionsHandler(impl TransactionsService, r chi.Router, hooks *Hooks, securitySchemas SecuritySchemas) http.Handler {
 	router := &transactionsRouter{router: r, service: impl, hooks: hooks}
+
+	router.securityHandlers = map[SecurityScheme]securityProcessor{
+		SecuritySchemeBearer: {
+			scheme:  SecuritySchemeBearer,
+			extract: securityExtractorsFuncs[SecuritySchemeBearer],
+			handle:  securitySchemas.SecuritySchemeBearer,
+		},
+		SecuritySchemeCookie: {
+			scheme:  SecuritySchemeCookie,
+			extract: securityExtractorsFuncs[SecuritySchemeCookie],
+			handle:  securitySchemas.SecuritySchemeCookie,
+		},
+	}
 
 	router.mount()
 
@@ -266,9 +344,10 @@ func TransactionsHandler(impl TransactionsService, r chi.Router, hooks *Hooks) h
 }
 
 type transactionsRouter struct {
-	router  chi.Router
-	service TransactionsService
-	hooks   *Hooks
+	router           chi.Router
+	service          TransactionsService
+	hooks            *Hooks
+	securityHandlers map[SecurityScheme]securityProcessor
 }
 
 func (router *transactionsRouter) mount() {
@@ -425,6 +504,61 @@ func (router *transactionsRouter) PostTransaction(w http.ResponseWriter, r *http
 
 func (router *transactionsRouter) parseDeleteTransactionsUUIDRequest(r *http.Request) (request DeleteTransactionsUUIDRequest) {
 	request.ProcessingResult = RequestProcessingResult{typee: ParseSucceed}
+
+	isSecurityCheckPassed := false
+	for _, processors := range [][]securityProcessor{{router.securityHandlers[SecuritySchemeBearer]}, {router.securityHandlers[SecuritySchemeCookie]}} {
+		isLinkedChecksValid := true
+
+		for _, processor := range processors {
+			name, value, isExtracted := processor.extract(r)
+
+			if !isExtracted {
+				isLinkedChecksValid = false
+				break
+			}
+
+			if err := processor.handle(r, processor.scheme, name, value); err != nil {
+				if router.hooks.RequestSecurityCheckFailed != nil {
+					router.hooks.RequestSecurityCheckFailed(r, "DeleteTransactionsUUID", string(processor.scheme), RequestProcessingResult{error: err, typee: SecurityCheckFailed})
+				}
+
+				isLinkedChecksValid = false
+
+				break
+			}
+
+			if router.hooks.RequestSecurityCheckCompleted != nil {
+				router.hooks.RequestSecurityCheckCompleted(r, "DeleteTransactionsUUID", string(processor.scheme))
+			}
+
+			if len(request.SecurityCheckResults) == 0 {
+				request.SecurityCheckResults = map[SecurityScheme]string{}
+			}
+
+			request.SecurityCheckResults[processor.scheme] = value
+		}
+
+		if isLinkedChecksValid {
+			isSecurityCheckPassed = true
+			break
+		}
+	}
+
+	if !isSecurityCheckPassed {
+		err := fmt.Errorf("failed passing security checks")
+
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: SecurityParseFailed}
+
+		if router.hooks.RequestSecurityParseFailed != nil {
+			router.hooks.RequestSecurityParseFailed(r, "DeleteTransactionsUUID", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	if router.hooks.RequestSecurityParseCompleted != nil {
+		router.hooks.RequestSecurityParseCompleted(r, "DeleteTransactionsUUID")
+	}
 
 	headerXSignature := r.Header.Get("x-signature")
 	request.Header.XSignature = headerXSignature
@@ -607,6 +741,37 @@ type responseInterface interface {
 	headers() map[string]string
 }
 
+type DeleteTransactionsUUIDResponse interface {
+	responseInterface
+	deleteTransactionsUUIDResponse()
+}
+
+type deleteTransactionsUUIDResponse struct {
+	response
+}
+
+func (deleteTransactionsUUIDResponse) deleteTransactionsUUIDResponse() {}
+
+func (response deleteTransactionsUUIDResponse) statusCode() int {
+	return response.response.statusCode
+}
+
+func (response deleteTransactionsUUIDResponse) body() interface{} {
+	return response.response.body
+}
+
+func (response deleteTransactionsUUIDResponse) contentType() string {
+	return response.response.contentType
+}
+
+func (response deleteTransactionsUUIDResponse) redirectURL() string {
+	return response.response.redirectURL
+}
+
+func (response deleteTransactionsUUIDResponse) headers() map[string]string {
+	return response.response.headers
+}
+
 type PostCallbacksCallbackTypeResponse interface {
 	responseInterface
 	postCallbacksCallbackTypeResponse()
@@ -669,37 +834,6 @@ func (response postTransactionResponse) headers() map[string]string {
 	return response.response.headers
 }
 
-type DeleteTransactionsUUIDResponse interface {
-	responseInterface
-	deleteTransactionsUUIDResponse()
-}
-
-type deleteTransactionsUUIDResponse struct {
-	response
-}
-
-func (deleteTransactionsUUIDResponse) deleteTransactionsUUIDResponse() {}
-
-func (response deleteTransactionsUUIDResponse) statusCode() int {
-	return response.response.statusCode
-}
-
-func (response deleteTransactionsUUIDResponse) body() interface{} {
-	return response.response.body
-}
-
-func (response deleteTransactionsUUIDResponse) contentType() string {
-	return response.response.contentType
-}
-
-func (response deleteTransactionsUUIDResponse) redirectURL() string {
-	return response.response.redirectURL
-}
-
-func (response deleteTransactionsUUIDResponse) headers() map[string]string {
-	return response.response.headers
-}
-
 type postCallbacksCallbackTypeStatusCodeResponseBuilder struct {
 	response
 }
@@ -708,8 +842,26 @@ func PostCallbacksCallbackTypeResponseBuilder() *postCallbacksCallbackTypeStatus
 	return new(postCallbacksCallbackTypeStatusCodeResponseBuilder)
 }
 
-func (builder *postCallbacksCallbackTypeStatusCodeResponseBuilder) StatusCode200() *postCallbacksCallbackType200ContentTypeBuilder {
+func (builder *postCallbacksCallbackTypeStatusCodeResponseBuilder) StatusCode200() *postCallbacksCallbackType200HeadersBuilder {
 	builder.response.statusCode = 200
+
+	return &postCallbacksCallbackType200HeadersBuilder{response: builder.response}
+}
+
+type PostCallbacksCallbackType200Headers struct {
+	XJwsSignature string
+}
+
+func (headers PostCallbacksCallbackType200Headers) toMap() map[string]string {
+	return map[string]string{"x-jws-signature": cast.ToString(headers.XJwsSignature)}
+}
+
+type postCallbacksCallbackType200HeadersBuilder struct {
+	response
+}
+
+func (builder *postCallbacksCallbackType200HeadersBuilder) Headers(headers PostCallbacksCallbackType200Headers) *postCallbacksCallbackType200ContentTypeBuilder {
+	builder.headers = headers.toMap()
 
 	return &postCallbacksCallbackType200ContentTypeBuilder{response: builder.response}
 }
@@ -748,40 +900,6 @@ type postTransactionStatusCodeResponseBuilder struct {
 
 func PostTransactionResponseBuilder() *postTransactionStatusCodeResponseBuilder {
 	return new(postTransactionStatusCodeResponseBuilder)
-}
-
-func (builder *postTransactionStatusCodeResponseBuilder) StatusCode201() *postTransaction201ContentTypeBuilder {
-	builder.response.statusCode = 201
-
-	return &postTransaction201ContentTypeBuilder{response: builder.response}
-}
-
-type postTransaction201ContentTypeBuilder struct {
-	response
-}
-
-type PostTransaction201ApplicationJsonResponseBuilder struct {
-	response
-}
-
-func (builder *PostTransaction201ApplicationJsonResponseBuilder) Build() PostTransactionResponse {
-	return postTransactionResponse{response: builder.response}
-}
-
-func (builder *postTransaction201ContentTypeBuilder) ApplicationJson() *postTransaction201ApplicationJsonBodyBuilder {
-	builder.response.contentType = "application/json"
-
-	return &postTransaction201ApplicationJsonBodyBuilder{response: builder.response}
-}
-
-type postTransaction201ApplicationJsonBodyBuilder struct {
-	response
-}
-
-func (builder *postTransaction201ApplicationJsonBodyBuilder) Body(body GenericResponse) *PostTransaction201ApplicationJsonResponseBuilder {
-	builder.response.body = body
-
-	return &PostTransaction201ApplicationJsonResponseBuilder{response: builder.response}
 }
 
 func (builder *postTransactionStatusCodeResponseBuilder) StatusCode400() *postTransaction400ContentTypeBuilder {
@@ -850,6 +968,40 @@ func (builder *postTransaction500ApplicationJsonBodyBuilder) Body(body GenericRe
 	builder.response.body = body
 
 	return &PostTransaction500ApplicationJsonResponseBuilder{response: builder.response}
+}
+
+func (builder *postTransactionStatusCodeResponseBuilder) StatusCode201() *postTransaction201ContentTypeBuilder {
+	builder.response.statusCode = 201
+
+	return &postTransaction201ContentTypeBuilder{response: builder.response}
+}
+
+type postTransaction201ContentTypeBuilder struct {
+	response
+}
+
+type PostTransaction201ApplicationJsonResponseBuilder struct {
+	response
+}
+
+func (builder *PostTransaction201ApplicationJsonResponseBuilder) Build() PostTransactionResponse {
+	return postTransactionResponse{response: builder.response}
+}
+
+func (builder *postTransaction201ContentTypeBuilder) ApplicationJson() *postTransaction201ApplicationJsonBodyBuilder {
+	builder.response.contentType = "application/json"
+
+	return &postTransaction201ApplicationJsonBodyBuilder{response: builder.response}
+}
+
+type postTransaction201ApplicationJsonBodyBuilder struct {
+	response
+}
+
+func (builder *postTransaction201ApplicationJsonBodyBuilder) Body(body GenericResponse) *PostTransaction201ApplicationJsonResponseBuilder {
+	builder.response.body = body
+
+	return &PostTransaction201ApplicationJsonResponseBuilder{response: builder.response}
 }
 
 type deleteTransactionsUUIDStatusCodeResponseBuilder struct {
@@ -937,6 +1089,44 @@ type TransactionsService interface {
 	DeleteTransactionsUUID(context.Context, DeleteTransactionsUUIDRequest) DeleteTransactionsUUIDResponse
 }
 
+type PostCallbacksCallbackTypeRequestPath struct {
+	CallbackType string
+}
+
+func (path PostCallbacksCallbackTypeRequestPath) GetCallbackType() string {
+	return path.CallbackType
+}
+
+func (path PostCallbacksCallbackTypeRequestPath) Validate() error {
+	return nil
+}
+
+type PostCallbacksCallbackTypeRequest struct {
+	Body                 RawPayload
+	Path                 PostCallbacksCallbackTypeRequestPath
+	ProcessingResult     RequestProcessingResult
+	SecurityCheckResults map[SecurityScheme]string
+}
+
+type PostTransactionRequestHeader struct {
+	XSignature string
+}
+
+func (header PostTransactionRequestHeader) GetXSignature() string {
+	return header.XSignature
+}
+
+func (header PostTransactionRequestHeader) Validate() error {
+	return validation.ValidateStruct(&header,
+		validation.Field(&header.XSignature, validation.RuneLength(0, 5)))
+}
+
+type PostTransactionRequest struct {
+	Body             CreateTransactionRequest
+	Header           PostTransactionRequestHeader
+	ProcessingResult RequestProcessingResult
+}
+
 type DeleteTransactionsUUIDRequestHeader struct {
 	XSignature string
 }
@@ -969,61 +1159,59 @@ func (path DeleteTransactionsUUIDRequestPath) Validate() error {
 }
 
 type DeleteTransactionsUUIDRequest struct {
-	Header           DeleteTransactionsUUIDRequestHeader
-	Path             DeleteTransactionsUUIDRequestPath
-	ProcessingResult RequestProcessingResult
-}
-
-type PostTransactionRequestHeader struct {
-	XSignature string
-}
-
-func (header PostTransactionRequestHeader) GetXSignature() string {
-	return header.XSignature
-}
-
-func (header PostTransactionRequestHeader) Validate() error {
-	return validation.ValidateStruct(&header,
-		validation.Field(&header.XSignature, validation.RuneLength(0, 5)))
-}
-
-type PostTransactionRequest struct {
-	Body             CreateTransactionRequest
-	Header           PostTransactionRequestHeader
-	ProcessingResult RequestProcessingResult
-}
-
-type PostCallbacksCallbackTypeRequestPath struct {
-	CallbackType string
-}
-
-func (path PostCallbacksCallbackTypeRequestPath) GetCallbackType() string {
-	return path.CallbackType
-}
-
-func (path PostCallbacksCallbackTypeRequestPath) Validate() error {
-	return nil
-}
-
-type PostCallbacksCallbackTypeRequest struct {
-	Body             RawPayload
-	Path             PostCallbacksCallbackTypeRequestPath
-	ProcessingResult RequestProcessingResult
+	Header               DeleteTransactionsUUIDRequestHeader
+	Path                 DeleteTransactionsUUIDRequestPath
+	ProcessingResult     RequestProcessingResult
+	SecurityCheckResults map[SecurityScheme]string
 }
 
 type SecurityScheme string
 
-const ()
+const (
+	SecuritySchemeBasic  SecurityScheme = "Basic"
+	SecuritySchemeBearer SecurityScheme = "Bearer"
+	SecuritySchemeCookie SecurityScheme = "Cookie"
+)
 
 type securityProcessor struct {
 	scheme  SecurityScheme
-	extract func(r *http.Request) (string, bool)
-	handle  func(r *http.Request, scheme SecurityScheme, value string) error
+	extract func(r *http.Request) (string, string, bool)
+	handle  func(r *http.Request, scheme SecurityScheme, name string, value string) error
 }
 
-var securityExtractorsFuncs = map[SecurityScheme]func(r *http.Request) (string, bool){}
+var securityExtractorsFuncs = map[SecurityScheme]func(r *http.Request) (string, string, bool){
+	SecuritySchemeBasic: func(r *http.Request) (string, string, bool) {
+		value := r.Header.Get("Authorization")
 
-type SecuritySchemas interface{}
+		if !strings.HasPrefix(value, "Bearer ") {
+			return "", "", false
+		}
+
+		value = value[7:]
+
+		return "Authorization", value, value != ""
+	},
+	SecuritySchemeBearer: func(r *http.Request) (string, string, bool) {
+		value := r.Header.Get("Authorization")
+
+		return "Authorization", value, value != ""
+	},
+	SecuritySchemeCookie: func(r *http.Request) (string, string, bool) {
+		cookie, err := r.Cookie("JSESSIONID")
+
+		if err != nil {
+			return "", "", false
+		}
+
+		return cookie.Name, cookie.Value, true
+	},
+}
+
+type SecuritySchemas interface {
+	SecuritySchemeBasic(r *http.Request, scheme SecurityScheme, name string, value string) error
+	SecuritySchemeBearer(r *http.Request, scheme SecurityScheme, name string, value string) error
+	SecuritySchemeCookie(r *http.Request, scheme SecurityScheme, name string, value string) error
+}
 
 type SecurityCheckResult struct {
 	Scheme SecurityScheme

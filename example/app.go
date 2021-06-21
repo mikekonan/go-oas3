@@ -2,10 +2,9 @@ package example
 
 import (
 	"context"
+	"github.com/go-chi/chi"
 	"log"
 	"net/http"
-
-	"github.com/go-chi/chi"
 )
 
 type transactionsService struct{}
@@ -60,7 +59,26 @@ func (t transactionsService) DeleteTransactionsUUID(ctx context.Context, request
 
 func router() {
 	router := chi.NewRouter()
-	handler := TransactionsHandler(new(transactionsService), router, &Hooks{})
+	handler := TransactionsHandler(new(transactionsService), router, &Hooks{}, &securitySchemas{})
 
 	http.Handle("v1", handler)
+}
+
+type securitySchemas struct{}
+
+func (self *securitySchemas) SecuritySchemeBearer(r *http.Request, scheme SecurityScheme, name string, value string) error {
+	return nil
+}
+
+func (self *securitySchemas) SecuritySchemeBasic(r *http.Request, scheme SecurityScheme, name string, value string) error {
+	return nil
+}
+
+func (self *securitySchemas) SecuritySchemeCookie(r *http.Request, scheme SecurityScheme, name string, value string) error {
+	// value contains cookie's value, but it's still possible to get Cookie struct from request by its name
+	cookie, _ := r.Cookie(name)
+	if cookie != nil {
+		log.Printf("Cookie domain: %s", cookie.Domain)
+	}
+	return nil
 }
