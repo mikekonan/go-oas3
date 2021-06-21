@@ -163,5 +163,8 @@ components:
           type: string
           minLength: 8
           maxLength: 50
+        Details:
+          type: string
+          x-go-pointer: true
       required:
         - Description
