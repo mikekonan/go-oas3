@@ -13,6 +13,7 @@ import (
 const (
 	goType            = "x-go-type"
 	goTypeStringParse = "x-go-type-string-parse"
+	goPointer         = "x-go-pointer"
 	goRegex           = "x-go-regex"
 )
 
@@ -26,18 +27,13 @@ func (typ *Type) fillJsonTag(into *jen.Statement, name string) {
 }
 
 func (typ *Type) fillGoType(into *jen.Statement, parentTypeName string, typeName string, schemaRef *openapi3.SchemaRef, asPointer bool, needAliasing bool) {
-	if asPointer {
+	if asPointer || typ.getXGoPointer(schemaRef.Value) {
 		into.Op("*")
 	}
 
 	if pkg, typee, ok := typ.getXGoType(schemaRef.Value); ok {
 		if needAliasing {
 			into.Op("=")
-		}
-
-		if strings.HasPrefix(pkg, "*") {
-			pkg = pkg[1:]
-			into.Op("*")
 		}
 
 		into.Qual(pkg, typee)
@@ -177,6 +173,14 @@ func (typ *Type) hasXGoType(schema *openapi3.Schema) bool {
 	return false
 }
 
+func (typ *Type) hasXGoPointer(schema *openapi3.Schema) bool {
+	if len(schema.Extensions) > 0 && schema.Extensions[goPointer] != nil {
+		return true
+	}
+
+	return false
+}
+
 func (typ *Type) hasXGoTypeStringParse(schema *openapi3.Schema) bool {
 	if typ.hasXGoType(schema) && schema.Extensions[goTypeStringParse] != nil {
 		return true
@@ -186,7 +190,7 @@ func (typ *Type) hasXGoTypeStringParse(schema *openapi3.Schema) bool {
 }
 
 func (typ *Type) getXGoTypeStringParse(schema *openapi3.Schema) (string, string, bool) {
-	if typ.hasXGoType(schema) && schema.Extensions[goTypeStringParse] != nil {
+	if typ.hasXGoTypeStringParse(schema) {
 		var customType string
 
 		if err := json.Unmarshal(schema.Extensions[goTypeStringParse].(json.RawMessage), &customType); err != nil {
@@ -202,7 +206,7 @@ func (typ *Type) getXGoTypeStringParse(schema *openapi3.Schema) (string, string,
 }
 
 func (typ *Type) getXGoType(schema *openapi3.Schema) (string, string, bool) {
-	if typ.hasXGoType(schema) && schema.Extensions[goType] != nil {
+	if typ.hasXGoType(schema) {
 		var customType string
 
 		if err := json.Unmarshal(schema.Extensions[goType].(json.RawMessage), &customType); err != nil {
@@ -215,6 +219,18 @@ func (typ *Type) getXGoType(schema *openapi3.Schema) (string, string, bool) {
 	}
 
 	return "", "", false
+}
+
+func (typ *Type) getXGoPointer(schema *openapi3.Schema) bool {
+	var value = false
+
+	if typ.hasXGoPointer(schema) {
+		if err := json.Unmarshal(schema.Extensions[goPointer].(json.RawMessage), &value); err != nil {
+			panic(err)
+		}
+	}
+
+	return value
 }
 
 func (typ *Type) isCustomType(schema *openapi3.Schema) bool {
