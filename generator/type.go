@@ -36,11 +36,6 @@ func (typ *Type) fillGoType(into *jen.Statement, parentTypeName string, typeName
 			into.Op("=")
 		}
 
-		if strings.HasPrefix(pkg, "*") {
-			pkg = pkg[1:]
-			into.Op("*")
-		}
-
 		into.Qual(pkg, typee)
 		return
 	}
