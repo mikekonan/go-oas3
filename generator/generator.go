@@ -1989,44 +1989,13 @@ func (generator *Generator) responseBuilders(operationStruct operationStruct) je
 		SelectT(func(resp operationResponse) (results []jen.Code) {
 			hasHeaders := len(resp.Headers) > 0
 			hasContentTypes := len(resp.ContentTypeBodyNameMap) > 0
-			isRedirect := resp.StatusCode == "302"
+			isRedirect := resp.StatusCode == "302" && !hasHeaders && !hasContentTypes
 
-			//OK
-			if !hasHeaders && !hasContentTypes {
-				assemblerName := generator.assemblerName(operationStruct.Name + resp.StatusCode)
+			//prepend generated code in following order: assemble -> (optional: content type) -> (optional: headers) -> status codes
+			var nextBuilderName string
 
-				//statusCode -> assembler
-				results = append(results, generator.responseStatusCodeBuilder(isRedirect, resp.StatusCode, statusCodesBuilderName, assemblerName)...)
-
-				//assembler struct, build
-				results = append(results, generator.responseAssembler(assemblerName, operationStruct.InterfaceResponseName, operationStruct.ResponseName)...)
-
-				return
-			}
-
-			if hasHeaders && !hasContentTypes {
-				assemblerName := generator.assemblerName(operationStruct.Name + resp.StatusCode)
-				headersStructName := generator.headersStructName(operationStruct.Name + resp.StatusCode)
-				headersBuilderName := generator.headersBuilderName(operationStruct.PrivateName + resp.StatusCode)
-
-				//statusCode -> headersBuilder
-				results = append(results, generator.responseStatusCodeBuilder(false, resp.StatusCode, statusCodesBuilderName, headersBuilderName)...)
-
-				//headers -> assemble
-				results = append(results, generator.responseHeadersBuilder(resp.Headers, headersStructName, headersBuilderName, assemblerName)...)
-
-				//assembler struct, build
-				results = append(results, generator.responseAssembler(assemblerName, operationStruct.InterfaceResponseName, operationStruct.ResponseName)...)
-
-				return
-			}
-
-			if !hasHeaders && hasContentTypes {
+			if hasContentTypes {
 				contentTypeBuilderName := generator.contentTypeBuilderName(operationStruct.PrivateName + resp.StatusCode)
-
-				//statusCode -> contentType
-				results = append(results, generator.responseStatusCodeBuilder(false, resp.StatusCode, statusCodesBuilderName, contentTypeBuilderName)...)
-
 				//content-type struct
 				results = append(results, jen.Type().Id(contentTypeBuilderName).Struct(jen.Id("response")))
 
@@ -2051,46 +2020,22 @@ func (generator *Generator) responseBuilders(operationStruct operationStruct) je
 					}).ToSlice(&contentTypeBodyBuild)
 
 				results = generator.normalizer.doubleLineAfterEachElement(append(results, contentTypeBodyBuild...)...)
-
-				return
+				nextBuilderName = contentTypeBuilderName
+			} else {
+				//assembler struct, build
+				assemblerName := generator.assemblerName(operationStruct.Name + resp.StatusCode)
+				results = append(results, generator.responseAssembler(assemblerName, operationStruct.InterfaceResponseName, operationStruct.ResponseName)...)
+				nextBuilderName = assemblerName
 			}
 
-			if hasHeaders && hasContentTypes {
+			if hasHeaders {
 				headersStructName := generator.headersStructName(operationStruct.Name + resp.StatusCode)
 				headersBuilderName := generator.headersBuilderName(operationStruct.PrivateName + resp.StatusCode)
-				contentTypeBuilderName := generator.contentTypeBuilderName(operationStruct.PrivateName + resp.StatusCode)
-
-				//statusCode -> headersBuilder
-				results = append(results, generator.responseStatusCodeBuilder(false, resp.StatusCode, statusCodesBuilderName, headersBuilderName)...)
-
-				//headers -> content-type
-				results = append(results, generator.responseHeadersBuilder(resp.Headers, headersStructName, headersBuilderName, contentTypeBuilderName)...)
-
-				//content-type struct
-				results = append(results, jen.Type().Id(contentTypeBuilderName).Struct(jen.Id("response")))
-
-				var contentTypeBodyBuild []jen.Code
-
-				//content-types -> body -> build
-				linq.From(resp.ContentTypeBodyNameMap).
-					SelectT(func(kv linq.KeyValue) jen.Code {
-						var result []jen.Code
-
-						contentTypeName := cast.ToString(kv.Key)
-						contentType := cast.ToString(kv.Value)
-						bodyBuilderName := generator.bodyGeneratorName(operationStruct.PrivateName+resp.StatusCode, contentTypeName)
-						assemblerName := generator.assemblerName(operationStruct.Name + resp.StatusCode + generator.normalizer.contentType(contentTypeName))
-
-						result = append(result, generator.responseContentTypeBuilder(contentTypeName, contentType, contentTypeBuilderName, bodyBuilderName, assemblerName)...)
-
-						//assembler struct, build
-						results = append(results, generator.responseAssembler(assemblerName, operationStruct.InterfaceResponseName, operationStruct.ResponseName)...)
-
-						return jen.Null().Add(generator.normalizer.doubleLineAfterEachElement(result...)...)
-					}).ToSlice(&contentTypeBodyBuild)
-
-				results = generator.normalizer.doubleLineAfterEachElement(append(results, contentTypeBodyBuild...)...)
+				results = append(generator.responseHeadersBuilder(resp.Headers, headersStructName, headersBuilderName, nextBuilderName), results...)
+				nextBuilderName = headersBuilderName
 			}
+
+			results = append(generator.responseStatusCodeBuilder(isRedirect, resp.StatusCode, statusCodesBuilderName, nextBuilderName), results...)
 			return
 		}).
 		SelectManyT(func(builders []jen.Code) linq.Query { return linq.From(builders) }).
