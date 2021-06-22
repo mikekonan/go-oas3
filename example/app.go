@@ -57,11 +57,24 @@ func (t transactionsService) DeleteTransactionsUUID(ctx context.Context, request
 		Build()
 }
 
+type callbacksService struct{}
+
+func (c callbacksService) PostCallbacksCallbackType(ctx context.Context, request PostCallbacksCallbackTypeRequest) PostCallbacksCallbackTypeResponse {
+	return PostCallbacksCallbackTypeResponseBuilder().
+		StatusCode200().
+		Headers(PostCallbacksCallbackType200Headers{XJwsSignature: ""}).
+		SetCookie(http.Cookie{
+			Name:  "CookieName",
+			Value: "CookieValue",
+		}).ApplicationOctetStream().Body([]byte{}).Build()
+}
+
 func router() {
 	router := chi.NewRouter()
-	handler := TransactionsHandler(new(transactionsService), router, &Hooks{}, &securitySchemas{})
-
-	http.Handle("v1", handler)
+	router.Route("/v1", func(r chi.Router) {
+		TransactionsHandler(new(transactionsService), router, &Hooks{}, &securitySchemas{})
+		CallbacksHandler(new(callbacksService), router, &Hooks{}, &securitySchemas{})
+	})
 }
 
 type securitySchemas struct{}

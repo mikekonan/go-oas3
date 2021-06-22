@@ -1618,7 +1618,12 @@ func (generator *Generator) wrapper(name string, requestName string, routerName,
 		jen.For(jen.List(jen.Id("header"),
 			jen.Id("value")).Op(":=").Range().Id("response").Dot("headers").Call()).Block(
 			jen.Id("w").Dot("Header").Call().Dot("Set").Call(jen.Id("header"),
-				jen.Id("value"))))
+				jen.Id("value"))),
+		jen.Line().Line(),
+		jen.For(jen.List(jen.Id("_"),
+			jen.Id("c")).Op(":=").Range().Id("response").Dot("cookies").Call()).Block(
+			jen.Id("cookie").Op(":=").Id("c"),
+			jen.Qual("net/http", "SetCookie").Call(jen.Id("w"), jen.Op("&").Id("cookie"))))
 
 	funcCode = append(funcCode, jen.Line().Add(jen.Line()).
 		Add(jen.If(jen.Id("router").Dot("hooks").Dot("RequestProcessingCompleted").Op("!=").Id("nil")).Block(
@@ -1899,12 +1904,14 @@ func (generator *Generator) responseStruct() jen.Code {
 		jen.Id("contentType").Id("string"),
 		jen.Id("redirectURL").Id("string"),
 		jen.Id("headers").Map(jen.Id("string")).Id("string"),
+		jen.Id("cookies").Index().Qual("net/http", "Cookie"),
 	).Add(jen.Line().Line()).
 		Add(jen.Type().Id("responseInterface").Interface(
 			jen.Id("statusCode").Params().Id("int"),
 			jen.Id("body").Params().Interface(),
 			jen.Id("contentType").Params().Id("string"),
 			jen.Id("redirectURL").Params().Id("string"),
+			jen.Id("cookies").Params().Index().Qual("net/http", "Cookie"),
 			jen.Id("headers").Params().Map(jen.Id("string")).Id("string")))
 }
 
@@ -1950,9 +1957,15 @@ func (generator *Generator) responseType(name string) jen.Code {
 		)).
 		Add(jen.Line(), jen.Line()).
 		Add(jen.Func().Params(
-			jen.Id("response").Id(decapicalizedName + "Response")).Id("headers").Params().Params(
+			jen.Id("response").Id(decapicalizedName+"Response")).Id("headers").Params().Params(
 			jen.Map(jen.Id("string")).Id("string")).Block(
 			jen.Return().Id("response").Dot("response").Dot("headers"),
+		)).
+		Add(jen.Line(), jen.Line()).
+		Add(jen.Func().Params(
+			jen.Id("response").Id(decapicalizedName + "Response")).Id("cookies").Params().Params(
+			jen.Index().Qual("net/http", "Cookie")).Block(
+			jen.Return().Id("response").Dot("response").Dot("cookies"),
 		))
 
 	return jen.Null().Add(generator.normalizer.doubleLineAfterEachElement(interfaceDeclaration, declaration, interfaceImplementation)...)
@@ -2028,6 +2041,12 @@ func (generator *Generator) responseBuilders(operationStruct operationStruct) je
 				nextBuilderName = assemblerName
 			}
 
+			if resp.SetCookie {
+				cookiesBuilderName := generator.cookiesBuilderName(operationStruct.PrivateName + resp.StatusCode)
+				results = append(generator.responseCookiesBuilder(cookiesBuilderName, nextBuilderName), results...)
+				nextBuilderName = cookiesBuilderName
+			}
+
 			if hasHeaders {
 				headersStructName := generator.headersStructName(operationStruct.Name + resp.StatusCode)
 				headersBuilderName := generator.headersBuilderName(operationStruct.PrivateName + resp.StatusCode)
@@ -2080,6 +2099,21 @@ func (generator *Generator) responseHeadersBuilder(headers map[string]*openapi3.
 			jen.Id("builder").Dot("headers").Op("=").Id("headers").Dot("toMap").Call(),
 			jen.Line().Return().Op("&").Id(nextBuilderName).Values(jen.Id("response").Op(":").Id("builder").Dot("response")),
 		))
+	return
+}
+
+func (generator *Generator) responseCookiesBuilder(cookieBuilderName string, nextBuilderName string) (results []jen.Code) {
+	//headers builder struct
+	results = append(results, jen.Type().Id(cookieBuilderName).Struct(jen.Id("response")))
+
+	//headers builder.SetCookie(...)
+	results = append(results,
+		jen.Func().Params(jen.Id("builder").Op("*").Id(cookieBuilderName)).
+			Id("SetCookie").Params(
+			jen.Id("cookie").Op("...").Qual("net/http", "Cookie")).
+			Params(jen.Op("*").Id(nextBuilderName)).Block(
+			jen.Id("builder").Dot("cookies").Op("=").Id("cookie"),
+			jen.Return().Op("&").Id(nextBuilderName).Values(jen.Id("response").Op(":").Id("builder").Dot("response"))))
 	return
 }
 
@@ -2187,7 +2221,7 @@ func (generator *Generator) securitySchemas(swagger *openapi3.Swagger) jen.Code 
 						jen.Id("string"), jen.Id("string"),
 						jen.Id("bool")).Block(
 						jen.List(jen.Id("cookie"), jen.Id("err")).
-							Op(":=").Id("r").Dot("Cookie").Call(jen.Lit("JSESSIONID")).Line(),
+							Op(":=").Id("r").Dot("Cookie").Call(jen.Lit(schema.Value.Name)).Line(),
 						jen.If(jen.Id("err").Op("!=").Id("nil")).Block(jen.Return().List(jen.Lit(""), jen.Lit(""), jen.Id("false"))).Line(),
 						jen.Return().List(jen.Id("cookie").Dot("Name"), jen.Id("cookie").Dot("Value"), jen.Id("true")))
 				}
@@ -2297,6 +2331,10 @@ func (*Generator) headersBuilderName(name string) string {
 
 func (*Generator) headersStructName(name string) string {
 	return name + "Headers"
+}
+
+func (*Generator) cookiesBuilderName(name string) string {
+	return name + "CookiesBuilder"
 }
 
 func (*Generator) assemblerName(name string) string {

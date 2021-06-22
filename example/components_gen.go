@@ -50,19 +50,19 @@ func (body *CreateTransactionRequest) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	body.Currency = value.Currency
-	body.Details = value.Details
-	body.Email = value.Email
-	body.Title = value.Title
+	body.Amount = value.Amount
 	body.AmountCents = value.AmountCents
+	body.CallbackURL = value.CallbackURL
 	body.Country = value.Country
+	body.Currency = value.Currency
+	body.Email = value.Email
+	body.Details = value.Details
 	if !createTransactionRequestRegexParamRegex.MatchString(body.RegexParam) {
 		return fmt.Errorf("RegexParam not matched by the '^[.?\\d]+$' regex")
 	}
 	body.RegexParam = value.RegexParam
+	body.Title = value.Title
 	body.TransactionID = value.TransactionID
-	body.Amount = value.Amount
-	body.CallbackURL = value.CallbackURL
 
 	if value.Description == nil {
 		return fmt.Errorf("Description is required")
@@ -74,9 +74,9 @@ func (body *CreateTransactionRequest) UnmarshalJSON(data []byte) error {
 }
 func (body CreateTransactionRequest) Validate() error {
 	return validation.ValidateStruct(&body,
-		validation.Field(&body.Title, validation.RuneLength(8, 50)),
-		validation.Field(&body.Country, validation.RuneLength(2, 2)),
 		validation.Field(&body.Amount, validation.Min(0.009).Exclusive()),
+		validation.Field(&body.Country, validation.RuneLength(2, 2)),
+		validation.Field(&body.Title, validation.RuneLength(8, 50)),
 		validation.Field(&body.Description, validation.Required, validation.RuneLength(8, 100)))
 }
 
