@@ -1525,13 +1525,14 @@ func (generator *Generator) wrapperSecurity(name string, operation *openapi3.Ope
 		jen.Id("isLinkedChecksValid").Op(":=").Id("true"),
 		jen.Line().For(jen.List(jen.Id("_"),
 			jen.Id("processor")).Op(":=").Range().Id("processors")).Block(
-			jen.List(jen.Id("value"),
+			jen.List(jen.Id("name"), jen.Id("value"),
 				jen.Id("isExtracted")).Op(":=").Id("processor").Dot("extract").Call(jen.Id("r")),
 			jen.Line().If(jen.Op("!").Id("isExtracted")).Block(
 				jen.Id("isLinkedChecksValid").Op("=").Id("false"),
 				jen.Break()),
 			jen.Line().If(jen.Id("err").Op(":=").Id("processor").Dot("handle").Call(jen.Id("r"),
 				jen.Id("processor").Dot("scheme"),
+				jen.Id("name"),
 				jen.Id("value")),
 				jen.Id("err").Op("!=").Id("nil")).Block(
 				jen.If(jen.Id("router").Dot("hooks").Dot("RequestSecurityCheckFailed").Op("!=").Id("nil")).Block(
@@ -1617,7 +1618,12 @@ func (generator *Generator) wrapper(name string, requestName string, routerName,
 		jen.For(jen.List(jen.Id("header"),
 			jen.Id("value")).Op(":=").Range().Id("response").Dot("headers").Call()).Block(
 			jen.Id("w").Dot("Header").Call().Dot("Set").Call(jen.Id("header"),
-				jen.Id("value"))))
+				jen.Id("value"))),
+		jen.Line().Line(),
+		jen.For(jen.List(jen.Id("_"),
+			jen.Id("c")).Op(":=").Range().Id("response").Dot("cookies").Call()).Block(
+			jen.Id("cookie").Op(":=").Id("c"),
+			jen.Qual("net/http", "SetCookie").Call(jen.Id("w"), jen.Op("&").Id("cookie"))))
 
 	funcCode = append(funcCode, jen.Line().Add(jen.Line()).
 		Add(jen.If(jen.Id("router").Dot("hooks").Dot("RequestProcessingCompleted").Op("!=").Id("nil")).Block(
@@ -1728,6 +1734,7 @@ func (generator *Generator) requestResponseBuilders(swagger *openapi3.Swagger) j
 type operationResponse struct {
 	ContentTypeBodyNameMap map[string]string
 	Headers                map[string]*openapi3.HeaderRef
+	SetCookie              bool
 	StatusCode             string
 }
 
@@ -1758,7 +1765,17 @@ func (generator *Generator) builders(swagger *openapi3.Swagger) (result jen.Code
 					linq.From(operation.Responses).
 						SelectT(func(kv linq.KeyValue) (response operationResponse) {
 							response.ContentTypeBodyNameMap = map[string]string{}
-							response.Headers = kv.Value.(*openapi3.ResponseRef).Value.Headers
+
+							headers := map[string]*openapi3.HeaderRef{}
+							for k, v := range kv.Value.(*openapi3.ResponseRef).Value.Headers {
+								if strings.ToLower(k) == "set-cookie" {
+									response.SetCookie = true
+									continue
+								}
+								headers[k] = v
+							}
+
+							response.Headers = headers
 
 							linq.From(kv.Value.(*openapi3.ResponseRef).Value.Content).
 								ToMapByT(&response.ContentTypeBodyNameMap,
@@ -1887,12 +1904,14 @@ func (generator *Generator) responseStruct() jen.Code {
 		jen.Id("contentType").Id("string"),
 		jen.Id("redirectURL").Id("string"),
 		jen.Id("headers").Map(jen.Id("string")).Id("string"),
+		jen.Id("cookies").Index().Qual("net/http", "Cookie"),
 	).Add(jen.Line().Line()).
 		Add(jen.Type().Id("responseInterface").Interface(
 			jen.Id("statusCode").Params().Id("int"),
 			jen.Id("body").Params().Interface(),
 			jen.Id("contentType").Params().Id("string"),
 			jen.Id("redirectURL").Params().Id("string"),
+			jen.Id("cookies").Params().Index().Qual("net/http", "Cookie"),
 			jen.Id("headers").Params().Map(jen.Id("string")).Id("string")))
 }
 
@@ -1938,9 +1957,15 @@ func (generator *Generator) responseType(name string) jen.Code {
 		)).
 		Add(jen.Line(), jen.Line()).
 		Add(jen.Func().Params(
-			jen.Id("response").Id(decapicalizedName + "Response")).Id("headers").Params().Params(
+			jen.Id("response").Id(decapicalizedName+"Response")).Id("headers").Params().Params(
 			jen.Map(jen.Id("string")).Id("string")).Block(
 			jen.Return().Id("response").Dot("response").Dot("headers"),
+		)).
+		Add(jen.Line(), jen.Line()).
+		Add(jen.Func().Params(
+			jen.Id("response").Id(decapicalizedName + "Response")).Id("cookies").Params().Params(
+			jen.Index().Qual("net/http", "Cookie")).Block(
+			jen.Return().Id("response").Dot("response").Dot("cookies"),
 		))
 
 	return jen.Null().Add(generator.normalizer.doubleLineAfterEachElement(interfaceDeclaration, declaration, interfaceImplementation)...)
@@ -1977,96 +2002,13 @@ func (generator *Generator) responseBuilders(operationStruct operationStruct) je
 		SelectT(func(resp operationResponse) (results []jen.Code) {
 			hasHeaders := len(resp.Headers) > 0
 			hasContentTypes := len(resp.ContentTypeBodyNameMap) > 0
-			isRedirect := resp.StatusCode == "302"
+			isRedirect := resp.StatusCode == "302" && !hasHeaders && !hasContentTypes
 
-			//OK
-			if !hasHeaders && !hasContentTypes {
-				//assembler struct
-				assemblerName := generator.assemblerName(operationStruct.Name + resp.StatusCode)
-				results = append(results, jen.Type().Id(assemblerName).Struct(jen.Id("response")))
+			//prepend generated code in following order: assemble -> (optional: content type) -> (optional: headers) -> status codes
+			var nextBuilderName string
 
-				//statusCode -> assembler
-				if isRedirect {
-					results = append(results, jen.Func().Params(
-						jen.Id("builder").Op("*").Id(statusCodesBuilderName)).Id("StatusCode"+resp.StatusCode).Params(jen.Id("redirectURL").String()).Params(
-						jen.Op("*").Id(assemblerName)).Block(
-						jen.Id("builder").Dot("response").Dot("statusCode").Op("=").Lit(cast.ToInt(resp.StatusCode)),
-						jen.Id("builder").Dot("response").Dot("redirectURL").Op("=").Id("redirectURL"),
-						jen.Line().Return().Op("&").Id(assemblerName).Values(jen.Id("response").Op(":").Id("builder").Dot("response")),
-					))
-				} else {
-					results = append(results, jen.Func().Params(
-						jen.Id("builder").Op("*").Id(statusCodesBuilderName)).Id("StatusCode"+resp.StatusCode).Params().Params(
-						jen.Op("*").Id(assemblerName)).Block(
-						jen.Id("builder").Dot("response").Dot("statusCode").Op("=").Lit(cast.ToInt(resp.StatusCode)),
-						jen.Line().Return().Op("&").Id(assemblerName).Values(jen.Id("response").Op(":").Id("builder").Dot("response")),
-					))
-				}
-
-				//build
-				results = append(results, jen.Func().Params(
-					jen.Id("builder").Op("*").Id(assemblerName)).Id("Build").Params().Params(
-					jen.Id(operationStruct.InterfaceResponseName)).Block(
-					jen.Return().Id(operationStruct.ResponseName).Values(jen.Id("response").Op(":").Id("builder").Dot("response"))),
-				)
-
-				return
-			}
-
-			if hasHeaders && !hasContentTypes {
-				headersStructName := generator.headersStructName(operationStruct.Name + resp.StatusCode)
-				headersBuilderName := generator.headersBuilderName(operationStruct.PrivateName + resp.StatusCode)
-
-				//headers struct
-				results = append(results, generator.headersStruct(headersStructName, resp.Headers))
-
-				//statusCode -> headersStruct
-				results = append(results, jen.Func().Params(
-					jen.Id("builder").Op("*").Id(statusCodesBuilderName)).Id("StatusCode"+resp.StatusCode).Params().Params(
-					jen.Op("*").Id(headersBuilderName)).Block(
-					jen.Id("builder").Dot("response").Dot("statusCode").Op("=").Lit(cast.ToInt(resp.StatusCode)),
-					jen.Line().Return().Op("&").Id(headersBuilderName).Values(jen.Id("response").Op(":").Id("builder").Dot("response")),
-				))
-
-				//headersStruct struct
-				results = append(results, jen.Type().Id(headersBuilderName).Struct(jen.Id("response")))
-
-				assemblerName := generator.assemblerName(operationStruct.Name + resp.StatusCode)
-
-				//headers -> assemble
-				results = append(results,
-					jen.Func().Params(
-						jen.Id("builder").Op("*").Id(headersBuilderName)).Id("Headers").Params(
-						jen.Id("headers").Id(headersStructName)).Params(
-						jen.Op("*").Id(assemblerName)).Block(
-						jen.Id("builder").Dot("headers").Op("=").Id("headers").Dot("toMap").Call(),
-						jen.Line().Return().Op("&").Id(assemblerName).Values(jen.Id("response").Op(":").Id("builder").Dot("response")),
-					))
-
-				//assembler struct
-				results = append(results, jen.Type().Id(assemblerName).Struct(jen.Id("response")))
-
-				//assemble
-				results = append(results, jen.Func().Params(
-					jen.Id("builder").Op("*").Id(assemblerName)).Id("Build").Params().Params(
-					jen.Id(operationStruct.InterfaceResponseName)).Block(
-					jen.Return().Id(operationStruct.ResponseName).Values(jen.Id("response").Op(":").Id("builder").Dot("response"))),
-				)
-
-				return
-			}
-
-			if !hasHeaders && hasContentTypes {
+			if hasContentTypes {
 				contentTypeBuilderName := generator.contentTypeBuilderName(operationStruct.PrivateName + resp.StatusCode)
-
-				//statusCode -> contentType
-				results = append(results, jen.Func().Params(
-					jen.Id("builder").Op("*").Id(statusCodesBuilderName)).Id("StatusCode"+resp.StatusCode).Params().Params(
-					jen.Op("*").Id(contentTypeBuilderName)).Block(
-					jen.Id("builder").Dot("response").Dot("statusCode").Op("=").Lit(cast.ToInt(resp.StatusCode)),
-					jen.Line().Return().Op("&").Id(contentTypeBuilderName).Values(jen.Id("response").Op(":").Id("builder").Dot("response")),
-				))
-
 				//content-type struct
 				results = append(results, jen.Type().Id(contentTypeBuilderName).Struct(jen.Id("response")))
 
@@ -2077,136 +2019,139 @@ func (generator *Generator) responseBuilders(operationStruct operationStruct) je
 					SelectT(func(kv linq.KeyValue) jen.Code {
 						var result []jen.Code
 
-						contentType := cast.ToString(kv.Key)
-						contentTypeFuncName := generator.contentTypeFuncName(contentType)
-						bodyBuilderName := generator.bodyGeneratorName(operationStruct.PrivateName+resp.StatusCode, contentType)
+						contentTypeName := cast.ToString(kv.Key)
+						contentType := cast.ToString(kv.Value)
+						bodyBuilderName := generator.bodyGeneratorName(operationStruct.PrivateName+resp.StatusCode, contentTypeName)
+						assemblerName := generator.assemblerName(operationStruct.Name + resp.StatusCode + generator.normalizer.contentType(contentTypeName))
 
-						//content-type -> body
-						result = append(result, jen.Func().Params(
-							jen.Id("builder").Op("*").Id(contentTypeBuilderName)).Id(contentTypeFuncName).Params().Params(
-							jen.Op("*").Id(bodyBuilderName)).Block(
-							jen.Id("builder").Dot("response").Dot("contentType").Op("=").Lit(contentType),
-							jen.Line().Return().Op("&").Id(bodyBuilderName).Values(jen.Id("response").Op(":").Id("builder").Dot("response")),
-						))
+						result = append(result, generator.responseContentTypeBuilder(contentTypeName, contentType, contentTypeBuilderName, bodyBuilderName, assemblerName)...)
 
-						//body struct
-						result = append(result, jen.Type().Id(bodyBuilderName).Struct(jen.Id("response")))
-
-						assemblerName := generator.assemblerName(operationStruct.Name + resp.StatusCode + generator.normalizer.contentType(contentType))
-
-						//body builder
-						result = append(result, jen.Func().Params(
-							jen.Id("builder").Op("*").Id(bodyBuilderName)).Id("Body").Params(
-							jen.Id("body").Qual(generator.config.ComponentsPackage, cast.ToString(kv.Value))).Params(
-							jen.Op("*").Id(assemblerName)).Block(
-							jen.Id("builder").Dot("response").Dot("body").Op("=").Id("body"),
-							jen.Line().Return().Op("&").Id(assemblerName).Values(jen.Id("response").Op(":").Id("builder").Dot("response")),
-						))
-
-						//assembler struct
-						results = append(results, jen.Type().Id(assemblerName).Struct(jen.Id("response")))
-
-						//assemble
-						results = append(results, jen.Func().Params(
-							jen.Id("builder").Op("*").Id(assemblerName)).Id("Build").Params().Params(
-							jen.Id(operationStruct.InterfaceResponseName)).Block(
-							jen.Return().Id(operationStruct.ResponseName).Values(jen.Id("response").Op(":").Id("builder").Dot("response"))),
-						)
+						//assembler struct, build
+						results = append(results, generator.responseAssembler(assemblerName, operationStruct.InterfaceResponseName, operationStruct.ResponseName)...)
 
 						return jen.Null().Add(generator.normalizer.doubleLineAfterEachElement(result...)...)
 					}).ToSlice(&contentTypeBodyBuild)
 
 				results = generator.normalizer.doubleLineAfterEachElement(append(results, contentTypeBodyBuild...)...)
-
-				return
+				nextBuilderName = contentTypeBuilderName
+			} else {
+				//assembler struct, build
+				assemblerName := generator.assemblerName(operationStruct.Name + resp.StatusCode)
+				results = append(results, generator.responseAssembler(assemblerName, operationStruct.InterfaceResponseName, operationStruct.ResponseName)...)
+				nextBuilderName = assemblerName
 			}
 
-			if hasHeaders && hasContentTypes {
+			if resp.SetCookie {
+				cookiesBuilderName := generator.cookiesBuilderName(operationStruct.PrivateName + resp.StatusCode)
+				results = append(generator.responseCookiesBuilder(cookiesBuilderName, nextBuilderName), results...)
+				nextBuilderName = cookiesBuilderName
+			}
+
+			if hasHeaders {
 				headersStructName := generator.headersStructName(operationStruct.Name + resp.StatusCode)
 				headersBuilderName := generator.headersBuilderName(operationStruct.PrivateName + resp.StatusCode)
-
-				//statusCode -> headers
-				results = append(results, jen.Func().Params(
-					jen.Id("builder").Op("*").Id(statusCodesBuilderName)).Id("StatusCode"+resp.StatusCode).Params().Params(
-					jen.Op("*").Id(headersBuilderName)).Block(
-					jen.Id("builder").Dot("response").Dot("statusCode").Op("=").Lit(cast.ToInt(resp.StatusCode)),
-					jen.Line().Return().Op("&").Id(headersBuilderName).Values(jen.Id("response").Op(":").Id("builder").Dot("response")),
-				))
-
-				//headers struct
-				results = append(results, generator.headersStruct(headersStructName, resp.Headers))
-
-				//headers builder struct
-				results = append(results, jen.Type().Id(headersBuilderName).Struct(jen.Id("response")))
-
-				//headers -> content-type
-				contentTypeBuilderName := generator.contentTypeBuilderName(operationStruct.PrivateName + resp.StatusCode)
-				results = append(results,
-					jen.Func().Params(
-						jen.Id("builder").Op("*").Id(headersBuilderName)).Id("Headers").Params(
-						jen.Id("headers").Id(headersStructName)).Params(
-						jen.Op("*").Id(contentTypeBuilderName)).Block(
-						jen.Id("builder").Dot("headers").Op("=").Id("headers").Dot("toMap").Call(),
-						jen.Line().Return().Op("&").Id(contentTypeBuilderName).Values(jen.Id("response").Op(":").Id("builder").Dot("response")),
-					))
-
-				//content-type struct
-				results = append(results, jen.Type().Id(contentTypeBuilderName).Struct(jen.Id("response")))
-
-				var contentTypeBodyBuild []jen.Code
-
-				//content-types -> body -> build
-				linq.From(resp.ContentTypeBodyNameMap).
-					SelectT(func(kv linq.KeyValue) jen.Code {
-						var result []jen.Code
-
-						contentType := cast.ToString(kv.Key)
-						contentTypeFuncName := generator.contentTypeFuncName(contentType)
-						bodyBuilderName := generator.bodyGeneratorName(operationStruct.PrivateName+resp.StatusCode, contentType)
-
-						//content-type -> body
-						result = append(result, jen.Func().Params(
-							jen.Id("builder").Op("*").Id(contentTypeBuilderName)).Id(contentTypeFuncName).Params().Params(
-							jen.Op("*").Id(bodyBuilderName)).Block(
-							jen.Id("builder").Dot("response").Dot("contentType").Op("=").Lit(contentType),
-							jen.Line().Return().Op("&").Id(bodyBuilderName).Values(jen.Id("response").Op(":").Id("builder").Dot("response")),
-						))
-
-						//body struct
-						result = append(result, jen.Type().Id(bodyBuilderName).Struct(jen.Id("response")))
-
-						assemblerName := generator.assemblerName(operationStruct.Name + resp.StatusCode + generator.normalizer.contentType(contentType))
-
-						//body builder
-						result = append(result, jen.Func().Params(
-							jen.Id("builder").Op("*").Id(bodyBuilderName)).Id("Body").Params(
-							jen.Id("body").Qual(generator.config.ComponentsPackage, cast.ToString(kv.Value))).Params(
-							jen.Op("*").Id(assemblerName)).Block(
-							jen.Id("builder").Dot("response").Dot("body").Op("=").Id("body"),
-							jen.Line().Return().Op("&").Id(assemblerName).Values(jen.Id("response").Op(":").Id("builder").Dot("response")),
-						))
-
-						//assembler struct
-						results = append(results, jen.Type().Id(assemblerName).Struct(jen.Id("response")))
-
-						//assemble
-						results = append(results, jen.Func().Params(
-							jen.Id("builder").Op("*").Id(assemblerName)).Id("Build").Params().Params(
-							jen.Id(operationStruct.InterfaceResponseName)).Block(
-							jen.Return().Id(operationStruct.ResponseName).Values(jen.Id("response").Op(":").Id("builder").Dot("response"))),
-						)
-
-						return jen.Null().Add(generator.normalizer.doubleLineAfterEachElement(result...)...)
-					}).ToSlice(&contentTypeBodyBuild)
-
-				results = generator.normalizer.doubleLineAfterEachElement(append(results, contentTypeBodyBuild...)...)
+				results = append(generator.responseHeadersBuilder(resp.Headers, headersStructName, headersBuilderName, nextBuilderName), results...)
+				nextBuilderName = headersBuilderName
 			}
+
+			results = append(generator.responseStatusCodeBuilder(isRedirect, resp.StatusCode, statusCodesBuilderName, nextBuilderName), results...)
 			return
 		}).
 		SelectManyT(func(builders []jen.Code) linq.Query { return linq.From(builders) }).
 		ToSlice(&results)
 
 	return jen.Null().Add(generator.normalizer.doubleLineAfterEachElement(append([]jen.Code{structBuilder, structConstructor}, results...)...)...)
+}
+
+func (generator *Generator) responseStatusCodeBuilder(isRedirect bool, statusCode string, builderName string, nextBuilderName string) (results []jen.Code) {
+	if isRedirect {
+		results = append(results, jen.Func().Params(
+			jen.Id("builder").Op("*").Id(builderName)).Id("StatusCode"+statusCode).Params(jen.Id("redirectURL").String()).Params(
+			jen.Op("*").Id(nextBuilderName)).Block(
+			jen.Id("builder").Dot("response").Dot("statusCode").Op("=").Lit(cast.ToInt(statusCode)),
+			jen.Id("builder").Dot("response").Dot("redirectURL").Op("=").Id("redirectURL"),
+			jen.Line().Return().Op("&").Id(nextBuilderName).Values(jen.Id("response").Op(":").Id("builder").Dot("response")),
+		))
+	} else {
+		results = append(results, jen.Func().Params(
+			jen.Id("builder").Op("*").Id(builderName)).Id("StatusCode"+statusCode).Params().Params(
+			jen.Op("*").Id(nextBuilderName)).Block(
+			jen.Id("builder").Dot("response").Dot("statusCode").Op("=").Lit(cast.ToInt(statusCode)),
+			jen.Line().Return().Op("&").Id(nextBuilderName).Values(jen.Id("response").Op(":").Id("builder").Dot("response")),
+		))
+	}
+	return
+}
+
+func (generator *Generator) responseHeadersBuilder(headers map[string]*openapi3.HeaderRef, headersStructName string, headersBuilderName string, nextBuilderName string) (results []jen.Code) {
+	//headers struct
+	results = append(results, generator.headersStruct(headersStructName, headers))
+
+	//headers builder struct
+	results = append(results, jen.Type().Id(headersBuilderName).Struct(jen.Id("response")))
+
+	//headers builder.Headers(...)
+	results = append(results,
+		jen.Func().Params(
+			jen.Id("builder").Op("*").Id(headersBuilderName)).Id("Headers").Params(
+			jen.Id("headers").Id(headersStructName)).Params(
+			jen.Op("*").Id(nextBuilderName)).Block(
+			jen.Id("builder").Dot("headers").Op("=").Id("headers").Dot("toMap").Call(),
+			jen.Line().Return().Op("&").Id(nextBuilderName).Values(jen.Id("response").Op(":").Id("builder").Dot("response")),
+		))
+	return
+}
+
+func (generator *Generator) responseCookiesBuilder(cookieBuilderName string, nextBuilderName string) (results []jen.Code) {
+	//headers builder struct
+	results = append(results, jen.Type().Id(cookieBuilderName).Struct(jen.Id("response")))
+
+	//headers builder.SetCookie(...)
+	results = append(results,
+		jen.Func().Params(jen.Id("builder").Op("*").Id(cookieBuilderName)).
+			Id("SetCookie").Params(
+			jen.Id("cookie").Op("...").Qual("net/http", "Cookie")).
+			Params(jen.Op("*").Id(nextBuilderName)).Block(
+			jen.Id("builder").Dot("cookies").Op("=").Id("cookie"),
+			jen.Return().Op("&").Id(nextBuilderName).Values(jen.Id("response").Op(":").Id("builder").Dot("response"))))
+	return
+}
+
+func (generator *Generator) responseContentTypeBuilder(contentTypeName string, contentType string, contentTypeBuilderName string, bodyBuilderName string, nextBuilderName string) (results []jen.Code) {
+	//content-type -> body
+	contentTypeFuncName := generator.contentTypeFuncName(contentTypeName)
+	results = append(results, jen.Func().Params(
+		jen.Id("builder").Op("*").Id(contentTypeBuilderName)).Id(contentTypeFuncName).Params().Params(
+		jen.Op("*").Id(bodyBuilderName)).Block(
+		jen.Id("builder").Dot("response").Dot("contentType").Op("=").Lit(contentTypeName),
+		jen.Line().Return().Op("&").Id(bodyBuilderName).Values(jen.Id("response").Op(":").Id("builder").Dot("response")),
+	))
+
+	//body struct
+	results = append(results, jen.Type().Id(bodyBuilderName).Struct(jen.Id("response")))
+
+	//body builder
+	results = append(results, jen.Func().Params(
+		jen.Id("builder").Op("*").Id(bodyBuilderName)).Id("Body").Params(
+		jen.Id("body").Qual(generator.config.ComponentsPackage, contentType)).Params(
+		jen.Op("*").Id(nextBuilderName)).Block(
+		jen.Id("builder").Dot("response").Dot("body").Op("=").Id("body"),
+		jen.Line().Return().Op("&").Id(nextBuilderName).Values(jen.Id("response").Op(":").Id("builder").Dot("response")),
+	))
+	return
+}
+
+func (generator *Generator) responseAssembler(assemblerName string, interfaceResponseName string, responseName string) (results []jen.Code) {
+	//assembler struct
+	results = append(results, jen.Type().Id(assemblerName).Struct(jen.Id("response")))
+
+	//assembler.Build()
+	results = append(results, jen.Func().Params(
+		jen.Id("builder").Op("*").Id(assemblerName)).Id("Build").Params().Params(
+		jen.Id(interfaceResponseName)).Block(
+		jen.Return().Id(responseName).Values(jen.Id("response").Op(":").Id("builder").Dot("response"))),
+	)
+	return
 }
 
 func (generator *Generator) securitySchemas(swagger *openapi3.Swagger) jen.Code {
@@ -2226,9 +2171,9 @@ func (generator *Generator) securitySchemas(swagger *openapi3.Swagger) jen.Code 
 		Type().Id("securityProcessor").Struct(
 		jen.Id("scheme").Id("SecurityScheme"),
 		jen.Id("extract").Func().Params(jen.Id("r").Op("*").Qual("net/http", "Request")).
-			Params(jen.Id("string"), jen.Id("bool")),
+			Params(jen.Id("string"), jen.Id("string"), jen.Id("bool")),
 		jen.Id("handle").Func().Params(jen.Id("r").Op("*").Qual("net/http", "Request"),
-			jen.Id("scheme").Id("SecurityScheme"),
+			jen.Id("scheme").Id("SecurityScheme"), jen.Id("name").Id("string"),
 			jen.Id("value").Id("string")).Params(
 			jen.Id("error")))
 
@@ -2250,23 +2195,36 @@ func (generator *Generator) securitySchemas(swagger *openapi3.Swagger) jen.Code 
 				}
 
 				return jen.Line().Id("SecurityScheme"+strings.Title(name)).Op(":").Func().Params(
-					jen.Id("r").Op("*").Qual("net/http", "Request")).Params(jen.Id("string"),
+					jen.Id("r").Op("*").Qual("net/http", "Request")).Params(jen.Id("string"), jen.Id("string"),
 					jen.Id("bool")).Block(
 					jen.Id("value").Op(":=").Id("r").Dot("Header").Dot("Get").Call(jen.Lit("Authorization")).Line(),
-					jen.If(ifStatement).Block(jen.Return().List(jen.Lit(""), jen.Id("false"))).Line(),
+					jen.If(ifStatement).Block(jen.Return().List(jen.Lit(""), jen.Lit(""), jen.Id("false"))).Line(),
 					assignment.Line(),
-					jen.Return().List(jen.Id("value"), jen.Id("value").Op("!=").Lit("")))
+					jen.Return().List(jen.Lit(schema.Value.Name), jen.Id("value"), jen.Id("value").Op("!=").Lit("")))
 			}
 
 			if schema.Value.Type == "apiKey" {
-				return jen.Line().Id("SecurityScheme"+strings.Title(name)).Op(":").Func().Params(
-					jen.Id("r").Op("*").Qual("net/http",
-						"Request")).Params(
-					jen.Id("string"),
-					jen.Id("bool")).Block(
-					jen.Id("value").Op(":=").Id("r").Dot("Header").Dot("Get").Call(jen.Lit(schema.Value.Name)).Line(),
-					jen.Return().List(jen.Id("value"),
-						jen.Id("value").Op("!=").Lit("")))
+				switch schema.Value.In {
+				case "header":
+					return jen.Line().Id("SecurityScheme"+strings.Title(name)).Op(":").Func().Params(
+						jen.Id("r").Op("*").Qual("net/http",
+							"Request")).Params(
+						jen.Id("string"), jen.Id("string"),
+						jen.Id("bool")).Block(
+						jen.Id("value").Op(":=").Id("r").Dot("Header").Dot("Get").Call(jen.Lit(schema.Value.Name)).Line(),
+						jen.Return().List(jen.Lit(schema.Value.Name), jen.Id("value"),
+							jen.Id("value").Op("!=").Lit("")))
+				case "cookie":
+					return jen.Line().Id("SecurityScheme"+strings.Title(name)).Op(":").Func().Params(
+						jen.Id("r").Op("*").Qual("net/http",
+							"Request")).Params(
+						jen.Id("string"), jen.Id("string"),
+						jen.Id("bool")).Block(
+						jen.List(jen.Id("cookie"), jen.Id("err")).
+							Op(":=").Id("r").Dot("Cookie").Call(jen.Lit(schema.Value.Name)).Line(),
+						jen.If(jen.Id("err").Op("!=").Id("nil")).Block(jen.Return().List(jen.Lit(""), jen.Lit(""), jen.Id("false"))).Line(),
+						jen.Return().List(jen.Id("cookie").Dot("Name"), jen.Id("cookie").Dot("Value"), jen.Id("true")))
+				}
 			}
 
 			return jen.Null()
@@ -2275,7 +2233,7 @@ func (generator *Generator) securitySchemas(swagger *openapi3.Swagger) jen.Code 
 	extractorsHeadersFuncs = append(extractorsHeadersFuncs, jen.Line())
 
 	code = code.Line().Line().Var().Id("securityExtractorsFuncs").Op("=").Map(jen.Id("SecurityScheme")).Func().Params(
-		jen.Id("r").Op("*").Qual("net/http", "Request")).Params(jen.Id("string"),
+		jen.Id("r").Op("*").Qual("net/http", "Request")).Params(jen.Id("string"), jen.Id("string"),
 		jen.Id("bool")).Values(extractorsHeadersFuncs...)
 
 	var interfaceFuncs []jen.Code
@@ -2286,6 +2244,7 @@ func (generator *Generator) securitySchemas(swagger *openapi3.Swagger) jen.Code 
 				jen.Id("r").Op("*").Qual("net/http",
 					"Request"),
 				jen.Id("scheme").Id("SecurityScheme"),
+				jen.Id("name").Id("string"),
 				jen.Id("value").Id("string")).Params(
 				jen.Id("error"))
 		}).ToSlice(&interfaceFuncs)
@@ -2372,6 +2331,10 @@ func (*Generator) headersBuilderName(name string) string {
 
 func (*Generator) headersStructName(name string) string {
 	return name + "Headers"
+}
+
+func (*Generator) cookiesBuilderName(name string) string {
+	return name + "CookiesBuilder"
 }
 
 func (*Generator) assemblerName(name string) string {

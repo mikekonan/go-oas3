@@ -2,10 +2,9 @@ package example
 
 import (
 	"context"
+	"github.com/go-chi/chi"
 	"log"
 	"net/http"
-
-	"github.com/go-chi/chi"
 )
 
 type transactionsService struct{}
@@ -58,9 +57,41 @@ func (t transactionsService) DeleteTransactionsUUID(ctx context.Context, request
 		Build()
 }
 
+type callbacksService struct{}
+
+func (c callbacksService) PostCallbacksCallbackType(ctx context.Context, request PostCallbacksCallbackTypeRequest) PostCallbacksCallbackTypeResponse {
+	return PostCallbacksCallbackTypeResponseBuilder().
+		StatusCode200().
+		Headers(PostCallbacksCallbackType200Headers{XJwsSignature: ""}).
+		SetCookie(http.Cookie{
+			Name:  "CookieName",
+			Value: "CookieValue",
+		}).ApplicationOctetStream().Body([]byte{}).Build()
+}
+
 func router() {
 	router := chi.NewRouter()
-	handler := TransactionsHandler(new(transactionsService), router, &Hooks{})
+	router.Route("/v1", func(r chi.Router) {
+		TransactionsHandler(new(transactionsService), router, &Hooks{}, &securitySchemas{})
+		CallbacksHandler(new(callbacksService), router, &Hooks{}, &securitySchemas{})
+	})
+}
 
-	http.Handle("v1", handler)
+type securitySchemas struct{}
+
+func (self *securitySchemas) SecuritySchemeBearer(r *http.Request, scheme SecurityScheme, name string, value string) error {
+	return nil
+}
+
+func (self *securitySchemas) SecuritySchemeBasic(r *http.Request, scheme SecurityScheme, name string, value string) error {
+	return nil
+}
+
+func (self *securitySchemas) SecuritySchemeCookie(r *http.Request, scheme SecurityScheme, name string, value string) error {
+	// value contains cookie's value, but it's still possible to get Cookie struct from request by its name
+	cookie, _ := r.Cookie(name)
+	if cookie != nil {
+		log.Printf("Cookie domain: %s", cookie.Domain)
+	}
+	return nil
 }
