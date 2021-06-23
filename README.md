@@ -9,7 +9,7 @@ The purpose of this project is to generate a clean server boilerplate code from 
 Take a note that path stubs generation relies on the **first tag** from your paths.
 ## Installation
 ```
-GO111MODULE=on go get github.com/mikekonan/go-oas3@v1.0.35
+GO111MODULE=on go get github.com/mikekonan/go-oas3@v1.0.36
 ```
 ## Program arguments
 ```
@@ -84,10 +84,6 @@ If you want to use your specific type(it has to declare function ```Parse{TYPENA
       x-go-type: githubrepo/lib/pkg.{TYPENAME}
       x-go-type-string-parse: githubrepo/lib/pkg.Parse{TYPENAME}
 ```
-
-## Plans
-
-- [ ] Support cookies in security schemas.
 
 ## Have a question or need some functionality?
 Feel free to discuss it or do a PR.
