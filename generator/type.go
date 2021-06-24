@@ -32,7 +32,7 @@ func (typ *Type) fillGoType(into *jen.Statement, parentTypeName string, typeName
 		into.Op("*")
 	}
 
-	if pkg, typee, ok := typ.getXGoType(schemaRef.Value); ok {
+	if pkg, typee, ok := typ.getXGoType(schemaRef.Value); ok && schemaRef.Value.AdditionalProperties == nil {
 		if needAliasing {
 			into.Op("=")
 		}
@@ -79,29 +79,18 @@ func (typ *Type) fillGoType(into *jen.Statement, parentTypeName string, typeName
 		}
 
 		if schema.AdditionalProperties != nil {
-			if keyPkg, key, keyIsType, valuePkg, value, valueIsType, isValueArr, found := typ.getXGoMapType(schema); found {
-				if keyIsType {
-					into.Map(jen.Qual(keyPkg, key))
-				} else {
-					into.Map(jen.Id(keyPkg))
-				}
+			keyCode := jen.Null()
 
-				if isValueArr {
-					into.Index()
-				}
-
-				if valueIsType {
-					into.Qual(valuePkg, value)
-				} else {
-					into.Id(keyPkg)
-				}
-
-				return
+			keyPkg, keyValue, ok := typ.getXGoType(schemaRef.Value)
+			if ok {
+				keyCode.Qual(keyPkg, keyValue)
+			} else {
+				keyCode.String()
 			}
 
-			into.Map(jen.Id("string"))
+			into.Map(keyCode)
 
-			typ.fillGoType(into, parentTypeName, typeName, schema.AdditionalProperties, false, needAliasing)
+			typ.fillGoType(into, parentTypeName, typeName, schema.AdditionalProperties, false, false)
 
 			//TODO: ANONYMOUS MAP ENTRIES
 			//if schema.AdditionalProperties.Ref != "" {
