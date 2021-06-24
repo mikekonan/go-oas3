@@ -85,6 +85,18 @@ If you want to use your specific type(it has to declare function ```Parse{TYPENA
       x-go-type-string-parse: githubrepo/lib/pkg.Parse{TYPENAME}
 ```
 
+If you want to have a specific go map you can use `x-go-map-type` property. It works only if additionalProperties specified.
+As key, you can have go scalars or specific types. Also slice values supported.
+```
+    ResponseBody:
+      type: object
+      additionalProperties:
+        items:
+          $ref: '#/components/schemas/IntegrationType'
+        type: array
+      x-go-map-type: map[githubrepo/objects.SomeType][]githubrepo/objects.OtherType
+```
+
 ## Have a question or need some functionality?
 Feel free to discuss it or do a PR.
 
