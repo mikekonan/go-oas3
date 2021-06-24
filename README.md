@@ -86,7 +86,7 @@ If you want to use your specific type(it has to declare function ```Parse{TYPENA
 ```
 
 If you want to have a specific go map you can use `x-go-map-type` property. It works only if additionalProperties specified.
-As key, you can have go scalars or specific types. Also slice values supported.
+As key/value, you can have go scalars or specific types. Also slice values supported.
 ```
     ResponseBody:
       type: object
