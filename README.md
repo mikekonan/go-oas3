@@ -30,7 +30,13 @@ The result generated boilerplate and its client you can see at ./example.
 
 # OpenAPI features
 ### Required fields
-Path, query, component, header required fields are supported. Security schemas for http and apikey(header).
+Path, query, component, header required fields are supported.
+
+### Security
+Security schemas for http, apikey (header/cookie).
+
+### Cookie
+Response header `Set-Cookie` supported. *Cookie in request supported via security schema only.*  
 
 ### Validation
 Types validation supports following data types:
