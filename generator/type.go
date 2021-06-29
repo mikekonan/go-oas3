@@ -37,6 +37,10 @@ func (typ *Type) fillGoType(into *jen.Statement, parentTypeName string, typeName
 			into.Op("=")
 		}
 
+		if pkg == "" {
+			into.Id(typee)
+			return
+		}
 		into.Qual(pkg, typee)
 		return
 	}
@@ -83,7 +87,11 @@ func (typ *Type) fillGoType(into *jen.Statement, parentTypeName string, typeName
 
 			keyPkg, keyValue, ok := typ.getXGoType(schemaRef.Value)
 			if ok {
-				keyCode.Qual(keyPkg, keyValue)
+				if keyPkg == "" {
+					keyCode.Id(keyValue)
+				} else {
+					keyCode.Qual(keyPkg, keyValue)
+				}
 			} else {
 				keyCode.String()
 			}
@@ -271,6 +279,9 @@ func (typ *Type) getXGoType(schema *openapi3.Schema) (string, string, bool) {
 		}
 
 		index := strings.LastIndex(customType, ".")
+		if index == -1 {
+			return "", customType, true
+		}
 
 		return customType[:index], customType[index+1:], true
 	}
