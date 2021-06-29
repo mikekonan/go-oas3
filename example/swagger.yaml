@@ -69,6 +69,10 @@ paths:
             type: string
             x-go-regex: ^[.?\d]+$
             minLength: 5
+        - in: query
+          name: timeParam
+          schema:
+            $ref: '#/components/schemas/Time'
       responses:
         200:
           description: transaction deleted
@@ -91,6 +95,11 @@ paths:
           required: true
           schema:
             type: string
+        - description: callback bool param in query
+          in: query
+          name: hasSmth
+          schema:
+            $ref: '#/components/schemas/Boolean'
       responses:
         '200':
           headers:
@@ -138,6 +147,15 @@ components:
       name: Authorization
       in: header
   schemas:
+    Boolean:
+      type: string
+      x-go-type: bool
+      x-go-type-string-parse: "strconv.ParseBool"
+    Time:
+      example: "2020-12-08T16:38:09.70516+03:00"
+      type: string
+      x-go-type: "time.Time"
+      x-go-type-string-parse: "github.com/spf13/cast.ToTimeE"
     CurrencyCode:
       $ref: "https://raw.githubusercontent.com/mikekonan/go-types/main/swagger.yaml#/components/schemas/CurrencyCode"
     CountryAlpha2:
