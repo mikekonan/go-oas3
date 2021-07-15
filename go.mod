@@ -12,7 +12,7 @@ require (
 	github.com/google/uuid v1.2.0
 	github.com/heetch/confita v0.9.2
 	github.com/imdario/mergo v0.3.12
-	github.com/mikekonan/go-types v1.0.1
+	github.com/mikekonan/go-types v1.0.9
 	github.com/spf13/cast v1.3.1
 	github.com/tdewolff/minify/v2 v2.9.11
 	gopkg.in/yaml.v2 v2.4.0 // indirect

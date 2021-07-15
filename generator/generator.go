@@ -544,6 +544,8 @@ func (generator *Generator) fieldValidationRuleFromSchema(receiverName string, p
 			var params = []jen.Code{jen.Op("&").Id(receiverName).Dot(propertyName)}
 			if v.MinLength > 0 && required {
 				params = append(params, jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "Required"))
+			} else if v.MinLength > 0 {
+				params = append(params, jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "Skip").Dot("When").Call(jen.Id(receiverName).Dot(propertyName).Op("==").Lit("")))
 			}
 			params = append(params, jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "RuneLength").Call(jen.Lit(int(v.MinLength)), jen.Lit(int(maxLength))))
 			fieldRule = jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "Field").Call(params...)
