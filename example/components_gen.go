@@ -17,7 +17,9 @@ import (
 
 var createTransactionRequestRegexParamRegex = regexp.MustCompile("^[.?\\d]+$")
 
-type Boolean = bool
+type Email = email.Email
+
+type RawPayload = []byte
 
 type genericResponse struct {
 	Result GenericResponseResultEnum `json:"result"`
@@ -44,6 +46,8 @@ func (body GenericResponse) Validate() error {
 type Time = time.Time
 
 type URL = url.URL
+
+type Boolean = bool
 
 type createTransactionRequest struct {
 	Amount        float64              `json:"amount"`
@@ -79,19 +83,19 @@ func (body *CreateTransactionRequest) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	body.Details = value.Details
+	body.AmountCents = value.AmountCents
+	body.Country = value.Country
 	body.Email = value.Email
 	if !createTransactionRequestRegexParamRegex.MatchString(body.RegexParam) {
 		return fmt.Errorf("RegexParam not matched by the '^[.?\\d]+$' regex")
 	}
 	body.RegexParam = value.RegexParam
-	body.Amount = value.Amount
-	body.AmountCents = value.AmountCents
-	body.Currency = value.Currency
-	body.CallbackURL = value.CallbackURL
-	body.Country = value.Country
 	body.Title = value.Title
 	body.TransactionID = value.TransactionID
+	body.Amount = value.Amount
+	body.CallbackURL = value.CallbackURL
+	body.Currency = value.Currency
+	body.Details = value.Details
 
 	if value.Description == nil {
 		return fmt.Errorf("Description is required")
@@ -103,15 +107,12 @@ func (body *CreateTransactionRequest) UnmarshalJSON(data []byte) error {
 }
 func (body CreateTransactionRequest) Validate() error {
 	return validation.ValidateStruct(&body,
+		validation.Field(&body.Country, validation.Skip.When(body.Country == ""), validation.RuneLength(2, 2)),
+		validation.Field(&body.Title, validation.Skip.When(body.Title == ""), validation.RuneLength(8, 50)),
 		validation.Field(&body.Amount, validation.Min(0.009).Exclusive()),
-		validation.Field(&body.Country, validation.RuneLength(2, 2)),
-		validation.Field(&body.Title, validation.RuneLength(8, 50)),
+		validation.Field(&body.Currency, validation.Skip.When(body.Currency == ""), validation.RuneLength(3, 3)),
 		validation.Field(&body.Description, validation.Required, validation.RuneLength(8, 100)))
 }
-
-type Email = email.Email
-
-type RawPayload = []byte
 
 type GenericResponseResultEnum string
 
