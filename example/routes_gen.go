@@ -816,6 +816,41 @@ type responseInterface interface {
 	headers() map[string]string
 }
 
+type DeleteTransactionsUUIDResponse interface {
+	responseInterface
+	deleteTransactionsUUIDResponse()
+}
+
+type deleteTransactionsUUIDResponse struct {
+	response
+}
+
+func (deleteTransactionsUUIDResponse) deleteTransactionsUUIDResponse() {}
+
+func (response deleteTransactionsUUIDResponse) statusCode() int {
+	return response.response.statusCode
+}
+
+func (response deleteTransactionsUUIDResponse) body() interface{} {
+	return response.response.body
+}
+
+func (response deleteTransactionsUUIDResponse) contentType() string {
+	return response.response.contentType
+}
+
+func (response deleteTransactionsUUIDResponse) redirectURL() string {
+	return response.response.redirectURL
+}
+
+func (response deleteTransactionsUUIDResponse) headers() map[string]string {
+	return response.response.headers
+}
+
+func (response deleteTransactionsUUIDResponse) cookies() []http.Cookie {
+	return response.response.cookies
+}
+
 type PostCallbacksCallbackTypeResponse interface {
 	responseInterface
 	postCallbacksCallbackTypeResponse()
@@ -883,41 +918,6 @@ func (response postTransactionResponse) headers() map[string]string {
 }
 
 func (response postTransactionResponse) cookies() []http.Cookie {
-	return response.response.cookies
-}
-
-type DeleteTransactionsUUIDResponse interface {
-	responseInterface
-	deleteTransactionsUUIDResponse()
-}
-
-type deleteTransactionsUUIDResponse struct {
-	response
-}
-
-func (deleteTransactionsUUIDResponse) deleteTransactionsUUIDResponse() {}
-
-func (response deleteTransactionsUUIDResponse) statusCode() int {
-	return response.response.statusCode
-}
-
-func (response deleteTransactionsUUIDResponse) body() interface{} {
-	return response.response.body
-}
-
-func (response deleteTransactionsUUIDResponse) contentType() string {
-	return response.response.contentType
-}
-
-func (response deleteTransactionsUUIDResponse) redirectURL() string {
-	return response.response.redirectURL
-}
-
-func (response deleteTransactionsUUIDResponse) headers() map[string]string {
-	return response.response.headers
-}
-
-func (response deleteTransactionsUUIDResponse) cookies() []http.Cookie {
 	return response.response.cookies
 }
 
@@ -998,6 +998,40 @@ func PostTransactionResponseBuilder() *postTransactionStatusCodeResponseBuilder 
 	return new(postTransactionStatusCodeResponseBuilder)
 }
 
+func (builder *postTransactionStatusCodeResponseBuilder) StatusCode500() *postTransaction500ContentTypeBuilder {
+	builder.response.statusCode = 500
+
+	return &postTransaction500ContentTypeBuilder{response: builder.response}
+}
+
+type postTransaction500ContentTypeBuilder struct {
+	response
+}
+
+type PostTransaction500ApplicationJsonResponseBuilder struct {
+	response
+}
+
+func (builder *PostTransaction500ApplicationJsonResponseBuilder) Build() PostTransactionResponse {
+	return postTransactionResponse{response: builder.response}
+}
+
+func (builder *postTransaction500ContentTypeBuilder) ApplicationJson() *postTransaction500ApplicationJsonBodyBuilder {
+	builder.response.contentType = "application/json"
+
+	return &postTransaction500ApplicationJsonBodyBuilder{response: builder.response}
+}
+
+type postTransaction500ApplicationJsonBodyBuilder struct {
+	response
+}
+
+func (builder *postTransaction500ApplicationJsonBodyBuilder) Body(body GenericResponse) *PostTransaction500ApplicationJsonResponseBuilder {
+	builder.response.body = body
+
+	return &PostTransaction500ApplicationJsonResponseBuilder{response: builder.response}
+}
+
 func (builder *postTransactionStatusCodeResponseBuilder) StatusCode201() *postTransaction201ContentTypeBuilder {
 	builder.response.statusCode = 201
 
@@ -1064,40 +1098,6 @@ func (builder *postTransaction400ApplicationJsonBodyBuilder) Body(body GenericRe
 	builder.response.body = body
 
 	return &PostTransaction400ApplicationJsonResponseBuilder{response: builder.response}
-}
-
-func (builder *postTransactionStatusCodeResponseBuilder) StatusCode500() *postTransaction500ContentTypeBuilder {
-	builder.response.statusCode = 500
-
-	return &postTransaction500ContentTypeBuilder{response: builder.response}
-}
-
-type postTransaction500ContentTypeBuilder struct {
-	response
-}
-
-type PostTransaction500ApplicationJsonResponseBuilder struct {
-	response
-}
-
-func (builder *PostTransaction500ApplicationJsonResponseBuilder) Build() PostTransactionResponse {
-	return postTransactionResponse{response: builder.response}
-}
-
-func (builder *postTransaction500ContentTypeBuilder) ApplicationJson() *postTransaction500ApplicationJsonBodyBuilder {
-	builder.response.contentType = "application/json"
-
-	return &postTransaction500ApplicationJsonBodyBuilder{response: builder.response}
-}
-
-type postTransaction500ApplicationJsonBodyBuilder struct {
-	response
-}
-
-func (builder *postTransaction500ApplicationJsonBodyBuilder) Body(body GenericResponse) *PostTransaction500ApplicationJsonResponseBuilder {
-	builder.response.body = body
-
-	return &PostTransaction500ApplicationJsonResponseBuilder{response: builder.response}
 }
 
 type deleteTransactionsUUIDStatusCodeResponseBuilder struct {
@@ -1330,9 +1330,9 @@ var securityExtractorsFuncs = map[SecurityScheme]func(r *http.Request) (string, 
 }
 
 type SecuritySchemas interface {
+	SecuritySchemeCookie(r *http.Request, scheme SecurityScheme, name string, value string) error
 	SecuritySchemeBasic(r *http.Request, scheme SecurityScheme, name string, value string) error
 	SecuritySchemeBearer(r *http.Request, scheme SecurityScheme, name string, value string) error
-	SecuritySchemeCookie(r *http.Request, scheme SecurityScheme, name string, value string) error
 }
 
 type SecurityCheckResult struct {
