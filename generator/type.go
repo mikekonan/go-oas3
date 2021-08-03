@@ -16,6 +16,7 @@ const (
 	goTypeStringParse = "x-go-type-string-parse"
 	goPointer         = "x-go-pointer"
 	goRegex           = "x-go-regex"
+	goStringTrimmable = "x-go-string-trimmable"
 )
 
 type Type struct {

@@ -519,6 +519,19 @@ func (generator *Generator) getXGoRegex(schema *openapi3.SchemaRef) string {
 	return ""
 }
 
+func (generator *Generator) getXGoStringTrimmable(schema *openapi3.SchemaRef) bool {
+	if len(schema.Value.Extensions) > 0 && schema.Value.Extensions[goStringTrimmable] != nil {
+		var isTrimmable bool
+		if err := json.Unmarshal(schema.Value.Extensions[goStringTrimmable].(json.RawMessage), &isTrimmable); err != nil {
+			panic(err)
+		}
+
+		return isTrimmable
+	}
+
+	return false
+}
+
 func (generator *Generator) validationFuncFromRules(receiverName string, name string, rules []jen.Code) jen.Code {
 	block := jen.Return().Id("nil")
 	if len(rules) > 0 {
@@ -536,6 +549,7 @@ func (generator *Generator) fieldValidationRuleFromSchema(receiverName string, p
 	v := schema.Value
 	switch v.Type {
 	case "string":
+
 		if v.MaxLength != nil || v.MinLength > 0 {
 			var maxLength uint64
 			if v.MaxLength != nil {
@@ -628,9 +642,14 @@ func (generator *Generator) componentFromSchema(name string, parentSchema *opena
 				fieldValidationRules = append(fieldValidationRules, jen.Line().Add(fvRule))
 			}
 
-			return jen.Null().
-				Add(additionalValidationCode...).
-				Id("body").Dot(propertyName).Op("=").Id("value").Dot(propertyName).Line()
+			var generateStatement = jen.Null().Add(additionalValidationCode...)
+
+			isTrimmable := generator.getXGoStringTrimmable(schema)
+			if isTrimmable {
+				return generateStatement.Id("body").Dot(propertyName).Op("=").Qual("strings", "Trim").Call(jen.Id("body").Dot(propertyName), jen.Lit(" ")).Line()
+			}
+
+			return generateStatement.Id("body").Dot(propertyName).Op("=").Id("value").Dot(propertyName).Line()
 		}).
 		ToSlice(&unmarshalNonRequiredAssignments)
 
@@ -663,11 +682,14 @@ func (generator *Generator) componentFromSchema(name string, parentSchema *opena
 				Block(jen.Return().Qual("fmt", "Errorf").Call(jen.Lit(fmt.Sprintf("%s is required", property)))).
 				Line().Line().
 				Add(additionalValidationCode...).
-				Line().Line().
-				Id("body").Dot(propertyName).Op("=").Op("*").Id("value").Dot(propertyName).
 				Line().Line()
 
-			return code
+			isTrimmable := generator.getXGoStringTrimmable(schema)
+			if isTrimmable {
+				return code.Id("body").Dot(propertyName).Op("=").Qual("strings", "Trim").Call(jen.Op("*").Id("value").Dot(propertyName), jen.Lit(" ")).Line().Line()
+			}
+
+			return code.Id("body").Dot(propertyName).Op("=").Op("*").Id("value").Dot(propertyName).Line().Line()
 		}).ToSlice(&unmarshalRequiredAssignments)
 
 	unmarshalFunc := jen.Func().Params(
