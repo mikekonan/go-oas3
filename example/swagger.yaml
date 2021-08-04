@@ -207,10 +207,12 @@ components:
           type: string
           minLength: 8
           maxLength: 100
+          x-go-string-trimmable: true
         Title:
           type: string
           minLength: 8
           maxLength: 50
+          x-go-string-trimmable: true
         Details:
           type: string
           x-go-pointer: true
