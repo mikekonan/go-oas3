@@ -816,41 +816,6 @@ type responseInterface interface {
 	headers() map[string]string
 }
 
-type DeleteTransactionsUUIDResponse interface {
-	responseInterface
-	deleteTransactionsUUIDResponse()
-}
-
-type deleteTransactionsUUIDResponse struct {
-	response
-}
-
-func (deleteTransactionsUUIDResponse) deleteTransactionsUUIDResponse() {}
-
-func (response deleteTransactionsUUIDResponse) statusCode() int {
-	return response.response.statusCode
-}
-
-func (response deleteTransactionsUUIDResponse) body() interface{} {
-	return response.response.body
-}
-
-func (response deleteTransactionsUUIDResponse) contentType() string {
-	return response.response.contentType
-}
-
-func (response deleteTransactionsUUIDResponse) redirectURL() string {
-	return response.response.redirectURL
-}
-
-func (response deleteTransactionsUUIDResponse) headers() map[string]string {
-	return response.response.headers
-}
-
-func (response deleteTransactionsUUIDResponse) cookies() []http.Cookie {
-	return response.response.cookies
-}
-
 type PostCallbacksCallbackTypeResponse interface {
 	responseInterface
 	postCallbacksCallbackTypeResponse()
@@ -918,6 +883,41 @@ func (response postTransactionResponse) headers() map[string]string {
 }
 
 func (response postTransactionResponse) cookies() []http.Cookie {
+	return response.response.cookies
+}
+
+type DeleteTransactionsUUIDResponse interface {
+	responseInterface
+	deleteTransactionsUUIDResponse()
+}
+
+type deleteTransactionsUUIDResponse struct {
+	response
+}
+
+func (deleteTransactionsUUIDResponse) deleteTransactionsUUIDResponse() {}
+
+func (response deleteTransactionsUUIDResponse) statusCode() int {
+	return response.response.statusCode
+}
+
+func (response deleteTransactionsUUIDResponse) body() interface{} {
+	return response.response.body
+}
+
+func (response deleteTransactionsUUIDResponse) contentType() string {
+	return response.response.contentType
+}
+
+func (response deleteTransactionsUUIDResponse) redirectURL() string {
+	return response.response.redirectURL
+}
+
+func (response deleteTransactionsUUIDResponse) headers() map[string]string {
+	return response.response.headers
+}
+
+func (response deleteTransactionsUUIDResponse) cookies() []http.Cookie {
 	return response.response.cookies
 }
 
@@ -1176,13 +1176,13 @@ func (builder *deleteTransactionsUUID400ApplicationJsonBodyBuilder) Body(body Ge
 	return &DeleteTransactionsUUID400ApplicationJsonResponseBuilder{response: builder.response}
 }
 
-type CallbacksService interface {
-	PostCallbacksCallbackType(context.Context, PostCallbacksCallbackTypeRequest) PostCallbacksCallbackTypeResponse
-}
-
 type TransactionsService interface {
 	PostTransaction(context.Context, PostTransactionRequest) PostTransactionResponse
 	DeleteTransactionsUUID(context.Context, DeleteTransactionsUUIDRequest) DeleteTransactionsUUIDResponse
+}
+
+type CallbacksService interface {
+	PostCallbacksCallbackType(context.Context, PostCallbacksCallbackTypeRequest) PostCallbacksCallbackTypeResponse
 }
 
 type PostCallbacksCallbackTypeRequestPath struct {
@@ -1236,19 +1236,6 @@ type PostTransactionRequest struct {
 	ProcessingResult RequestProcessingResult
 }
 
-type DeleteTransactionsUUIDRequestHeader struct {
-	XSignature string
-}
-
-func (header DeleteTransactionsUUIDRequestHeader) GetXSignature() string {
-	return header.XSignature
-}
-
-func (header DeleteTransactionsUUIDRequestHeader) Validate() error {
-	return validation.ValidateStruct(&header,
-		validation.Field(&header.XSignature, validation.RuneLength(0, 5)))
-}
-
 type DeleteTransactionsUUIDRequestPath struct {
 	RegexParam string
 	UUID       string
@@ -1277,6 +1264,19 @@ func (query DeleteTransactionsUUIDRequestQuery) GetTimeParam() time.Time {
 
 func (query DeleteTransactionsUUIDRequestQuery) Validate() error {
 	return nil
+}
+
+type DeleteTransactionsUUIDRequestHeader struct {
+	XSignature string
+}
+
+func (header DeleteTransactionsUUIDRequestHeader) GetXSignature() string {
+	return header.XSignature
+}
+
+func (header DeleteTransactionsUUIDRequestHeader) Validate() error {
+	return validation.ValidateStruct(&header,
+		validation.Field(&header.XSignature, validation.RuneLength(0, 5)))
 }
 
 type DeleteTransactionsUUIDRequest struct {
