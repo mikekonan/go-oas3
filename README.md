@@ -102,6 +102,14 @@ If you want to have a specific go map you can also use `x-go-type` to specify a 
       x-go-type: githubrepo/objects.SomeType
 ```
 
+Use `x-go-string-timmable` key If you would like to trim spaces before validation. It works only for string type
+```
+    ResponseBody:
+      properties:
+        title:
+          type: string
+          x-go-string-trimmable: true
+```
 ## Have a question or need some functionality?
 Feel free to discuss it or do a PR.
 
