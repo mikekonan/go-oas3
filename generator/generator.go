@@ -549,7 +549,6 @@ func (generator *Generator) fieldValidationRuleFromSchema(receiverName string, p
 	v := schema.Value
 	switch v.Type {
 	case "string":
-
 		if v.MaxLength != nil || v.MinLength > 0 {
 			var maxLength uint64
 			if v.MaxLength != nil {
