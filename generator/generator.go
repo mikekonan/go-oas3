@@ -645,7 +645,7 @@ func (generator *Generator) componentFromSchema(name string, parentSchema *opena
 
 			isTrimmable := generator.getXGoStringTrimmable(schema)
 			if isTrimmable {
-				return generateStatement.Id("body").Dot(propertyName).Op("=").Qual("strings", "TrimSpace").Call(jen.Id("body").Dot(propertyName)).Line()
+				return generateStatement.Id("body").Dot(propertyName).Op("=").Qual("strings", "TrimSpace").Call(jen.Id("value").Dot(propertyName)).Line()
 			}
 
 			return generateStatement.Id("body").Dot(propertyName).Op("=").Id("value").Dot(propertyName).Line()
