@@ -39,7 +39,7 @@ func (generator *Generator) file(from jen.Code, packagePath string) *jen.File {
 	return file
 }
 
-func (generator *Generator) Generate(swagger *openapi3.Swagger) *Result {
+func (generator *Generator) Generate(swagger *openapi3.T) *Result {
 	componentsAdditionalVars, parametersAdditionalVars := generator.additionalConstants(swagger)
 
 	componentsCode := jen.Null().Add(componentsAdditionalVars, generator.components(swagger))
@@ -123,7 +123,7 @@ func (generator *Generator) requestParameters(paths map[string]*openapi3.PathIte
 		Add(jen.Line())
 }
 
-func (generator *Generator) components(swagger *openapi3.Swagger) jen.Code {
+func (generator *Generator) components(swagger *openapi3.T) jen.Code {
 	var componentsResult []jen.Code
 
 	linq.From(swagger.Components.Schemas).
@@ -226,7 +226,7 @@ func (generator *Generator) variableForRegex(name string, schema *openapi3.Schem
 		Line()
 }
 
-func (generator *Generator) additionalConstants(swagger *openapi3.Swagger) (jen.Code, []jen.Code) {
+func (generator *Generator) additionalConstants(swagger *openapi3.T) (jen.Code, []jen.Code) {
 	var constantsComponentsCode []jen.Code
 
 	linq.From(swagger.Components.Schemas).SelectManyT(func(kv linq.KeyValue) linq.Query {
@@ -742,7 +742,7 @@ func (generator *Generator) typeProperties(typeName string, schema *openapi3.Sch
 	return
 }
 
-func (generator *Generator) enums(swagger *openapi3.Swagger) jen.Code {
+func (generator *Generator) enums(swagger *openapi3.T) jen.Code {
 	var pathsResult []jen.Code
 
 	linq.From(swagger.Paths).
@@ -977,7 +977,7 @@ func (generator *Generator) requestProcessingResultType() jen.Code {
 		))
 }
 
-func (generator *Generator) wrappers(swagger *openapi3.Swagger) jen.Code {
+func (generator *Generator) wrappers(swagger *openapi3.T) jen.Code {
 	var results []jen.Code
 
 	linq.From(generator.groupedOperations(swagger)).
@@ -1074,7 +1074,7 @@ type operationWithPath struct {
 	path      string
 }
 
-func (generator *Generator) groupedOperations(swagger *openapi3.Swagger) []groupedOperations {
+func (generator *Generator) groupedOperations(swagger *openapi3.T) []groupedOperations {
 	var result []groupedOperations
 
 	linq.From(swagger.Paths).
@@ -1740,7 +1740,7 @@ func (generator *Generator) wrapper(name string, requestName string, routerName,
 			Block(funcCode...)).Line().Line()
 }
 
-func (generator *Generator) requestResponseBuilders(swagger *openapi3.Swagger) jen.Code {
+func (generator *Generator) requestResponseBuilders(swagger *openapi3.T) jen.Code {
 	result := []jen.Code{
 		generator.responseStruct(),
 		generator.handlersTypes(swagger),
@@ -1771,7 +1771,7 @@ type operationStruct struct {
 	PrivateName           string
 }
 
-func (generator *Generator) builders(swagger *openapi3.Swagger) (result jen.Code) {
+func (generator *Generator) builders(swagger *openapi3.T) (result jen.Code) {
 	var builders []jen.Code
 
 	linq.From(swagger.Paths).
@@ -1838,7 +1838,7 @@ func (generator *Generator) builders(swagger *openapi3.Swagger) (result jen.Code
 	return jen.Null().Add(builders...)
 }
 
-func (generator *Generator) handlersTypes(swagger *openapi3.Swagger) jen.Code {
+func (generator *Generator) handlersTypes(swagger *openapi3.T) jen.Code {
 	var result []jen.Code
 
 	linq.From(swagger.Paths).
@@ -1861,7 +1861,7 @@ func (generator *Generator) handlersTypes(swagger *openapi3.Swagger) jen.Code {
 	return jen.Null().Add(result...)
 }
 
-func (generator *Generator) handlersInterfaces(swagger *openapi3.Swagger) jen.Code {
+func (generator *Generator) handlersInterfaces(swagger *openapi3.T) jen.Code {
 	var result []jen.Code
 
 	linq.From(swagger.Paths).
@@ -2177,7 +2177,7 @@ func (generator *Generator) responseAssembler(assemblerName string, interfaceRes
 	return
 }
 
-func (generator *Generator) securitySchemas(swagger *openapi3.Swagger) jen.Code {
+func (generator *Generator) securitySchemas(swagger *openapi3.T) jen.Code {
 	code := jen.Type().Id("SecurityScheme").Id("string").Line().Line()
 
 	var consts []jen.Code
@@ -2317,7 +2317,7 @@ func (generator *Generator) headersStruct(name string, headers map[string]*opena
 	return jen.Null().Add(generator.normalizer.doubleLineAfterEachElement(headersStruct, headersToMap)...)
 }
 
-func (generator *Generator) specCode(swagger *openapi3.Swagger) jen.Code {
+func (generator *Generator) specCode(swagger *openapi3.T) jen.Code {
 	specJson, err := json.Marshal(swagger)
 	if err != nil {
 		panic(err)

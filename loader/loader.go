@@ -13,9 +13,9 @@ type Loader struct {
 	config *configurator.Config `di.inject:"config"`
 }
 
-func (loader *Loader) Load() (*openapi3.Swagger, error) {
-	swaggerLoader := openapi3.NewSwaggerLoader()
-	swaggerLoader.IsExternalRefsAllowed = true
+func (loader *Loader) Load() (*openapi3.T, error) {
+	openapiLoader := openapi3.NewLoader()
+	openapiLoader.IsExternalRefsAllowed = true
 
 	if loader.config.Authorization != "" {
 		headers, err := loader.config.Headers()
@@ -32,10 +32,10 @@ func (loader *Loader) Load() (*openapi3.Swagger, error) {
 	}
 
 	if u.Scheme != "" && u.Host != "" {
-		return swaggerLoader.LoadSwaggerFromURI(u)
+		return openapiLoader.LoadFromURI(u)
 	}
 
-	return swaggerLoader.LoadSwaggerFromFile(loader.config.SwaggerAddr)
+	return openapiLoader.LoadFromFile(loader.config.SwaggerAddr)
 }
 
 type RoundTripperFunc func(*http.Request) (*http.Response, error)
