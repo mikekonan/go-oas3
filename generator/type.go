@@ -17,6 +17,7 @@ const (
 	goPointer         = "x-go-pointer"
 	goRegex           = "x-go-regex"
 	goStringTrimmable = "x-go-string-trimmable"
+	goOmitempty       = "x-go-omitempty"
 )
 
 type Type struct {
@@ -24,8 +25,12 @@ type Type struct {
 	config     *configurator.Config `di.inject:"config"`
 }
 
-func (typ *Type) fillJsonTag(into *jen.Statement, name string) {
-	into.Tag(map[string]string{"json": strings.ToLower(name[:1]) + name[1:]})
+func (typ *Type) fillJsonTag(into *jen.Statement, schemaRef *openapi3.SchemaRef, name string) {
+	var tag = strings.ToLower(name[:1]) + name[1:]
+	if typ.getXGoOmitempty(schemaRef.Value) {
+		tag = tag + ",omitempty"
+	}
+	into.Tag(map[string]string{"json": tag})
 }
 
 func (typ *Type) fillGoType(into *jen.Statement, parentTypeName string, typeName string, schemaRef *openapi3.SchemaRef, asPointer bool, needAliasing bool) {
@@ -295,6 +300,26 @@ func (typ *Type) getXGoPointer(schema *openapi3.Schema) bool {
 
 	if typ.hasXGoPointer(schema) {
 		if err := json.Unmarshal(schema.Extensions[goPointer].(json.RawMessage), &value); err != nil {
+			panic(err)
+		}
+	}
+
+	return value
+}
+
+func (typ *Type) hasXGoOmitempty(schema *openapi3.Schema) bool {
+	if len(schema.Extensions) > 0 && schema.Extensions[goOmitempty] != nil {
+		return true
+	}
+
+	return false
+}
+
+func (typ *Type) getXGoOmitempty(schema *openapi3.Schema) bool {
+	var value = false
+
+	if typ.hasXGoOmitempty(schema) {
+		if err := json.Unmarshal(schema.Extensions[goOmitempty].(json.RawMessage), &value); err != nil {
 			panic(err)
 		}
 	}

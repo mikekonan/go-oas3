@@ -110,6 +110,15 @@ Use `x-go-string-timmable` key If you would like to trim spaces before validatio
           type: string
           x-go-string-trimmable: true
 ```
+
+If you want to add omitempty tag you can also use `x-go-omitempty`
+```
+    ResponseBody:
+      properties:
+        title:
+          type: string
+          x-go-omitempty: true
+```
 ## Have a question or need some functionality?
 Feel free to discuss it or do a PR.
 
