@@ -735,7 +735,7 @@ func (generator *Generator) typeProperties(typeName string, schema *openapi3.Sch
 			asPointer := pointersForRequired && linq.From(schema.Required).Contains(originName)
 
 			generator.typee.fillGoType(parameter, typeName, name, schemaRef, asPointer, false)
-			generator.typee.fillJsonTag(parameter, originName)
+			generator.typee.fillJsonTag(parameter, schemaRef, originName)
 			return parameter
 		}).ToSlice(&parameters)
 

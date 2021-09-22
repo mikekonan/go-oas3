@@ -216,5 +216,6 @@ components:
         Details:
           type: string
           x-go-pointer: true
+          x-go-omitempty: true
       required:
         - Description

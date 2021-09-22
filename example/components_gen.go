@@ -32,7 +32,7 @@ type createTransactionRequest struct {
 	CallbackURL   url.URL              `json:"callbackURL"`
 	Country       countries.Alpha2Code `json:"country"`
 	Currency      currency.Code        `json:"currency"`
-	Description   *string              `json:"description"`
+	Description   *string              `json:"description,omitempty"`
 	Details       *string              `json:"details"`
 	Email         email.Email          `json:"email"`
 	RegexParam    string               `json:"regexParam"`
@@ -46,7 +46,7 @@ type CreateTransactionRequest struct {
 	CallbackURL   url.URL              `json:"callbackURL"`
 	Country       countries.Alpha2Code `json:"country"`
 	Currency      currency.Code        `json:"currency"`
-	Description   string               `json:"description"`
+	Description   string               `json:"description,omitempty"`
 	Details       *string              `json:"details"`
 	Email         email.Email          `json:"email"`
 	RegexParam    string               `json:"regexParam"`
