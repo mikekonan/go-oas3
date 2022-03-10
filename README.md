@@ -9,7 +9,7 @@ The purpose of this project is to generate a clean server boilerplate code from 
 Take a note that path stubs generation relies on the **first tag** from your paths.
 ## Installation
 ```
-GO111MODULE=on go get github.com/mikekonan/go-oas3@v1.0.40
+GO111MODULE=on go get github.com/mikekonan/go-oas3@v1.0.44
 ```
 ## Program arguments
 ```
