@@ -16,6 +16,7 @@ paths:
           schema:
             type: string
             maxLength: 5
+        - $ref: "#/components/parameters/Fingerprint"
       requestBody:
         content:
           application/json:
@@ -146,6 +147,18 @@ components:
       scheme: bearer
       name: Authorization
       in: header
+  parameters:
+    Fingerprint:
+      description: Fingerprint
+      in: header
+      name: x-fingerprint
+      required: true
+      schema:
+        maxLength: 32
+        minLength: 32
+        pattern: "[0-9a-fA-F]+"
+        type: string
+
   schemas:
     Boolean:
       type: string

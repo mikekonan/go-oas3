@@ -19,6 +19,7 @@ import (
 	"time"
 )
 
+var postTransactionHeaderXFingerprintRegex = regexp.MustCompile("[0-9]+")
 var deleteTransactionsUUIDPathRegexParamRegex = regexp.MustCompile("^[.?\\d]+$")
 
 type Hooks struct {
@@ -396,6 +397,20 @@ func (router *transactionsRouter) parsePostTransactionRequest(r *http.Request) (
 	headerXSignature := r.Header.Get("x-signature")
 	request.Header.XSignature = headerXSignature
 
+	headerXFingerprint := r.Header.Get("x-fingerprint")
+	if headerXFingerprint == "" {
+		err := fmt.Errorf("x-fingerprint is empty")
+
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderParseFailed}
+		if router.hooks.RequestHeaderParseFailed != nil {
+			router.hooks.RequestHeaderParseFailed(r, "PostTransaction", "x-fingerprint", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	request.Header.XFingerprint = headerXFingerprint
+
 	if err := request.Header.Validate(); err != nil {
 		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderValidationFailed}
 		if router.hooks.RequestHeaderValidationFailed != nil {
@@ -600,6 +615,34 @@ func (router *transactionsRouter) parseDeleteTransactionsUUIDRequest(r *http.Req
 		router.hooks.RequestSecurityParseCompleted(r, "DeleteTransactionsUUID")
 	}
 
+	queryTimeParamStr := r.URL.Query().Get("timeParam")
+	if queryTimeParamStr != "" {
+		queryTimeParam, err := cast.ToTimeE(queryTimeParamStr)
+		if err != nil {
+			request.ProcessingResult = RequestProcessingResult{error: err, typee: QueryParseFailed}
+			if router.hooks.RequestQueryParseFailed != nil {
+				router.hooks.RequestQueryParseFailed(r, "DeleteTransactionsUUID", "timeParam", request.ProcessingResult)
+			}
+
+			return
+		}
+
+		request.Query.TimeParam = queryTimeParam
+	}
+
+	if err := request.Query.Validate(); err != nil {
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: QueryValidationFailed}
+		if router.hooks.RequestQueryValidationFailed != nil {
+			router.hooks.RequestQueryValidationFailed(r, "DeleteTransactionsUUID", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	if router.hooks.RequestQueryParseCompleted != nil {
+		router.hooks.RequestQueryParseCompleted(r, "DeleteTransactionsUUID")
+	}
+
 	headerXSignature := r.Header.Get("x-signature")
 	request.Header.XSignature = headerXSignature
 
@@ -666,34 +709,6 @@ func (router *transactionsRouter) parseDeleteTransactionsUUIDRequest(r *http.Req
 
 	if router.hooks.RequestPathParseCompleted != nil {
 		router.hooks.RequestPathParseCompleted(r, "DeleteTransactionsUUID")
-	}
-
-	queryTimeParamStr := r.URL.Query().Get("timeParam")
-	if queryTimeParamStr != "" {
-		queryTimeParam, err := cast.ToTimeE(queryTimeParamStr)
-		if err != nil {
-			request.ProcessingResult = RequestProcessingResult{error: err, typee: QueryParseFailed}
-			if router.hooks.RequestQueryParseFailed != nil {
-				router.hooks.RequestQueryParseFailed(r, "DeleteTransactionsUUID", "timeParam", request.ProcessingResult)
-			}
-
-			return
-		}
-
-		request.Query.TimeParam = queryTimeParam
-	}
-
-	if err := request.Query.Validate(); err != nil {
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: QueryValidationFailed}
-		if router.hooks.RequestQueryValidationFailed != nil {
-			router.hooks.RequestQueryValidationFailed(r, "DeleteTransactionsUUID", request.ProcessingResult)
-		}
-
-		return
-	}
-
-	if router.hooks.RequestQueryParseCompleted != nil {
-		router.hooks.RequestQueryParseCompleted(r, "DeleteTransactionsUUID")
 	}
 
 	if router.hooks.RequestParseCompleted != nil {
@@ -1176,13 +1191,13 @@ func (builder *deleteTransactionsUUID400ApplicationJsonBodyBuilder) Body(body Ge
 	return &DeleteTransactionsUUID400ApplicationJsonResponseBuilder{response: builder.response}
 }
 
-type CallbacksService interface {
-	PostCallbacksCallbackType(context.Context, PostCallbacksCallbackTypeRequest) PostCallbacksCallbackTypeResponse
-}
-
 type TransactionsService interface {
 	PostTransaction(context.Context, PostTransactionRequest) PostTransactionResponse
 	DeleteTransactionsUUID(context.Context, DeleteTransactionsUUIDRequest) DeleteTransactionsUUIDResponse
+}
+
+type CallbacksService interface {
+	PostCallbacksCallbackType(context.Context, PostCallbacksCallbackTypeRequest) PostCallbacksCallbackTypeResponse
 }
 
 type DeleteTransactionsUUIDRequestHeader struct {
@@ -1237,7 +1252,12 @@ type DeleteTransactionsUUIDRequest struct {
 }
 
 type PostTransactionRequestHeader struct {
-	XSignature string
+	XFingerprint string
+	XSignature   string
+}
+
+func (header PostTransactionRequestHeader) GetXFingerprint() string {
+	return header.XFingerprint
 }
 
 func (header PostTransactionRequestHeader) GetXSignature() string {
@@ -1246,6 +1266,7 @@ func (header PostTransactionRequestHeader) GetXSignature() string {
 
 func (header PostTransactionRequestHeader) Validate() error {
 	return validation.ValidateStruct(&header,
+		validation.Field(&header.XFingerprint, validation.Required, validation.Match(regexp.MustCompile("[0-9a-fA-F]+")), validation.RuneLength(32, 32)),
 		validation.Field(&header.XSignature, validation.RuneLength(0, 5)))
 }
 
@@ -1253,18 +1274,6 @@ type PostTransactionRequest struct {
 	Body             CreateTransactionRequest
 	Header           PostTransactionRequestHeader
 	ProcessingResult RequestProcessingResult
-}
-
-type PostCallbacksCallbackTypeRequestPath struct {
-	CallbackType string
-}
-
-func (path PostCallbacksCallbackTypeRequestPath) GetCallbackType() string {
-	return path.CallbackType
-}
-
-func (path PostCallbacksCallbackTypeRequestPath) Validate() error {
-	return nil
 }
 
 type PostCallbacksCallbackTypeRequestQuery struct {
@@ -1276,6 +1285,18 @@ func (query PostCallbacksCallbackTypeRequestQuery) GetHasSmth() bool {
 }
 
 func (query PostCallbacksCallbackTypeRequestQuery) Validate() error {
+	return nil
+}
+
+type PostCallbacksCallbackTypeRequestPath struct {
+	CallbackType string
+}
+
+func (path PostCallbacksCallbackTypeRequestPath) GetCallbackType() string {
+	return path.CallbackType
+}
+
+func (path PostCallbacksCallbackTypeRequestPath) Validate() error {
 	return nil
 }
 
@@ -1330,9 +1351,9 @@ var securityExtractorsFuncs = map[SecurityScheme]func(r *http.Request) (string, 
 }
 
 type SecuritySchemas interface {
+	SecuritySchemeCookie(r *http.Request, scheme SecurityScheme, name string, value string) error
 	SecuritySchemeBasic(r *http.Request, scheme SecurityScheme, name string, value string) error
 	SecuritySchemeBearer(r *http.Request, scheme SecurityScheme, name string, value string) error
-	SecuritySchemeCookie(r *http.Request, scheme SecurityScheme, name string, value string) error
 }
 
 type SecurityCheckResult struct {

@@ -560,6 +560,9 @@ func (generator *Generator) fieldValidationRuleFromSchema(receiverName string, p
 			} else if v.MinLength > 0 {
 				params = append(params, jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "Skip").Dot("When").Call(jen.Id(receiverName).Dot(propertyName).Op("==").Lit("")))
 			}
+			if v.Pattern != "" {
+				params = append(params, jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "Match").Call(jen.Qual("regexp", "MustCompile").Call(jen.Lit(v.Pattern))))
+			}
 			params = append(params, jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "RuneLength").Call(jen.Lit(int(v.MinLength)), jen.Lit(int(maxLength))))
 			fieldRule = jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "Field").Call(params...)
 		}
@@ -1377,7 +1380,7 @@ func (generator *Generator) wrapperStr(in string, name string, paramName string,
 	}
 
 	regex := generator.getXGoRegex(parameter.Value.Schema)
-	if regex != "" {
+	if regex != "" && in != "header" {
 		regexVarName := generator.normalizer.decapitalize(wrapperName) + strings.Title(in) + name + "Regex"
 
 		result = result.Line().If(jen.Op("!").Id(regexVarName).Dot("MatchString").Call(jen.Id("request").Dot("Path").Dot(name))).Block(
