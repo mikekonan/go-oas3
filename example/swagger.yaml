@@ -16,6 +16,7 @@ paths:
           schema:
             type: string
             maxLength: 5
+        - $ref: "#/components/parameters/Fingerprint"
       requestBody:
         content:
           application/json:
@@ -69,6 +70,7 @@ paths:
             type: string
             x-go-regex: ^[.?\d]+$
             minLength: 5
+        - $ref: "#/components/parameters/Fingerprint"
         - in: query
           name: timeParam
           schema:
@@ -146,6 +148,18 @@ components:
       scheme: bearer
       name: Authorization
       in: header
+  parameters:
+    Fingerprint:
+      description: Fingerprint
+      in: header
+      name: x-fingerprint
+      required: true
+      schema:
+        maxLength: 32
+        minLength: 32
+        x-go-regex: "[0-9a-fA-F]+"
+        type: string
+
   schemas:
     Boolean:
       type: string

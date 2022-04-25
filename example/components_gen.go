@@ -16,13 +16,7 @@ import (
 	"time"
 )
 
-var createTransactionRequestRegexParamRegex = regexp.MustCompile("^[.?\\d]+$")
-
-type Email = email.Email
-
-type Time = time.Time
-
-type Boolean = bool
+var regexParamRegex = regexp.MustCompile("^[.?\\d]+$")
 
 type createTransactionRequest struct {
 	Amount        float64              `json:"amount"`
@@ -58,19 +52,19 @@ func (body *CreateTransactionRequest) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
+	body.Country = value.Country
 	body.Details = value.Details
-	if !createTransactionRequestRegexParamRegex.MatchString(body.RegexParam) {
+	body.Email = value.Email
+	body.TransactionID = value.TransactionID
+	body.AmountCents = value.AmountCents
+	body.CallbackURL = value.CallbackURL
+	if !regexParamRegex.MatchString(body.RegexParam) {
 		return fmt.Errorf("RegexParam not matched by the '^[.?\\d]+$' regex")
 	}
 	body.RegexParam = value.RegexParam
-	body.AmountCents = value.AmountCents
-	body.CallbackURL = value.CallbackURL
-	body.Country = value.Country
-	body.TransactionID = value.TransactionID
+	body.Title = strings.TrimSpace(value.Title)
 	body.Amount = value.Amount
 	body.Currency = value.Currency
-	body.Email = value.Email
-	body.Title = strings.TrimSpace(value.Title)
 
 	if value.Description == nil {
 		return fmt.Errorf("Description is required")
@@ -83,9 +77,9 @@ func (body *CreateTransactionRequest) UnmarshalJSON(data []byte) error {
 func (body CreateTransactionRequest) Validate() error {
 	return validation.ValidateStruct(&body,
 		validation.Field(&body.Country, validation.Skip.When(body.Country == ""), validation.RuneLength(2, 2)),
+		validation.Field(&body.Title, validation.Skip.When(body.Title == ""), validation.RuneLength(8, 50)),
 		validation.Field(&body.Amount, validation.Min(0.009).Exclusive()),
 		validation.Field(&body.Currency, validation.Skip.When(body.Currency == ""), validation.RuneLength(3, 3)),
-		validation.Field(&body.Title, validation.Skip.When(body.Title == ""), validation.RuneLength(8, 50)),
 		validation.Field(&body.Description, validation.Required, validation.RuneLength(8, 100)))
 }
 
@@ -113,38 +107,13 @@ func (body GenericResponse) Validate() error {
 
 type RawPayload = []byte
 
+type Time = time.Time
+
+type Boolean = bool
+
+type Email = email.Email
+
 type URL = url.URL
-
-type WithEnum string
-
-var WithEnumOne WithEnum = "one"
-var WithEnumTwo WithEnum = "two"
-
-func (enum WithEnum) Check() error {
-	switch enum {
-	case WithEnumOne, WithEnumTwo:
-
-		return nil
-	}
-
-	return fmt.Errorf("invalid WithEnum enum value")
-}
-
-func (enum *WithEnum) UnmarshalJSON(data []byte) error {
-	var strValue string
-	if err := json.Unmarshal(data, &strValue); err != nil {
-
-		return err
-	}
-	enumValue := WithEnum(strValue)
-	if err := enumValue.Check(); err != nil {
-
-		return err
-	}
-	*enum = enumValue
-
-	return nil
-}
 
 type GenericResponseResultEnum string
 
@@ -168,6 +137,37 @@ func (enum *GenericResponseResultEnum) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	enumValue := GenericResponseResultEnum(strValue)
+	if err := enumValue.Check(); err != nil {
+
+		return err
+	}
+	*enum = enumValue
+
+	return nil
+}
+
+type WithEnum string
+
+var WithEnumOne WithEnum = "one"
+var WithEnumTwo WithEnum = "two"
+
+func (enum WithEnum) Check() error {
+	switch enum {
+	case WithEnumOne, WithEnumTwo:
+
+		return nil
+	}
+
+	return fmt.Errorf("invalid WithEnum enum value")
+}
+
+func (enum *WithEnum) UnmarshalJSON(data []byte) error {
+	var strValue string
+	if err := json.Unmarshal(data, &strValue); err != nil {
+
+		return err
+	}
+	enumValue := WithEnum(strValue)
 	if err := enumValue.Check(); err != nil {
 
 		return err

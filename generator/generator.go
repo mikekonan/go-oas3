@@ -19,6 +19,9 @@ type Generator struct {
 	normalizer *Normalizer          `di.inject:"normalizer"`
 	typee      *Type                `di.inject:"typeFiller"`
 	config     *configurator.Config `di.inject:"config"`
+
+	// optimize code generator for regexp
+	useRegex map[string]string
 }
 
 type Result struct {
@@ -218,6 +221,16 @@ func (generator *Generator) variableForRegex(name string, schema *openapi3.Schem
 		panic(err)
 	}
 
+	if generator.useRegex == nil {
+		generator.useRegex = map[string]string{}
+	}
+
+	if _, ok := generator.useRegex[regex]; ok {
+		return jen.Empty()
+	}
+
+	name = generator.normalizer.decapitalize(name) + "Regex"
+	generator.useRegex[regex] = name
 	return jen.Var().
 		Id(name).
 		Op("=").
@@ -230,12 +243,10 @@ func (generator *Generator) additionalConstants(swagger *openapi3.T) (jen.Code, 
 	var constantsComponentsCode []jen.Code
 
 	linq.From(swagger.Components.Schemas).SelectManyT(func(kv linq.KeyValue) linq.Query {
-		namePrefix := generator.normalizer.normalize(cast.ToString(kv.Key))
-		namePrefix = generator.normalizer.decapitalize(cast.ToString(kv.Key))
 		schema := kv.Value.(*openapi3.SchemaRef)
 
 		return linq.From(schema.Value.Properties).SelectT(func(kv linq.KeyValue) jen.Code {
-			name := namePrefix + generator.normalizer.normalize(strings.Title(cast.ToString(kv.Key))) + "Regex"
+			name := generator.normalizer.normalize(strings.Title(cast.ToString(kv.Key)))
 			return generator.variableForRegex(name, kv.Value.(*openapi3.SchemaRef))
 		})
 	}).ToSlice(&constantsComponentsCode)
@@ -262,11 +273,10 @@ func (generator *Generator) additionalConstants(swagger *openapi3.T) (jen.Code, 
 					return linq.From(operation.RequestBody.Value.Content).
 						SelectManyT(func(kv linq.KeyValue) linq.Query {
 							meType := kv.Value.(*openapi3.MediaType)
-							namePrefix := name + generator.normalizer.contentType(cast.ToString(kv.Key)+"Regex")
 
 							var parametersConstants []jen.Code
 							linq.From(meType.Schema.Value.Properties).SelectT(func(kv linq.KeyValue) jen.Code {
-								name := namePrefix + generator.normalizer.normalize(strings.Title(cast.ToString(kv.Key))) + "Regex"
+								name := generator.normalizer.normalize(strings.Title(cast.ToString(kv.Key)))
 								return generator.variableForRegex(name, kv.Value.(*openapi3.SchemaRef))
 							}).ToSlice(&parametersConstants)
 
@@ -294,8 +304,7 @@ func (generator *Generator) additionalConstants(swagger *openapi3.T) (jen.Code, 
 
 					operation := kv.Value.(*openapi3.Operation)
 					return linq.From(operation.Parameters).SelectT(func(parameter *openapi3.ParameterRef) jen.Code {
-						name := name + strings.Title(parameter.Value.In) + generator.normalizer.normalize(strings.Title(parameter.Value.Name)) + "Regex"
-						return generator.variableForRegex(name, parameter.Value.Schema)
+						return generator.variableForRegex(generator.normalizer.normalize(strings.Title(parameter.Value.Name)), parameter.Value.Schema)
 					})
 				})
 		}).ToSlice(&parametersCode)
@@ -629,7 +638,8 @@ func (generator *Generator) componentFromSchema(name string, parentSchema *opena
 			var additionalValidationCode []jen.Code
 			regex := generator.getXGoRegex(schema)
 			if regex != "" {
-				regexVarName := generator.normalizer.decapitalize(name) + strings.Title(property) + "Regex"
+				regexVarName := generator.useRegex[regex]
+				//regexVarName := generator.normalizer.decapitalize(name) + strings.Title(property) + "Regex"
 				additionalValidationCode = append(additionalValidationCode,
 					jen.If(jen.Op("!").Id(regexVarName).Dot("MatchString").Call(jen.Id("body").Dot(propertyName))).Block(
 						jen.Return().Qual("fmt",
@@ -665,7 +675,7 @@ func (generator *Generator) componentFromSchema(name string, parentSchema *opena
 			var additionalValidationCode []jen.Code
 			regex := generator.getXGoRegex(schema)
 			if regex != "" {
-				regexVarName := generator.normalizer.decapitalize(name) + strings.Title(property) + "Regex"
+				regexVarName := generator.useRegex[regex] //normalizer.decapitalize(name) + strings.Title(property) + "Regex"
 				additionalValidationCode = append(additionalValidationCode,
 					jen.If(jen.Op("!").Id(regexVarName).Dot("MatchString").Call(jen.Op("*").Id("value").Dot(propertyName))).Block(
 						jen.Return().Qual("fmt",
@@ -1378,9 +1388,9 @@ func (generator *Generator) wrapperStr(in string, name string, paramName string,
 
 	regex := generator.getXGoRegex(parameter.Value.Schema)
 	if regex != "" {
-		regexVarName := generator.normalizer.decapitalize(wrapperName) + strings.Title(in) + name + "Regex"
+		regexVarName := generator.useRegex[regex] // generator.normalizer.decapitalize(wrapperName) + strings.Title(in) + name + "Regex"
 
-		result = result.Line().If(jen.Op("!").Id(regexVarName).Dot("MatchString").Call(jen.Id("request").Dot("Path").Dot(name))).Block(
+		result = result.Line().If(jen.Op("!").Id(regexVarName).Dot("MatchString").Call(jen.Id(paramName))).Block(
 			jen.Id("err").Op(":=").Qual("fmt",
 				"Errorf").Call(jen.Lit(fmt.Sprintf("%s not matched by the '%s' regex", parameter.Value.Name, regex))),
 			jen.Line(),

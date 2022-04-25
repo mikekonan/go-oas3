@@ -19,7 +19,7 @@ import (
 	"time"
 )
 
-var deleteTransactionsUUIDPathRegexParamRegex = regexp.MustCompile("^[.?\\d]+$")
+var xFingerprintRegex = regexp.MustCompile("[0-9a-fA-F]+")
 
 type Hooks struct {
 	RequestSecurityParseFailed    func(*http.Request, string, RequestProcessingResult)
@@ -396,6 +396,31 @@ func (router *transactionsRouter) parsePostTransactionRequest(r *http.Request) (
 	headerXSignature := r.Header.Get("x-signature")
 	request.Header.XSignature = headerXSignature
 
+	headerXFingerprint := r.Header.Get("x-fingerprint")
+	if headerXFingerprint == "" {
+		err := fmt.Errorf("x-fingerprint is empty")
+
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderParseFailed}
+		if router.hooks.RequestHeaderParseFailed != nil {
+			router.hooks.RequestHeaderParseFailed(r, "PostTransaction", "x-fingerprint", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	if !xFingerprintRegex.MatchString(headerXFingerprint) {
+		err := fmt.Errorf("x-fingerprint not matched by the '[0-9a-fA-F]+' regex")
+
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderParseFailed}
+		if router.hooks.RequestHeaderParseFailed != nil {
+			router.hooks.RequestHeaderParseFailed(r, "PostTransaction", "x-fingerprint", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	request.Header.XFingerprint = headerXFingerprint
+
 	if err := request.Header.Validate(); err != nil {
 		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderValidationFailed}
 		if router.hooks.RequestHeaderValidationFailed != nil {
@@ -600,22 +625,6 @@ func (router *transactionsRouter) parseDeleteTransactionsUUIDRequest(r *http.Req
 		router.hooks.RequestSecurityParseCompleted(r, "DeleteTransactionsUUID")
 	}
 
-	headerXSignature := r.Header.Get("x-signature")
-	request.Header.XSignature = headerXSignature
-
-	if err := request.Header.Validate(); err != nil {
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderValidationFailed}
-		if router.hooks.RequestHeaderValidationFailed != nil {
-			router.hooks.RequestHeaderValidationFailed(r, "DeleteTransactionsUUID", request.ProcessingResult)
-		}
-
-		return
-	}
-
-	if router.hooks.RequestHeaderParseCompleted != nil {
-		router.hooks.RequestHeaderParseCompleted(r, "DeleteTransactionsUUID")
-	}
-
 	pathUUID := chi.URLParam(r, "uuid")
 	if pathUUID == "" {
 		err := fmt.Errorf("uuid is empty")
@@ -642,7 +651,7 @@ func (router *transactionsRouter) parseDeleteTransactionsUUIDRequest(r *http.Req
 		return
 	}
 
-	if !deleteTransactionsUUIDPathRegexParamRegex.MatchString(request.Path.RegexParam) {
+	if !regexParamRegex.MatchString(pathRegexParam) {
 		err := fmt.Errorf("regexParam not matched by the '^[.?\\d]+$' regex")
 
 		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathParseFailed}
@@ -694,6 +703,47 @@ func (router *transactionsRouter) parseDeleteTransactionsUUIDRequest(r *http.Req
 
 	if router.hooks.RequestQueryParseCompleted != nil {
 		router.hooks.RequestQueryParseCompleted(r, "DeleteTransactionsUUID")
+	}
+
+	headerXSignature := r.Header.Get("x-signature")
+	request.Header.XSignature = headerXSignature
+
+	headerXFingerprint := r.Header.Get("x-fingerprint")
+	if headerXFingerprint == "" {
+		err := fmt.Errorf("x-fingerprint is empty")
+
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderParseFailed}
+		if router.hooks.RequestHeaderParseFailed != nil {
+			router.hooks.RequestHeaderParseFailed(r, "DeleteTransactionsUUID", "x-fingerprint", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	if !xFingerprintRegex.MatchString(headerXFingerprint) {
+		err := fmt.Errorf("x-fingerprint not matched by the '[0-9a-fA-F]+' regex")
+
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderParseFailed}
+		if router.hooks.RequestHeaderParseFailed != nil {
+			router.hooks.RequestHeaderParseFailed(r, "DeleteTransactionsUUID", "x-fingerprint", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	request.Header.XFingerprint = headerXFingerprint
+
+	if err := request.Header.Validate(); err != nil {
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderValidationFailed}
+		if router.hooks.RequestHeaderValidationFailed != nil {
+			router.hooks.RequestHeaderValidationFailed(r, "DeleteTransactionsUUID", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	if router.hooks.RequestHeaderParseCompleted != nil {
+		router.hooks.RequestHeaderParseCompleted(r, "DeleteTransactionsUUID")
 	}
 
 	if router.hooks.RequestParseCompleted != nil {
@@ -816,41 +866,6 @@ type responseInterface interface {
 	headers() map[string]string
 }
 
-type PostCallbacksCallbackTypeResponse interface {
-	responseInterface
-	postCallbacksCallbackTypeResponse()
-}
-
-type postCallbacksCallbackTypeResponse struct {
-	response
-}
-
-func (postCallbacksCallbackTypeResponse) postCallbacksCallbackTypeResponse() {}
-
-func (response postCallbacksCallbackTypeResponse) statusCode() int {
-	return response.response.statusCode
-}
-
-func (response postCallbacksCallbackTypeResponse) body() interface{} {
-	return response.response.body
-}
-
-func (response postCallbacksCallbackTypeResponse) contentType() string {
-	return response.response.contentType
-}
-
-func (response postCallbacksCallbackTypeResponse) redirectURL() string {
-	return response.response.redirectURL
-}
-
-func (response postCallbacksCallbackTypeResponse) headers() map[string]string {
-	return response.response.headers
-}
-
-func (response postCallbacksCallbackTypeResponse) cookies() []http.Cookie {
-	return response.response.cookies
-}
-
 type PostTransactionResponse interface {
 	responseInterface
 	postTransactionResponse()
@@ -921,73 +936,39 @@ func (response deleteTransactionsUUIDResponse) cookies() []http.Cookie {
 	return response.response.cookies
 }
 
-type postCallbacksCallbackTypeStatusCodeResponseBuilder struct {
+type PostCallbacksCallbackTypeResponse interface {
+	responseInterface
+	postCallbacksCallbackTypeResponse()
+}
+
+type postCallbacksCallbackTypeResponse struct {
 	response
 }
 
-func PostCallbacksCallbackTypeResponseBuilder() *postCallbacksCallbackTypeStatusCodeResponseBuilder {
-	return new(postCallbacksCallbackTypeStatusCodeResponseBuilder)
+func (postCallbacksCallbackTypeResponse) postCallbacksCallbackTypeResponse() {}
+
+func (response postCallbacksCallbackTypeResponse) statusCode() int {
+	return response.response.statusCode
 }
 
-func (builder *postCallbacksCallbackTypeStatusCodeResponseBuilder) StatusCode200() *postCallbacksCallbackType200HeadersBuilder {
-	builder.response.statusCode = 200
-
-	return &postCallbacksCallbackType200HeadersBuilder{response: builder.response}
+func (response postCallbacksCallbackTypeResponse) body() interface{} {
+	return response.response.body
 }
 
-type PostCallbacksCallbackType200Headers struct {
-	XJwsSignature string
+func (response postCallbacksCallbackTypeResponse) contentType() string {
+	return response.response.contentType
 }
 
-func (headers PostCallbacksCallbackType200Headers) toMap() map[string]string {
-	return map[string]string{"x-jws-signature": cast.ToString(headers.XJwsSignature)}
+func (response postCallbacksCallbackTypeResponse) redirectURL() string {
+	return response.response.redirectURL
 }
 
-type postCallbacksCallbackType200HeadersBuilder struct {
-	response
+func (response postCallbacksCallbackTypeResponse) headers() map[string]string {
+	return response.response.headers
 }
 
-func (builder *postCallbacksCallbackType200HeadersBuilder) Headers(headers PostCallbacksCallbackType200Headers) *postCallbacksCallbackType200CookiesBuilder {
-	builder.headers = headers.toMap()
-
-	return &postCallbacksCallbackType200CookiesBuilder{response: builder.response}
-}
-
-type postCallbacksCallbackType200CookiesBuilder struct {
-	response
-}
-
-func (builder *postCallbacksCallbackType200CookiesBuilder) SetCookie(cookie ...http.Cookie) *postCallbacksCallbackType200ContentTypeBuilder {
-	builder.cookies = cookie
-	return &postCallbacksCallbackType200ContentTypeBuilder{response: builder.response}
-}
-
-type postCallbacksCallbackType200ContentTypeBuilder struct {
-	response
-}
-
-type PostCallbacksCallbackType200ApplicationOctetStreamResponseBuilder struct {
-	response
-}
-
-func (builder *PostCallbacksCallbackType200ApplicationOctetStreamResponseBuilder) Build() PostCallbacksCallbackTypeResponse {
-	return postCallbacksCallbackTypeResponse{response: builder.response}
-}
-
-func (builder *postCallbacksCallbackType200ContentTypeBuilder) ApplicationOctetStream() *postCallbacksCallbackType200ApplicationOctetStreamBodyBuilder {
-	builder.response.contentType = "application/octet-stream"
-
-	return &postCallbacksCallbackType200ApplicationOctetStreamBodyBuilder{response: builder.response}
-}
-
-type postCallbacksCallbackType200ApplicationOctetStreamBodyBuilder struct {
-	response
-}
-
-func (builder *postCallbacksCallbackType200ApplicationOctetStreamBodyBuilder) Body(body RawPayload) *PostCallbacksCallbackType200ApplicationOctetStreamResponseBuilder {
-	builder.response.body = body
-
-	return &PostCallbacksCallbackType200ApplicationOctetStreamResponseBuilder{response: builder.response}
+func (response postCallbacksCallbackTypeResponse) cookies() []http.Cookie {
+	return response.response.cookies
 }
 
 type postTransactionStatusCodeResponseBuilder struct {
@@ -1108,40 +1089,6 @@ func DeleteTransactionsUUIDResponseBuilder() *deleteTransactionsUUIDStatusCodeRe
 	return new(deleteTransactionsUUIDStatusCodeResponseBuilder)
 }
 
-func (builder *deleteTransactionsUUIDStatusCodeResponseBuilder) StatusCode200() *deleteTransactionsUUID200ContentTypeBuilder {
-	builder.response.statusCode = 200
-
-	return &deleteTransactionsUUID200ContentTypeBuilder{response: builder.response}
-}
-
-type deleteTransactionsUUID200ContentTypeBuilder struct {
-	response
-}
-
-type DeleteTransactionsUUID200ApplicationJsonResponseBuilder struct {
-	response
-}
-
-func (builder *DeleteTransactionsUUID200ApplicationJsonResponseBuilder) Build() DeleteTransactionsUUIDResponse {
-	return deleteTransactionsUUIDResponse{response: builder.response}
-}
-
-func (builder *deleteTransactionsUUID200ContentTypeBuilder) ApplicationJson() *deleteTransactionsUUID200ApplicationJsonBodyBuilder {
-	builder.response.contentType = "application/json"
-
-	return &deleteTransactionsUUID200ApplicationJsonBodyBuilder{response: builder.response}
-}
-
-type deleteTransactionsUUID200ApplicationJsonBodyBuilder struct {
-	response
-}
-
-func (builder *deleteTransactionsUUID200ApplicationJsonBodyBuilder) Body(body GenericResponse) *DeleteTransactionsUUID200ApplicationJsonResponseBuilder {
-	builder.response.body = body
-
-	return &DeleteTransactionsUUID200ApplicationJsonResponseBuilder{response: builder.response}
-}
-
 func (builder *deleteTransactionsUUIDStatusCodeResponseBuilder) StatusCode400() *deleteTransactionsUUID400ContentTypeBuilder {
 	builder.response.statusCode = 400
 
@@ -1176,8 +1123,107 @@ func (builder *deleteTransactionsUUID400ApplicationJsonBodyBuilder) Body(body Ge
 	return &DeleteTransactionsUUID400ApplicationJsonResponseBuilder{response: builder.response}
 }
 
-type CallbacksService interface {
-	PostCallbacksCallbackType(context.Context, PostCallbacksCallbackTypeRequest) PostCallbacksCallbackTypeResponse
+func (builder *deleteTransactionsUUIDStatusCodeResponseBuilder) StatusCode200() *deleteTransactionsUUID200ContentTypeBuilder {
+	builder.response.statusCode = 200
+
+	return &deleteTransactionsUUID200ContentTypeBuilder{response: builder.response}
+}
+
+type deleteTransactionsUUID200ContentTypeBuilder struct {
+	response
+}
+
+type DeleteTransactionsUUID200ApplicationJsonResponseBuilder struct {
+	response
+}
+
+func (builder *DeleteTransactionsUUID200ApplicationJsonResponseBuilder) Build() DeleteTransactionsUUIDResponse {
+	return deleteTransactionsUUIDResponse{response: builder.response}
+}
+
+func (builder *deleteTransactionsUUID200ContentTypeBuilder) ApplicationJson() *deleteTransactionsUUID200ApplicationJsonBodyBuilder {
+	builder.response.contentType = "application/json"
+
+	return &deleteTransactionsUUID200ApplicationJsonBodyBuilder{response: builder.response}
+}
+
+type deleteTransactionsUUID200ApplicationJsonBodyBuilder struct {
+	response
+}
+
+func (builder *deleteTransactionsUUID200ApplicationJsonBodyBuilder) Body(body GenericResponse) *DeleteTransactionsUUID200ApplicationJsonResponseBuilder {
+	builder.response.body = body
+
+	return &DeleteTransactionsUUID200ApplicationJsonResponseBuilder{response: builder.response}
+}
+
+type postCallbacksCallbackTypeStatusCodeResponseBuilder struct {
+	response
+}
+
+func PostCallbacksCallbackTypeResponseBuilder() *postCallbacksCallbackTypeStatusCodeResponseBuilder {
+	return new(postCallbacksCallbackTypeStatusCodeResponseBuilder)
+}
+
+func (builder *postCallbacksCallbackTypeStatusCodeResponseBuilder) StatusCode200() *postCallbacksCallbackType200HeadersBuilder {
+	builder.response.statusCode = 200
+
+	return &postCallbacksCallbackType200HeadersBuilder{response: builder.response}
+}
+
+type PostCallbacksCallbackType200Headers struct {
+	XJwsSignature string
+}
+
+func (headers PostCallbacksCallbackType200Headers) toMap() map[string]string {
+	return map[string]string{"x-jws-signature": cast.ToString(headers.XJwsSignature)}
+}
+
+type postCallbacksCallbackType200HeadersBuilder struct {
+	response
+}
+
+func (builder *postCallbacksCallbackType200HeadersBuilder) Headers(headers PostCallbacksCallbackType200Headers) *postCallbacksCallbackType200CookiesBuilder {
+	builder.headers = headers.toMap()
+
+	return &postCallbacksCallbackType200CookiesBuilder{response: builder.response}
+}
+
+type postCallbacksCallbackType200CookiesBuilder struct {
+	response
+}
+
+func (builder *postCallbacksCallbackType200CookiesBuilder) SetCookie(cookie ...http.Cookie) *postCallbacksCallbackType200ContentTypeBuilder {
+	builder.cookies = cookie
+	return &postCallbacksCallbackType200ContentTypeBuilder{response: builder.response}
+}
+
+type postCallbacksCallbackType200ContentTypeBuilder struct {
+	response
+}
+
+type PostCallbacksCallbackType200ApplicationOctetStreamResponseBuilder struct {
+	response
+}
+
+func (builder *PostCallbacksCallbackType200ApplicationOctetStreamResponseBuilder) Build() PostCallbacksCallbackTypeResponse {
+	return postCallbacksCallbackTypeResponse{response: builder.response}
+}
+
+func (builder *postCallbacksCallbackType200ContentTypeBuilder) ApplicationOctetStream() *postCallbacksCallbackType200ApplicationOctetStreamBodyBuilder {
+	builder.response.contentType = "application/octet-stream"
+
+	return &postCallbacksCallbackType200ApplicationOctetStreamBodyBuilder{response: builder.response}
+}
+
+type postCallbacksCallbackType200ApplicationOctetStreamBodyBuilder struct {
+	response
+}
+
+func (builder *postCallbacksCallbackType200ApplicationOctetStreamBodyBuilder) Body(body RawPayload) *PostCallbacksCallbackType200ApplicationOctetStreamResponseBuilder {
+	builder.response.body = body
+
+	return &PostCallbacksCallbackType200ApplicationOctetStreamResponseBuilder{response: builder.response}
 }
 
 type TransactionsService interface {
@@ -1185,8 +1231,42 @@ type TransactionsService interface {
 	DeleteTransactionsUUID(context.Context, DeleteTransactionsUUIDRequest) DeleteTransactionsUUIDResponse
 }
 
+type CallbacksService interface {
+	PostCallbacksCallbackType(context.Context, PostCallbacksCallbackTypeRequest) PostCallbacksCallbackTypeResponse
+}
+
+type PostTransactionRequestHeader struct {
+	XFingerprint string
+	XSignature   string
+}
+
+func (header PostTransactionRequestHeader) GetXFingerprint() string {
+	return header.XFingerprint
+}
+
+func (header PostTransactionRequestHeader) GetXSignature() string {
+	return header.XSignature
+}
+
+func (header PostTransactionRequestHeader) Validate() error {
+	return validation.ValidateStruct(&header,
+		validation.Field(&header.XFingerprint, validation.Required, validation.RuneLength(32, 32)),
+		validation.Field(&header.XSignature, validation.RuneLength(0, 5)))
+}
+
+type PostTransactionRequest struct {
+	Body             CreateTransactionRequest
+	Header           PostTransactionRequestHeader
+	ProcessingResult RequestProcessingResult
+}
+
 type DeleteTransactionsUUIDRequestHeader struct {
-	XSignature string
+	XFingerprint string
+	XSignature   string
+}
+
+func (header DeleteTransactionsUUIDRequestHeader) GetXFingerprint() string {
+	return header.XFingerprint
 }
 
 func (header DeleteTransactionsUUIDRequestHeader) GetXSignature() string {
@@ -1195,6 +1275,7 @@ func (header DeleteTransactionsUUIDRequestHeader) GetXSignature() string {
 
 func (header DeleteTransactionsUUIDRequestHeader) Validate() error {
 	return validation.ValidateStruct(&header,
+		validation.Field(&header.XFingerprint, validation.Required, validation.RuneLength(32, 32)),
 		validation.Field(&header.XSignature, validation.RuneLength(0, 5)))
 }
 
@@ -1234,25 +1315,6 @@ type DeleteTransactionsUUIDRequest struct {
 	Query                DeleteTransactionsUUIDRequestQuery
 	ProcessingResult     RequestProcessingResult
 	SecurityCheckResults map[SecurityScheme]string
-}
-
-type PostTransactionRequestHeader struct {
-	XSignature string
-}
-
-func (header PostTransactionRequestHeader) GetXSignature() string {
-	return header.XSignature
-}
-
-func (header PostTransactionRequestHeader) Validate() error {
-	return validation.ValidateStruct(&header,
-		validation.Field(&header.XSignature, validation.RuneLength(0, 5)))
-}
-
-type PostTransactionRequest struct {
-	Body             CreateTransactionRequest
-	Header           PostTransactionRequestHeader
-	ProcessingResult RequestProcessingResult
 }
 
 type PostCallbacksCallbackTypeRequestPath struct {
