@@ -229,7 +229,7 @@ func (generator *Generator) variableForRegex(name string, schema *openapi3.Schem
 		return jen.Empty()
 	}
 
-	name = generator.normalizer.decapitalize(name)
+	name = generator.normalizer.decapitalize(name) + "Regex"
 	generator.useRegex[regex] = name
 	return jen.Var().
 		Id(name).

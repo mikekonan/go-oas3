@@ -16,11 +16,7 @@ import (
 	"time"
 )
 
-var regexParam = regexp.MustCompile("^[.?\\d]+$")
-
-type Time = time.Time
-
-type Boolean = bool
+var regexParamRegex = regexp.MustCompile("^[.?\\d]+$")
 
 type createTransactionRequest struct {
 	Amount        float64              `json:"amount"`
@@ -57,17 +53,17 @@ func (body *CreateTransactionRequest) UnmarshalJSON(data []byte) error {
 	}
 
 	body.Country = value.Country
-	body.Title = strings.TrimSpace(value.Title)
-	body.Amount = value.Amount
-	body.AmountCents = value.AmountCents
 	body.Details = value.Details
 	body.Email = value.Email
-	if !regexParam.MatchString(body.RegexParam) {
+	body.TransactionID = value.TransactionID
+	body.AmountCents = value.AmountCents
+	body.CallbackURL = value.CallbackURL
+	if !regexParamRegex.MatchString(body.RegexParam) {
 		return fmt.Errorf("RegexParam not matched by the '^[.?\\d]+$' regex")
 	}
 	body.RegexParam = value.RegexParam
-	body.TransactionID = value.TransactionID
-	body.CallbackURL = value.CallbackURL
+	body.Title = strings.TrimSpace(value.Title)
+	body.Amount = value.Amount
 	body.Currency = value.Currency
 
 	if value.Description == nil {
@@ -86,8 +82,6 @@ func (body CreateTransactionRequest) Validate() error {
 		validation.Field(&body.Currency, validation.Skip.When(body.Currency == ""), validation.RuneLength(3, 3)),
 		validation.Field(&body.Description, validation.Required, validation.RuneLength(8, 100)))
 }
-
-type Email = email.Email
 
 type genericResponse struct {
 	Result GenericResponseResultEnum `json:"result"`
@@ -112,6 +106,12 @@ func (body GenericResponse) Validate() error {
 }
 
 type RawPayload = []byte
+
+type Time = time.Time
+
+type Boolean = bool
+
+type Email = email.Email
 
 type URL = url.URL
 
