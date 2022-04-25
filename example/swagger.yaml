@@ -156,7 +156,7 @@ components:
       schema:
         maxLength: 32
         minLength: 32
-        pattern: "[0-9a-fA-F]+"
+        x-go-regex: "[0-9a-fA-F]+"
         type: string
 
   schemas:
