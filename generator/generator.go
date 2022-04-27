@@ -359,6 +359,16 @@ func (generator *Generator) requestParameterStruct(name string, contentType stri
 						}
 
 						generator.typee.fillGoType(statement, "", name, parameter.Value.Schema, false, false)
+
+						// add fill json tag for ozzo validation.
+						// Parameters:
+						//    in: header
+						//    name: my-header
+						// example: struct RequestHeader { MyHeader string }.Validate() err with msg: MyHeader invalid (but real header name is my-header)
+						// example: struct RequestHeader { MyHeader string `json:"my-header"` }.Validate() err with msg: my-header invalid (real header name is equal name in err msg)
+						if parameter.Value.In == "header" {
+							generator.typee.fillJsonTag(statement, parameter.Value.Schema, parameter.Value.Name)
+						}
 						return statement
 					}).
 					ToSlice(&structFields)
