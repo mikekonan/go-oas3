@@ -9,7 +9,7 @@ The purpose of this project is to generate a clean server boilerplate code from 
 Take a note that path stubs generation relies on the **first tag** from your paths.
 ## Installation
 ```
-GO111MODULE=on go get github.com/mikekonan/go-oas3@v1.0.44
+GO111MODULE=on go get github.com/mikekonan/go-oas3@v1.0.48
 ```
 ## Program arguments
 ```
@@ -48,9 +48,9 @@ Generator supports few swagger types for components.
 |openapi type|go type|
 |---|---|
 |uuid|github.com/google/uuid.UUID|
-|iso4217-currency-code|github.com/mikekonan/go-types/currency.Code|
-|iso3166-alpha-2|github.com/mikekonan/go-types/country.Alpha2Code|
-|iso3166-alpha-3|github.com/mikekonan/go-types/country.Alpha3Code|
+|iso4217-currency-code|github.com/mikekonan/go-types/v2/currency.Code|
+|iso3166-alpha-2|github.com/mikekonan/go-types/v2/country.Alpha2Code|
+|iso3166-alpha-3|github.com/mikekonan/go-types/v2/country.Alpha3Code|
 
 #### Extentions:
 Specify a go type with:

@@ -166,13 +166,13 @@ func (typ *Type) fillGoType(into *jen.Statement, parentTypeName string, typeName
 			into.String()
 			return
 		case "iso4217-currency-code":
-			into.Qual("github.com/mikekonan/go-types/currency", "Code")
+			into.Qual("github.com/mikekonan/go-types/v2/currency", "Code")
 			return
 		case "iso3166-alpha-2":
-			into.Qual("github.com/mikekonan/go-types/country", "Alpha2Code")
+			into.Qual("github.com/mikekonan/go-types/v2/country", "Alpha2Code")
 			return
 		case "iso3166-alpha-3":
-			into.Qual("github.com/mikekonan/go-types/country", "Alpha3Code")
+			into.Qual("github.com/mikekonan/go-types/v2/country", "Alpha3Code")
 			return
 		case "uuid":
 			into.Qual("github.com/google/uuid", "UUID")
