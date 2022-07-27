@@ -2,8 +2,8 @@ package example
 
 import (
 	validation "github.com/go-ozzo/ozzo-validation/v4"
-	"github.com/mikekonan/go-types/country"
-	"github.com/mikekonan/go-types/currency"
+	"github.com/mikekonan/go-types/v2/country"
+	"github.com/mikekonan/go-types/v2/currency"
 	"testing"
 )
 
