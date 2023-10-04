@@ -8,15 +8,16 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	chi "github.com/go-chi/chi"
-	validation "github.com/go-ozzo/ozzo-validation/v4"
-	cast "github.com/spf13/cast"
 	"io/ioutil"
 	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	chi "github.com/go-chi/chi/v5"
+	validation "github.com/go-ozzo/ozzo-validation/v4"
+	cast "github.com/spf13/cast"
 )
 
 var xFingerprintRegex = regexp.MustCompile("[0-9a-fA-F]+")

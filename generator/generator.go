@@ -1170,7 +1170,7 @@ func (generator *Generator) handler(name string, serviceName string, routerName 
 	code := jen.Func().Id(name).
 		Params(
 			jen.Id("impl").Id(serviceName),
-			jen.Id("r").Qual("github.com/go-chi/chi", "Router"),
+			jen.Id("r").Qual("github.com/go-chi/chi/v5", "Router"),
 			jen.Id("hooks").Op("*").Id("Hooks"), schemasInterfaceParameter).
 		Params(jen.Qual("net/http", "Handler")).
 		Block(
@@ -1191,7 +1191,7 @@ func (generator *Generator) router(routerName string, serviceName string, hasSec
 	}
 
 	code := jen.Type().Id(routerName).Struct(
-		jen.Id("router").Qual("github.com/go-chi/chi", "Router"),
+		jen.Id("router").Qual("github.com/go-chi/chi/v5", "Router"),
 		jen.Id("service").Id(serviceName),
 		jen.Id("hooks").Op("*").Id("Hooks"),
 		securityHandlers,
