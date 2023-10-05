@@ -36,6 +36,7 @@ func (generator *Generator) file(from jen.Code, packagePath string) *jen.File {
 	file.ImportAlias("github.com/mikekonan/go-types/v2/country", "countries")
 	file.ImportAlias("github.com/mikekonan/go-types/v2/currency", "currency")
 	file.ImportAlias("github.com/go-ozzo/ozzo-validation/v4", "validation")
+	file.ImportAlias("github.com/go-chi/chi/v5", "chi")
 
 	file.Add(from)
 
@@ -1170,7 +1171,7 @@ func (generator *Generator) handler(name string, serviceName string, routerName 
 	code := jen.Func().Id(name).
 		Params(
 			jen.Id("impl").Id(serviceName),
-			jen.Id("r").Qual("github.com/go-chi/chi", "Router"),
+			jen.Id("r").Qual("github.com/go-chi/chi/v5", "Router"),
 			jen.Id("hooks").Op("*").Id("Hooks"), schemasInterfaceParameter).
 		Params(jen.Qual("net/http", "Handler")).
 		Block(
@@ -1191,7 +1192,7 @@ func (generator *Generator) router(routerName string, serviceName string, hasSec
 	}
 
 	code := jen.Type().Id(routerName).Struct(
-		jen.Id("router").Qual("github.com/go-chi/chi", "Router"),
+		jen.Id("router").Qual("github.com/go-chi/chi/v5", "Router"),
 		jen.Id("service").Id(serviceName),
 		jen.Id("hooks").Op("*").Id("Hooks"),
 		securityHandlers,
@@ -2027,8 +2028,8 @@ func (generator *Generator) responseImplementationFunc(name string) jen.Code {
 //if !hasHeaders && hasContentTypes
 //N statusCode -> M contentType -> body -> assemble
 
-//if !hasHeaders && !hasContentTypes
-//N statusCode -> assemble
+// if !hasHeaders && !hasContentTypes
+// N statusCode -> assemble
 func (generator *Generator) responseBuilders(operationStruct operationStruct) jen.Code {
 	builderConstructorName := generator.builderConstructorName(operationStruct.Name)
 	statusCodesBuilderName := generator.statusCodesBuilderName(operationStruct.PrivateName)
