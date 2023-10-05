@@ -36,6 +36,7 @@ func (generator *Generator) file(from jen.Code, packagePath string) *jen.File {
 	file.ImportAlias("github.com/mikekonan/go-types/v2/country", "countries")
 	file.ImportAlias("github.com/mikekonan/go-types/v2/currency", "currency")
 	file.ImportAlias("github.com/go-ozzo/ozzo-validation/v4", "validation")
+	file.ImportAlias("github.com/go-chi/chi/v5", "chi")
 
 	file.Add(from)
 
@@ -2027,8 +2028,8 @@ func (generator *Generator) responseImplementationFunc(name string) jen.Code {
 //if !hasHeaders && hasContentTypes
 //N statusCode -> M contentType -> body -> assemble
 
-//if !hasHeaders && !hasContentTypes
-//N statusCode -> assemble
+// if !hasHeaders && !hasContentTypes
+// N statusCode -> assemble
 func (generator *Generator) responseBuilders(operationStruct operationStruct) jen.Code {
 	builderConstructorName := generator.builderConstructorName(operationStruct.Name)
 	statusCodesBuilderName := generator.statusCodesBuilderName(operationStruct.PrivateName)
