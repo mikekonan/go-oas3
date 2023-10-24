@@ -26,7 +26,7 @@ type Type struct {
 }
 
 func (typ *Type) fillJsonTag(into *jen.Statement, schemaRef *openapi3.SchemaRef, name string) {
-	var tag = strings.ToLower(name[:1]) + name[1:]
+	var tag = formatTagName(name)
 	if typ.getXGoOmitempty(schemaRef.Value) {
 		tag = tag + ",omitempty"
 	}
@@ -329,4 +329,12 @@ func (typ *Type) getXGoOmitempty(schema *openapi3.Schema) bool {
 
 func (typ *Type) isCustomType(schema *openapi3.Schema) bool {
 	return schema.Type == "string" && (schema.Format != "" || typ.hasXGoTypeStringParse(schema))
+}
+
+func formatTagName(name string) string {
+	if name == strings.ToUpper(name) {
+		return strings.ToLower(name)
+	}
+
+	return strings.ToLower(name[:1]) + name[1:]
 }
