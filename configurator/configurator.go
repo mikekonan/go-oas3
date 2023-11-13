@@ -21,6 +21,8 @@ type Config struct {
 	ComponentsPath    string `config:"componentsPath"`
 
 	Authorization string `config:"authorization,short=a,description=a list of comma-separated key:value pairs to be sent as headers alongside each http request"`
+
+	PrioritizeXGoType bool `config:"prioritize-x-go-type,description=prioritize x-go-type declaration over schema type, if both are provided"`
 }
 
 func (config *Config) Defaults() *Config {
