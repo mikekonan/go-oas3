@@ -22,6 +22,9 @@ Usage of go-oas3:
     	 (default "swagger.yaml")
   -authorization string 
     a list of comma-separated key:value pairs to be sent as headers alongside each http request
+  -prioritize-x-go-type
+    by default, if both properties and x-go-type is provided, the generator will use properties.
+    this flag will make generator prioritize x-go-type over properties.
 
 ```
 ## Example

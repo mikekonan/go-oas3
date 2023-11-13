@@ -620,6 +620,12 @@ func (generator *Generator) componentFromSchema(name string, parentSchema *opena
 
 	typeDeclaration := jen.Type().Id(name)
 
+	if generator.config.PrioritizeXGoType && generator.typee.hasXGoType(parentSchema.Value) {
+		generator.typee.fillGoType(typeDeclaration, "", name, parentSchema, false, true)
+
+		return typeDeclaration
+	}
+
 	if len(parentSchema.Value.Properties) == 0 {
 		if len(parentSchema.Value.Enum) > 0 {
 			generator.typee.fillGoType(typeDeclaration, "", name+"Enum", parentSchema, false, false)
