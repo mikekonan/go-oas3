@@ -122,6 +122,15 @@ If you want to add omitempty tag you can also use `x-go-omitempty`
           type: string
           x-go-omitempty: true
 ```
+
+By default, validation is added to request body objects. If you want to ignore validation, use flag `x-go-skip-validation`
+```
+    ResponseBody:
+      properties:
+        title:
+          type: string
+      x-go-skip-validation: true
+```
 ## Have a question or need some functionality?
 Feel free to discuss it or do a PR.
 
