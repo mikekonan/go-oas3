@@ -18,6 +18,7 @@ const (
 	goRegex           = "x-go-regex"
 	goStringTrimmable = "x-go-string-trimmable"
 	goOmitempty       = "x-go-omitempty"
+	goSkipValidation  = "x-go-skip-validation"
 )
 
 type Type struct {
@@ -274,6 +275,22 @@ func (typ *Type) getXGoMapType(schema *openapi3.Schema) (keyPkg string, key stri
 	}
 
 	return
+}
+
+func (typ *Type) hasXGoSkipValidation(schema *openapi3.Schema) bool {
+	return schema != nil && len(schema.Extensions) > 0 && schema.Extensions[goSkipValidation] != nil
+}
+
+func (typ *Type) getXGoSkipValidation(schema *openapi3.Schema) bool {
+	var value = false
+
+	if typ.hasXGoSkipValidation(schema) {
+		if err := json.Unmarshal(schema.Extensions[goSkipValidation].(json.RawMessage), &value); err != nil {
+			panic(err)
+		}
+	}
+
+	return value
 }
 
 func (typ *Type) getXGoType(schema *openapi3.Schema) (string, string, bool) {

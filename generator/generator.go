@@ -409,7 +409,7 @@ func (generator *Generator) requestParameterStruct(name string, contentType stri
 					}).
 					ToSlice(&getters)
 
-				validateFunc := generator.validationFuncFromRules(cast.ToString(group.Key), typeName, fieldValidationRules)
+				validateFunc := generator.validationFuncFromRules(cast.ToString(group.Key), typeName, fieldValidationRules, nil)
 
 				return jen.Type().Id(typeName).Struct(structFields...).
 					Line().Line().
@@ -552,7 +552,11 @@ func (generator *Generator) getXGoStringTrimmable(schema *openapi3.SchemaRef) bo
 	return false
 }
 
-func (generator *Generator) validationFuncFromRules(receiverName string, name string, rules []jen.Code) jen.Code {
+func (generator *Generator) validationFuncFromRules(receiverName string, name string, rules []jen.Code, schema *openapi3.Schema) jen.Code {
+	if schema != nil && generator.typee.getXGoSkipValidation(schema) {
+		return nil
+	}
+
 	block := jen.Return().Id("nil")
 	if len(rules) > 0 {
 		params := append([]jen.Code{jen.Op("&").Id(receiverName)}, rules...)
@@ -567,6 +571,11 @@ func (generator *Generator) validationFuncFromRules(receiverName string, name st
 func (generator *Generator) fieldValidationRuleFromSchema(receiverName string, propertyName string, schema *openapi3.SchemaRef, required bool) jen.Code {
 	var fieldRule jen.Code
 	v := schema.Value
+
+	if generator.typee.getXGoSkipValidation(v) {
+		return fieldRule
+	}
+
 	switch v.Type {
 	case "string":
 		if v.MaxLength != nil || v.MinLength > 0 {
@@ -732,7 +741,7 @@ func (generator *Generator) componentFromSchema(name string, parentSchema *opena
 			Add(unmarshalRequiredAssignments...).Line().Line().
 			Add(jen.Return().Id("nil"))).Line()
 
-	validateFunc := generator.validationFuncFromRules("body", name, fieldValidationRules)
+	validateFunc := generator.validationFuncFromRules("body", name, fieldValidationRules, parentSchema.Value)
 
 	return jen.Add(componentHelperStruct).
 		Add(jen.Line().Line()).
@@ -1529,7 +1538,7 @@ func (generator *Generator) wrapperBody(method string, path string, contentType 
 		Add(jen.Id("request").Dot("Body").Op("=").Id("body")).
 		Add(jen.Line(), jen.Line())
 
-	if contentType != "application/octet-stream" {
+	if contentType != "application/octet-stream" && !generator.typee.getXGoSkipValidation(body.Value) {
 		result = result.Add(jen.If(jen.Id("err").Op(":=").Id("request").Dot("Body").Dot("Validate").Call(),
 			jen.Id("err").Op("!=").Id("nil")).
 			Block(jen.Id("request").Dot("ProcessingResult").Op("=").Id("RequestProcessingResult").Values(jen.Id("error").Op(":").Id("err"),

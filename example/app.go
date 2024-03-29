@@ -39,6 +39,35 @@ func (t transactionsService) PostTransaction(ctx context.Context, request PostTr
 		Build()
 }
 
+func (t transactionsService) PutTransaction(ctx context.Context, request PutTransactionRequest) PutTransactionResponse {
+	log.Printf("processing update transaction request...\n")
+
+	if err := request.ProcessingResult.Err(); err != nil {
+		return PutTransactionResponseBuilder().
+			StatusCode400().
+			ApplicationJson().
+			Body(GenericResponse{Result: GenericResponseResultEnumFailed}).
+			Build()
+	}
+
+	log.Printf("creating transaction - '%v'\n", request.Body)
+
+	res := GenericResponse{Result: GenericResponseResultEnumSuccess}
+	if err := res.Validate(); err != nil {
+		return PutTransactionResponseBuilder().
+			StatusCode500().
+			ApplicationJson().
+			Body(GenericResponse{Result: GenericResponseResultEnumFailed}).
+			Build()
+	}
+
+	return PutTransactionResponseBuilder().
+		StatusCode200().
+		ApplicationJson().
+		Body(res).
+		Build()
+}
+
 func (t transactionsService) DeleteTransactionsUUID(ctx context.Context, request DeleteTransactionsUUIDRequest) DeleteTransactionsUUIDResponse {
 	log.Printf("processing delete transaction request - '%v'\n", request)
 	if err := request.ProcessingResult.Err(); err != nil {

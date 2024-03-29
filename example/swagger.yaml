@@ -42,6 +42,41 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/GenericResponse"
+    put:
+      tags:
+        - transactions
+      parameters:
+        - in: header
+          name: x-signature
+          schema:
+            type: string
+            maxLength: 5
+        - $ref: "#/components/parameters/Fingerprint"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTransactionRequest"
+        description: address to observe
+      responses:
+        200:
+          description: transaction updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericResponse"
+        400:
+          description: bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericResponse"
+        500:
+          description: unhandled error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericResponse"
   /transactions/{uuid}:
     delete:
       security:
@@ -233,3 +268,22 @@ components:
           x-go-omitempty: true
       required:
         - Description
+    UpdateTransactionRequest:
+      properties:
+        Description:
+          type: string
+          minLength: 8
+          maxLength: 100
+          x-go-string-trimmable: true
+        Title:
+          type: string
+          minLength: 8
+          maxLength: 50
+          x-go-string-trimmable: true
+        Details:
+          type: string
+          x-go-pointer: true
+          x-go-omitempty: true
+      required:
+        - Description
+      x-go-skip-validation: true
