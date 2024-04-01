@@ -19,6 +19,7 @@ const (
 	goStringTrimmable = "x-go-string-trimmable"
 	goOmitempty       = "x-go-omitempty"
 	goSkipValidation  = "x-go-skip-validation"
+	goAsRawPayload    = "x-go-as-raw-payload"
 )
 
 type Type struct {
@@ -190,28 +191,28 @@ func (typ *Type) fillGoType(into *jen.Statement, parentTypeName string, typeName
 	into.Interface()
 }
 
-func (typ *Type) hasXGoType(schema *openapi3.Schema) bool {
-	if len(schema.Extensions) > 0 && schema.Extensions[goType] != nil {
-		return true
-	}
+func (typ *Type) hasXGoFlag(schema *openapi3.Schema, flag string) bool {
+	return schema != nil && len(schema.Extensions) > 0 && schema.Extensions[flag] != nil
+}
 
-	return false
+func (typ *Type) hasXGoType(schema *openapi3.Schema) bool {
+	return typ.hasXGoFlag(schema, goType)
 }
 
 func (typ *Type) hasXGoMapType(schema *openapi3.Schema) bool {
-	if len(schema.Extensions) > 0 && schema.Extensions[goMapType] != nil {
-		return true
-	}
-
-	return false
+	return typ.hasXGoFlag(schema, goMapType)
 }
 
-func (typ *Type) hasXGoPointer(schema *openapi3.Schema) bool {
-	if len(schema.Extensions) > 0 && schema.Extensions[goPointer] != nil {
-		return true
+func (typ *Type) getXGoBoolFlag(schema *openapi3.Schema, flag string) bool {
+	var value = false
+
+	if typ.hasXGoFlag(schema, flag) {
+		if err := json.Unmarshal(schema.Extensions[flag].(json.RawMessage), &value); err != nil {
+			panic(err)
+		}
 	}
 
-	return false
+	return value
 }
 
 func (typ *Type) hasXGoTypeStringParse(schema *openapi3.Schema) bool {
@@ -277,20 +278,8 @@ func (typ *Type) getXGoMapType(schema *openapi3.Schema) (keyPkg string, key stri
 	return
 }
 
-func (typ *Type) hasXGoSkipValidation(schema *openapi3.Schema) bool {
-	return schema != nil && len(schema.Extensions) > 0 && schema.Extensions[goSkipValidation] != nil
-}
-
 func (typ *Type) getXGoSkipValidation(schema *openapi3.Schema) bool {
-	var value = false
-
-	if typ.hasXGoSkipValidation(schema) {
-		if err := json.Unmarshal(schema.Extensions[goSkipValidation].(json.RawMessage), &value); err != nil {
-			panic(err)
-		}
-	}
-
-	return value
+	return typ.getXGoBoolFlag(schema, goSkipValidation)
 }
 
 func (typ *Type) getXGoType(schema *openapi3.Schema) (string, string, bool) {
@@ -313,35 +302,15 @@ func (typ *Type) getXGoType(schema *openapi3.Schema) (string, string, bool) {
 }
 
 func (typ *Type) getXGoPointer(schema *openapi3.Schema) bool {
-	var value = false
-
-	if typ.hasXGoPointer(schema) {
-		if err := json.Unmarshal(schema.Extensions[goPointer].(json.RawMessage), &value); err != nil {
-			panic(err)
-		}
-	}
-
-	return value
-}
-
-func (typ *Type) hasXGoOmitempty(schema *openapi3.Schema) bool {
-	if len(schema.Extensions) > 0 && schema.Extensions[goOmitempty] != nil {
-		return true
-	}
-
-	return false
+	return typ.getXGoBoolFlag(schema, goPointer)
 }
 
 func (typ *Type) getXGoOmitempty(schema *openapi3.Schema) bool {
-	var value = false
+	return typ.getXGoBoolFlag(schema, goOmitempty)
+}
 
-	if typ.hasXGoOmitempty(schema) {
-		if err := json.Unmarshal(schema.Extensions[goOmitempty].(json.RawMessage), &value); err != nil {
-			panic(err)
-		}
-	}
-
-	return value
+func (typ *Type) getXGoAsRawPayload(schema *openapi3.Schema) bool {
+	return typ.getXGoBoolFlag(schema, goAsRawPayload)
 }
 
 func (typ *Type) isCustomType(schema *openapi3.Schema) bool {
