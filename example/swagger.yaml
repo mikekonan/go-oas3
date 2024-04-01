@@ -287,3 +287,4 @@ components:
       required:
         - Description
       x-go-skip-validation: true
+      x-go-as-raw-payload: true

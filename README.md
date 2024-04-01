@@ -9,7 +9,7 @@ The purpose of this project is to generate a clean server boilerplate code from 
 Take a note that path stubs generation relies on the **first tag** from your paths.
 ## Installation
 ```
-GO111MODULE=on go get github.com/mikekonan/go-oas3@v1.0.53
+GO111MODULE=on go get github.com/mikekonan/go-oas3@v1.0.54
 ```
 ## Program arguments
 ```
@@ -28,7 +28,7 @@ Usage of go-oas3:
 
 ```
 ## Example
-Run with: ```go-oas3 -swagger-addr https://raw.githubusercontent.com/mikekonan/go-oas3/v1.0.53/example/swagger.yaml -package example -path ./example```
+Run with: ```go-oas3 -swagger-addr https://raw.githubusercontent.com/mikekonan/go-oas3/v1.0.54/example/swagger.yaml -package example -path ./example```
 The result generated boilerplate and its client you can see at ./example.
 
 # OpenAPI features
@@ -125,11 +125,20 @@ If you want to add omitempty tag you can also use `x-go-omitempty`
 
 By default, validation is added to request body objects. If you want to ignore validation, use flag `x-go-skip-validation`
 ```
-    ResponseBody:
+    RequestBody:
       properties:
         title:
           type: string
       x-go-skip-validation: true
+```
+
+In some really specific cases you may need to not parse request body and pass it as json.RawMessage - here is flag for it `x-go-as-raw-payload`. 
+```
+    RequestBody:
+      properties:
+        title:
+          type: string
+      x-go-as-raw-payload: true
 ```
 ## Have a question or need some functionality?
 Feel free to discuss it or do a PR.

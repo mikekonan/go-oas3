@@ -629,7 +629,7 @@ func (generator *Generator) componentFromSchema(name string, parentSchema *opena
 
 	typeDeclaration := jen.Type().Id(name)
 
-	if generator.config.PrioritizeXGoType && generator.typee.hasXGoType(parentSchema.Value) {
+	if generator.typee.getXGoAsRawPayload(parentSchema.Value) || (generator.config.PrioritizeXGoType && generator.typee.hasXGoType(parentSchema.Value)) {
 		generator.typee.fillGoType(typeDeclaration, "", name, parentSchema, false, true)
 
 		return typeDeclaration
@@ -1479,6 +1479,11 @@ func (generator *Generator) wrapperInteger(in string, name string, paramName str
 
 func (generator *Generator) wrapperBody(method string, path string, contentType string, wrapperName string, operation *openapi3.Operation, body *openapi3.SchemaRef) jen.Code {
 	result := jen.Null()
+	asRawPayload := false
+	if body != nil {
+		asRawPayload = generator.typee.getXGoAsRawPayload(body.Value)
+	}
+	componentPackage := generator.config.ComponentsPackage
 
 	if operation.RequestBody == nil {
 		return result
@@ -1490,9 +1495,15 @@ func (generator *Generator) wrapperBody(method string, path string, contentType 
 		name = generator.normalizer.normalizeOperationName(path, method) + generator.normalizer.contentType(cast.ToString(contentType)) + "RequestBody"
 	}
 
+	if asRawPayload {
+		contentType = "application/octet-stream"
+		componentPackage = "encoding/json"
+		name = "RawMessage"
+	}
+
 	result = result.
 		Add(jen.Var().Defs(
-			jen.Id("body").Qual(generator.config.ComponentsPackage, name),
+			jen.Id("body").Qual(componentPackage, name),
 			jen.Id("decodeErr").Error(),
 		)).
 		Add(jen.Line()).
@@ -1513,7 +1524,7 @@ func (generator *Generator) wrapperBody(method string, path string, contentType 
 						jen.Id("readErr").Op("==").Nil(),
 					).Block(
 						jen.If(
-							jen.List(jen.Id("body"), jen.Id("ok")).Op("=").Id("buf").Assert(jen.Qual(generator.config.ComponentsPackage, name)),
+							jen.List(jen.Id("body"), jen.Id("ok")).Op("=").Id("buf").Assert(jen.Qual(componentPackage, name)),
 							jen.Op("!").Id("ok"),
 						).Block(
 							jen.Id("decodeErr").Op("=").Qual("errors", "New").Call(jen.Lit("body is not []byte")),
@@ -1538,7 +1549,7 @@ func (generator *Generator) wrapperBody(method string, path string, contentType 
 		Add(jen.Id("request").Dot("Body").Op("=").Id("body")).
 		Add(jen.Line(), jen.Line())
 
-	if contentType != "application/octet-stream" && !generator.typee.getXGoSkipValidation(body.Value) {
+	if contentType != "application/octet-stream" && !generator.typee.getXGoSkipValidation(body.Value) && !asRawPayload {
 		result = result.Add(jen.If(jen.Id("err").Op(":=").Id("request").Dot("Body").Dot("Validate").Call(),
 			jen.Id("err").Op("!=").Id("nil")).
 			Block(jen.Id("request").Dot("ProcessingResult").Op("=").Id("RequestProcessingResult").Values(jen.Id("error").Op(":").Id("err"),
