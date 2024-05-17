@@ -87,6 +87,26 @@ func (t transactionsService) DeleteTransactionsUUID(ctx context.Context, request
 		Build()
 }
 
+func (t transactionsService) PostFileUpload(ctx context.Context, request PostFileUploadRequest) PostFileUploadResponse {
+	log.Printf("processing create file upload request...\n")
+
+	if err := request.ProcessingResult.Err(); err != nil {
+		return PostFileUploadResponseBuilder().
+			StatusCode400().
+			ApplicationJson().
+			Body(GenericResponse{Result: GenericResponseResultEnumFailed}).
+			Build()
+	}
+
+	log.Printf("uploading file\n")
+
+	return PostFileUploadResponseBuilder().
+		StatusCode201().
+		ApplicationJson().
+		Body(GenericResponse{Result: GenericResponseResultEnumSuccess}).
+		Build()
+}
+
 type callbacksService struct{}
 
 func (c callbacksService) PostCallbacksCallbackType(ctx context.Context, request PostCallbacksCallbackTypeRequest) PostCallbacksCallbackTypeResponse {
