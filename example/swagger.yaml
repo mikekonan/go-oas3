@@ -167,6 +167,42 @@ paths:
         description: Callback data
         required: true
       summary: Callback
+  /file-upload:
+    post:
+      tags:
+        - transactions
+      parameters:
+        - in: header
+          name: x-signature
+          schema:
+            type: string
+            maxLength: 5
+        - $ref: "#/components/parameters/Fingerprint"
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/UploadFileRequest"
+        description: upload file request
+      responses:
+        201:
+          description: transaction created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericResponse"
+        400:
+          description: bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericResponse"
+        500:
+          description: unhandled error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericResponse"
 components:
   securitySchemes:
     Bearer:
@@ -286,4 +322,7 @@ components:
           x-go-omitempty: true
       required:
         - Description
+      x-go-skip-validation: true
+    UploadFileRequest:
+      x-go-type: mime/multipart.Form
       x-go-skip-validation: true

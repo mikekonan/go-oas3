@@ -1519,6 +1519,19 @@ func (generator *Generator) wrapperBody(method string, path string, contentType 
 							jen.Id("decodeErr").Op("=").Qual("errors", "New").Call(jen.Lit("body is not []byte")),
 						),
 					))
+
+			case "multipart/form-data":
+				return jen.If(
+					jen.Id("decodeErr").Op("=").Id("r").Dot("ParseMultipartForm").Call(jen.Lit(32<<20)), // 32 MB
+					jen.Id("decodeErr").Op("==").Id("nil")).
+					Block(
+						jen.If(jen.Id("r").Dot("MultipartForm").Op("==").Id("nil")).
+							Block(
+								jen.Id("decodeErr").Op("=").Qual("errors", "New").Call(jen.Lit("MultipartForm is nil")),
+							),
+						jen.Id("body").Op("=").Id("*r").Dot("MultipartForm"),
+					)
+
 			default:
 				return jen.Id("decodeErr").Op("=").Qual("encoding/json", "NewDecoder").Call(jen.Id("r").Dot("Body")).Dot("Decode").Call(jen.Op("&").Id("body"))
 			}
