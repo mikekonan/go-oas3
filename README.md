@@ -9,7 +9,7 @@ The purpose of this project is to generate a clean server boilerplate code from 
 Take a note that path stubs generation relies on the **first tag** from your paths.
 ## Installation
 ```
-GO111MODULE=on go get github.com/mikekonan/go-oas3@latest
+go install github.com/mikekonan/go-oas3@latest
 ```
 ## Program arguments
 ```
@@ -28,7 +28,7 @@ Usage of go-oas3:
 
 ```
 ## Example
-Run with: ```go-oas3 -swagger-addr https://raw.githubusercontent.com/mikekonan/go-oas3/v1.0.53/example/swagger.yaml -package example -path ./example```
+Run with: ```go-oas3 -swagger-addr https://raw.githubusercontent.com/mikekonan/go-oas3/v1.0.54/example/swagger.yaml -package example -path ./example```
 The result generated boilerplate and its client you can see at ./example.
 
 # OpenAPI features
