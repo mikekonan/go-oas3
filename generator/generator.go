@@ -1190,13 +1190,13 @@ func (generator *Generator) wrapper(name string, requestName string, routerName,
 					jen.Id("r"),
 					jen.Lit(name)))).
 			Else().
-			If(jen.Id("len").Call(jen.Id("response").Dot("bodyRaw").Call()).Op(">=").Lit(0)).
+			If(jen.Id("len").Call(jen.Id("response").Dot("bodyRaw").Call()).Op(">").Lit(0)).
 			Block(jen.Id("body").Op("=").Id("response").Dot("bodyRaw").Call()),
 
 			jen.Line(),
 		)
 
-		funcCode = append(funcCode, jen.If(jen.Id("len").Call(jen.Id("body")).Op(">=").Lit(0)).Block(
+		funcCode = append(funcCode, jen.If(jen.Id("len").Call(jen.Id("body")).Op(">").Lit(0)).Block(
 			jen.List(jen.Id("count"),
 				jen.Id("err")).Op(":=").Id("w").Dot("Write").Call(jen.Id("body")),
 			jen.If(jen.Id("err").Op("!=").Id("nil")).Block(
