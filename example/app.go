@@ -62,10 +62,7 @@ func (t transactionsService) PutTransaction(ctx context.Context, request PutTran
 	}
 
 	return PutTransactionResponseBuilder().
-		StatusCode200().
-		ApplicationJson().
-		Body(res).
-		Build()
+		StatusCode200().ApplicationJson().BodyBytesWithEncoding("gzip", nil).Build()
 }
 
 func (t transactionsService) DeleteTransactionsUUID(ctx context.Context, request DeleteTransactionsUUIDRequest) DeleteTransactionsUUIDResponse {

@@ -1099,6 +1099,140 @@ func (generator *Generator) wrappers(swagger *openapi3.T) jen.Code {
 		Add(jen.Line(), jen.Line())
 }
 
+func (generator *Generator) wrapper(name string, requestName string, routerName, method string, path string, operation *openapi3.Operation, requestBody *openapi3.SchemaRef, contentType string) jen.Code {
+	var funcCode []jen.Code
+
+	funcCode = append(funcCode, jen.Defer().Id("r").Dot("Body").Dot("Close").Call().Line())
+
+	funcCode = append(funcCode, jen.Id("response").Op(":=").Id("router").Dot("service").Dot(name).Call(jen.Id("r").Dot("Context").Call(),
+		jen.Id("router").Dot("parse"+name+"Request").Call(jen.Id("r"))),
+		jen.Line().Line(),
+		jen.If(jen.Id("response").Dot("statusCode").Call().Op("==").Lit(302).Op("&&").Id("response").Dot("redirectURL").Call().Op("!=").Lit("")).Block(
+			jen.If(jen.Id("router").Dot("hooks").Dot("RequestRedirectStarted").Op("!=").Id("nil")).Block(
+				jen.Id("router").Dot("hooks").Dot("RequestRedirectStarted").Call(jen.Id("r"),
+					jen.Lit(name), jen.Id("response").Dot("redirectURL").Call())),
+			jen.Line().Line(),
+			jen.Qual("net/http",
+				"Redirect").Call(jen.Id("w"),
+				jen.Id("r"),
+				jen.Id("response").Dot("redirectURL").Call(),
+				jen.Lit(302)),
+			jen.Line().Line(),
+			jen.If(jen.Id("router").Dot("hooks").Dot("ServiceCompleted").Op("!=").Id("nil")).
+				Block(jen.Id("router").Dot("hooks").Dot("ServiceCompleted").Call(jen.Id("r"), jen.Lit(name))),
+			jen.Line().Line(),
+			jen.Return(),
+		),
+		jen.Line().Line(),
+		jen.For(jen.List(jen.Id("header"),
+			jen.Id("value")).Op(":=").Range().Id("response").Dot("headers").Call()).Block(
+			jen.Id("w").Dot("Header").Call().Dot("Set").Call(jen.Id("header"),
+				jen.Id("value"))),
+		jen.Line().Line(),
+		jen.For(jen.List(jen.Id("_"),
+			jen.Id("c")).Op(":=").Range().Id("response").Dot("cookies").Call()).Block(
+			jen.Id("cookie").Op(":=").Id("c"),
+			jen.Qual("net/http", "SetCookie").Call(jen.Id("w"), jen.Op("&").Id("cookie"))))
+
+	funcCode = append(funcCode, jen.Line().Add(jen.Line()).
+		Add(jen.If(jen.Id("router").Dot("hooks").Dot("RequestProcessingCompleted").Op("!=").Id("nil")).Block(
+			jen.Id("router").Dot("hooks").Dot("RequestProcessingCompleted").Call(
+				jen.Id("r"),
+				jen.Lit(name)))).Line().Line())
+
+	if len(operation.Responses) > 0 && linq.From(operation.Responses).AnyWithT(func(kv linq.KeyValue) bool { return len(kv.Value.(*openapi3.ResponseRef).Value.Content) > 0 }) {
+		funcCode = append(funcCode, jen.If(jen.Id("len").Call(jen.Id("response").Dot("contentType").Call()).Op(">").Lit(0)).Block(
+			jen.Id("w").Dot("Header").Call().Dot("Set").Call(jen.Lit("content-type"),
+				jen.Id("response").Dot("contentType").Call())).Line())
+
+		funcCode = append(funcCode, jen.Id("w").Dot("WriteHeader").Call(jen.Id("response").Dot("statusCode").Call()).Line().Line())
+
+		funcCode = append(funcCode, jen.Var().Id("body").Index().Byte().Line())
+
+		funcCode = append(funcCode, jen.If(jen.Id("response").Dot("body").Call().Op("!=").Id("nil")).Block(
+			jen.Var().Id("err").Error().Line(),
+			jen.Switch(jen.Id("response").Dot("contentType").Call()).Block(
+				jen.Case(jen.Lit("application/xml")).Block(
+					jen.List(jen.Id("body"), jen.Id("err")).Op("=").
+						Qual("encoding/xml", "Marshal").Call(jen.Id("response").Dot("body").Call()),
+				),
+				jen.Case(jen.Lit("application/octet-stream")).Block(
+					jen.Var().Id("ok").Bool(),
+					jen.If(
+						jen.List(jen.Id("body"), jen.Id("ok")).Op("=").Parens(jen.Id("response").Dot("body").Call()).Assert(jen.Index().Byte()),
+						jen.Op("!").Id("ok"),
+					).Block(
+						jen.Id("err").Op("=").Qual("errors", "New").Call(jen.Lit("body is not []byte")),
+					),
+				),
+				jen.Case(jen.Lit("text/html")).Block(
+					jen.Id("body").Op("=").
+						Index().Byte().Parens(jen.Qual("fmt", "Sprint").Call(jen.Id("response").Dot("body").Call())),
+				),
+				jen.Case(jen.Lit("application/json")).Block(
+					jen.Fallthrough(),
+				),
+				jen.Default().Block(
+					jen.List(jen.Id("body"), jen.Id("err")).Op("=").
+						Qual("encoding/json", "Marshal").Call(jen.Id("response").Dot("body").Call()),
+				),
+			).Line(),
+			jen.If(jen.Id("err").Op("!=").Id("nil")).Block(
+				jen.If(jen.Id("router").Dot("hooks").Dot("ResponseBodyMarshalFailed").Op("!=").Id("nil")).Block(
+					jen.Id("router").Dot("hooks").Dot("ResponseBodyMarshalFailed").Call(
+						jen.Id("w"),
+						jen.Id("r"),
+						jen.Lit(name),
+						jen.Id("err"))),
+				jen.Line().Return()).Line().Line(),
+			jen.If(jen.Id("router").Dot("hooks").Dot("ResponseBodyMarshalCompleted").Op("!=").Id("nil")).Block(
+				jen.Id("router").Dot("hooks").Dot("ResponseBodyMarshalCompleted").Call(
+					jen.Id("r"),
+					jen.Lit(name)))).
+			Else().
+			If(jen.Id("len").Call(jen.Id("response").Dot("bodyRaw").Call()).Op(">=").Lit(0)).
+			Block(jen.Id("body").Op("=").Id("response").Dot("bodyRaw").Call()),
+
+			jen.Line(),
+		)
+
+		funcCode = append(funcCode, jen.If(jen.Id("len").Call(jen.Id("body")).Op(">=").Lit(0)).Block(
+			jen.List(jen.Id("count"),
+				jen.Id("err")).Op(":=").Id("w").Dot("Write").Call(jen.Id("body")),
+			jen.If(jen.Id("err").Op("!=").Id("nil")).Block(
+				jen.If(jen.Id("router").Dot("hooks").Dot("ResponseBodyWriteFailed").Op("!=").Id("nil")).Block(
+					jen.Id("router").Dot("hooks").Dot("ResponseBodyWriteFailed").Call(jen.Id("r"),
+						jen.Lit(name),
+						jen.Id("count"),
+						jen.Id("err"))),
+				jen.Line(),
+				jen.If(jen.Id("router").Dot("hooks").Dot("ResponseBodyWriteCompleted").Op("!=").Id("nil")).Block(
+					jen.Id("router").Dot("hooks").Dot("ResponseBodyWriteCompleted").Call(
+						jen.Id("r"),
+						jen.Lit(name), jen.Id("count"))),
+				jen.Line().Return()).Line().Line(),
+			jen.If(jen.Id("router").Dot("hooks").Dot("ResponseBodyWriteCompleted").Op("!=").Id("nil")).Block(
+				jen.Id("router").Dot("hooks").Dot("ResponseBodyWriteCompleted").Call(
+					jen.Id("r"),
+					jen.Lit(name), jen.Id("count"))),
+		).Line())
+	} else {
+		funcCode = append(funcCode, jen.Id("w").Dot("WriteHeader").Call(jen.Id("response").Dot("statusCode").Call()).Line())
+	}
+
+	funcCode = append(funcCode, jen.If(jen.Id("router").Dot("hooks").Dot("ServiceCompleted").Op("!=").Id("nil")).
+		Block(jen.Id("router").Dot("hooks").Dot("ServiceCompleted").Call(jen.Id("r"), jen.Lit(name))))
+
+	return jen.Null().
+		Add(generator.wrapperRequestParser(name, requestName, routerName, method, path, operation, requestBody, contentType)).
+		Add(jen.Line()).
+		Add(jen.Func().Params(
+			jen.Id("router").Op("*").Id(routerName)).Id(name).Params(
+			jen.Id("w").Qual("net/http", "ResponseWriter"),
+			jen.Id("r").Op("*").Qual("net/http", "Request")).
+			Block(funcCode...)).Line().Line()
+}
+
 type groupedOperations struct {
 	tag        string
 	operations []operationWithPath
@@ -1649,133 +1783,6 @@ func (generator *Generator) wrapperRequestParser(name string, requestName string
 		Line()
 }
 
-func (generator *Generator) wrapper(name string, requestName string, routerName, method string, path string, operation *openapi3.Operation, requestBody *openapi3.SchemaRef, contentType string) jen.Code {
-	var funcCode []jen.Code
-
-	funcCode = append(funcCode, jen.Defer().Id("r").Dot("Body").Dot("Close").Call().Line())
-
-	funcCode = append(funcCode, jen.Id("response").Op(":=").Id("router").Dot("service").Dot(name).Call(jen.Id("r").Dot("Context").Call(),
-		jen.Id("router").Dot("parse"+name+"Request").Call(jen.Id("r"))),
-		jen.Line().Line(),
-		jen.If(jen.Id("response").Dot("statusCode").Call().Op("==").Lit(302).Op("&&").Id("response").Dot("redirectURL").Call().Op("!=").Lit("")).Block(
-			jen.If(jen.Id("router").Dot("hooks").Dot("RequestRedirectStarted").Op("!=").Id("nil")).Block(
-				jen.Id("router").Dot("hooks").Dot("RequestRedirectStarted").Call(jen.Id("r"),
-					jen.Lit(name), jen.Id("response").Dot("redirectURL").Call())),
-			jen.Line().Line(),
-			jen.Qual("net/http",
-				"Redirect").Call(jen.Id("w"),
-				jen.Id("r"),
-				jen.Id("response").Dot("redirectURL").Call(),
-				jen.Lit(302)),
-			jen.Line().Line(),
-			jen.If(jen.Id("router").Dot("hooks").Dot("ServiceCompleted").Op("!=").Id("nil")).
-				Block(jen.Id("router").Dot("hooks").Dot("ServiceCompleted").Call(jen.Id("r"), jen.Lit(name))),
-			jen.Line().Line(),
-			jen.Return(),
-		),
-		jen.Line().Line(),
-		jen.For(jen.List(jen.Id("header"),
-			jen.Id("value")).Op(":=").Range().Id("response").Dot("headers").Call()).Block(
-			jen.Id("w").Dot("Header").Call().Dot("Set").Call(jen.Id("header"),
-				jen.Id("value"))),
-		jen.Line().Line(),
-		jen.For(jen.List(jen.Id("_"),
-			jen.Id("c")).Op(":=").Range().Id("response").Dot("cookies").Call()).Block(
-			jen.Id("cookie").Op(":=").Id("c"),
-			jen.Qual("net/http", "SetCookie").Call(jen.Id("w"), jen.Op("&").Id("cookie"))))
-
-	funcCode = append(funcCode, jen.Line().Add(jen.Line()).
-		Add(jen.If(jen.Id("router").Dot("hooks").Dot("RequestProcessingCompleted").Op("!=").Id("nil")).Block(
-			jen.Id("router").Dot("hooks").Dot("RequestProcessingCompleted").Call(
-				jen.Id("r"),
-				jen.Lit(name)))).Line().Line())
-
-	if len(operation.Responses) > 0 && linq.From(operation.Responses).AnyWithT(func(kv linq.KeyValue) bool { return len(kv.Value.(*openapi3.ResponseRef).Value.Content) > 0 }) {
-		funcCode = append(funcCode, jen.If(jen.Id("len").Call(jen.Id("response").Dot("contentType").Call()).Op(">").Lit(0)).Block(
-			jen.Id("w").Dot("Header").Call().Dot("Set").Call(jen.Lit("content-type"),
-				jen.Id("response").Dot("contentType").Call())).Line())
-
-		funcCode = append(funcCode, jen.Id("w").Dot("WriteHeader").Call(jen.Id("response").Dot("statusCode").Call()).Line().Line())
-
-		funcCode = append(funcCode, jen.If(jen.Id("response").Dot("body").Call().Op("!=").Id("nil")).Block(
-			jen.Var().Defs(
-				jen.Id("data").Index().Byte(),
-				jen.Id("err").Error(),
-			).Line(),
-			jen.Switch(jen.Id("response").Dot("contentType").Call()).Block(
-				jen.Case(jen.Lit("application/xml")).Block(
-					jen.List(jen.Id("data"), jen.Id("err")).Op("=").
-						Qual("encoding/xml", "Marshal").Call(jen.Id("response").Dot("body").Call()),
-				),
-				jen.Case(jen.Lit("application/octet-stream")).Block(
-					jen.Var().Id("ok").Bool(),
-					jen.If(
-						jen.List(jen.Id("data"), jen.Id("ok")).Op("=").Parens(jen.Id("response").Dot("body").Call()).Assert(jen.Index().Byte()),
-						jen.Op("!").Id("ok"),
-					).Block(
-						jen.Id("err").Op("=").Qual("errors", "New").Call(jen.Lit("body is not []byte")),
-					),
-				),
-				jen.Case(jen.Lit("text/html")).Block(
-					jen.Id("data").Op("=").
-						Index().Byte().Parens(jen.Qual("fmt", "Sprint").Call(jen.Id("response").Dot("body").Call())),
-				),
-				jen.Case(jen.Lit("application/json")).Block(
-					jen.Fallthrough(),
-				),
-				jen.Default().Block(
-					jen.List(jen.Id("data"), jen.Id("err")).Op("=").
-						Qual("encoding/json", "Marshal").Call(jen.Id("response").Dot("body").Call()),
-				),
-			).Line(),
-			jen.If(jen.Id("err").Op("!=").Id("nil")).Block(
-				jen.If(jen.Id("router").Dot("hooks").Dot("ResponseBodyMarshalFailed").Op("!=").Id("nil")).Block(
-					jen.Id("router").Dot("hooks").Dot("ResponseBodyMarshalFailed").Call(
-						jen.Id("w"),
-						jen.Id("r"),
-						jen.Lit(name),
-						jen.Id("err"))),
-				jen.Line().Return()).Line().Line(),
-			jen.If(jen.Id("router").Dot("hooks").Dot("ResponseBodyMarshalCompleted").Op("!=").Id("nil")).Block(
-				jen.Id("router").Dot("hooks").Dot("ResponseBodyMarshalCompleted").Call(
-					jen.Id("r"),
-					jen.Lit(name))).Line().Line(),
-			jen.List(jen.Id("count"),
-				jen.Id("err")).Op(":=").Id("w").Dot("Write").Call(jen.Id("data")),
-			jen.If(jen.Id("err").Op("!=").Id("nil")).Block(
-				jen.If(jen.Id("router").Dot("hooks").Dot("ResponseBodyWriteFailed").Op("!=").Id("nil")).Block(
-					jen.Id("router").Dot("hooks").Dot("ResponseBodyWriteFailed").Call(jen.Id("r"),
-						jen.Lit(name),
-						jen.Id("count"),
-						jen.Id("err"))),
-				jen.Line(),
-				jen.If(jen.Id("router").Dot("hooks").Dot("ResponseBodyWriteCompleted").Op("!=").Id("nil")).Block(
-					jen.Id("router").Dot("hooks").Dot("ResponseBodyWriteCompleted").Call(
-						jen.Id("r"),
-						jen.Lit(name), jen.Id("count"))),
-				jen.Line().Return()).Line().Line(),
-			jen.If(jen.Id("router").Dot("hooks").Dot("ResponseBodyWriteCompleted").Op("!=").Id("nil")).Block(
-				jen.Id("router").Dot("hooks").Dot("ResponseBodyWriteCompleted").Call(
-					jen.Id("r"),
-					jen.Lit(name), jen.Id("count")))).Line().Line(),
-		)
-	} else {
-		funcCode = append(funcCode, jen.Id("w").Dot("WriteHeader").Call(jen.Id("response").Dot("statusCode").Call()).Line().Line())
-	}
-
-	funcCode = append(funcCode, jen.If(jen.Id("router").Dot("hooks").Dot("ServiceCompleted").Op("!=").Id("nil")).
-		Block(jen.Id("router").Dot("hooks").Dot("ServiceCompleted").Call(jen.Id("r"), jen.Lit(name))))
-
-	return jen.Null().
-		Add(generator.wrapperRequestParser(name, requestName, routerName, method, path, operation, requestBody, contentType)).
-		Add(jen.Line()).
-		Add(jen.Func().Params(
-			jen.Id("router").Op("*").Id(routerName)).Id(name).Params(
-			jen.Id("w").Qual("net/http", "ResponseWriter"),
-			jen.Id("r").Op("*").Qual("net/http", "Request")).
-			Block(funcCode...)).Line().Line()
-}
-
 func (generator *Generator) requestResponseBuilders(swagger *openapi3.T) jen.Code {
 	result := []jen.Code{
 		generator.responseStruct(),
@@ -1831,6 +1838,11 @@ func (generator *Generator) builders(swagger *openapi3.T) (result jen.Code) {
 									response.SetCookie = true
 									continue
 								}
+
+								if strings.ToLower(k) == "content-encoding" {
+									continue
+								}
+
 								headers[k] = v
 							}
 
@@ -1960,6 +1972,7 @@ func (generator *Generator) responseStruct() jen.Code {
 	return jen.Type().Id("response").Struct(
 		jen.Id("statusCode").Id("int"),
 		jen.Id("body").Interface(),
+		jen.Id("bodyRaw").Index().Byte(),
 		jen.Id("contentType").Id("string"),
 		jen.Id("redirectURL").Id("string"),
 		jen.Id("headers").Map(jen.Id("string")).Id("string"),
@@ -1968,6 +1981,7 @@ func (generator *Generator) responseStruct() jen.Code {
 		Add(jen.Type().Id("responseInterface").Interface(
 			jen.Id("statusCode").Params().Id("int"),
 			jen.Id("body").Params().Interface(),
+			jen.Id("bodyRaw").Params().Index().Byte(),
 			jen.Id("contentType").Params().Id("string"),
 			jen.Id("redirectURL").Params().Id("string"),
 			jen.Id("cookies").Params().Index().Qual("net/http", "Cookie"),
@@ -2001,6 +2015,11 @@ func (generator *Generator) responseType(name string) jen.Code {
 		Add(jen.Func().Params(
 			jen.Id("response").Id(decapicalizedName+"Response")).Id("body").Params().Params(jen.Interface()).Block(
 			jen.Return().Id("response").Dot("response").Dot("body"),
+		)).
+		Add(jen.Line(), jen.Line()).
+		Add(jen.Func().Params(
+			jen.Id("response").Id(decapicalizedName+"Response")).Id("bodyRaw").Params().Params(jen.Index().Byte()).Block(
+			jen.Return().Id("response").Dot("response").Dot("bodyRaw"),
 		)).
 		Add(jen.Line(), jen.Line()).
 		Add(jen.Func().Params(
@@ -2083,7 +2102,7 @@ func (generator *Generator) responseBuilders(operationStruct operationStruct) je
 						bodyBuilderName := generator.bodyGeneratorName(operationStruct.PrivateName+resp.StatusCode, contentTypeName)
 						assemblerName := generator.assemblerName(operationStruct.Name + resp.StatusCode + generator.normalizer.contentType(contentTypeName))
 
-						result = append(result, generator.responseContentTypeBuilder(contentTypeName, contentType, contentTypeBuilderName, bodyBuilderName, assemblerName)...)
+						result = append(result, generator.responseContentTypeBuilder(contentTypeName, contentType, contentTypeBuilderName, bodyBuilderName, assemblerName, resp.Headers)...)
 
 						//assembler struct, build
 						results = append(results, generator.responseAssembler(assemblerName, operationStruct.InterfaceResponseName, operationStruct.ResponseName)...)
@@ -2120,6 +2139,47 @@ func (generator *Generator) responseBuilders(operationStruct operationStruct) je
 		ToSlice(&results)
 
 	return jen.Null().Add(generator.normalizer.doubleLineAfterEachElement(append([]jen.Code{structBuilder, structConstructor}, results...)...)...)
+}
+
+func (generator *Generator) responseContentTypeBuilder(contentTypeName string, contentType string, contentTypeBuilderName string, bodyBuilderName string, nextBuilderName string, headers map[string]*openapi3.HeaderRef) (results []jen.Code) {
+	contentTypeFuncName := generator.contentTypeFuncName(contentTypeName)
+	results = append(results, jen.Func().Params(
+		jen.Id("builder").Op("*").Id(contentTypeBuilderName)).Id(contentTypeFuncName).Params().Params(
+		jen.Op("*").Id(bodyBuilderName)).Block(
+		jen.Id("builder").Dot("response").Dot("contentType").Op("=").Lit(contentTypeName),
+		jen.Line().Return().Op("&").Id(bodyBuilderName).Values(jen.Id("response").Op(":").Id("builder").Dot("response")),
+	))
+
+	results = append(results, jen.Type().Id(bodyBuilderName).Struct(
+		jen.Id("response"),
+		jen.Id("rawBytes").Index().Byte(), // Поле для хранения сырых байтов
+	))
+
+	results = append(results, jen.Func().Params(
+		jen.Id("builder").Op("*").Id(bodyBuilderName)).Id("BodyBytesWithEncoding").Params(
+		jen.Id("encoding").String(), jen.Id("body").Index().Byte()).Params(
+		jen.Op("*").Id(nextBuilderName)).Block(
+		jen.Id("builder").Dot("rawBytes").Op("=").Id("body"),
+		jen.Id("builder").Dot("response").Dot("headers").Index(jen.Lit("Content-Encoding")).Op("=").Id("encoding"),
+		jen.Line().Return().Op("&").Id(nextBuilderName).Values(jen.Id("response").Op(":").Id("builder").Dot("response"))))
+
+	results = append(results, jen.Func().Params(
+		jen.Id("builder").Op("*").Id(bodyBuilderName)).Id("BodyBytes").Params(
+		jen.Id("body").Index().Byte()).Params(
+		jen.Op("*").Id(nextBuilderName)).Block(
+		jen.Id("builder").Dot("rawBytes").Op("=").Id("body"),
+		jen.Line().Return().Op("&").Id(nextBuilderName).Values(jen.Id("response").Op(":").Id("builder").Dot("response")),
+	))
+
+	results = append(results, jen.Func().Params(
+		jen.Id("builder").Op("*").Id(bodyBuilderName)).Id("Body").Params(
+		jen.Id("body").Qual(generator.config.ComponentsPackage, contentType)).Params(
+		jen.Op("*").Id(nextBuilderName)).Block(
+		jen.Id("builder").Dot("response").Dot("body").Op("=").Id("body"),
+		jen.Line().Return().Op("&").Id(nextBuilderName).Values(jen.Id("response").Op(":").Id("builder").Dot("response")),
+	))
+
+	return results
 }
 
 func (generator *Generator) responseStatusCodeBuilder(isRedirect bool, statusCode string, builderName string, nextBuilderName string) (results []jen.Code) {
@@ -2173,30 +2233,6 @@ func (generator *Generator) responseCookiesBuilder(cookieBuilderName string, nex
 			Params(jen.Op("*").Id(nextBuilderName)).Block(
 			jen.Id("builder").Dot("cookies").Op("=").Id("cookie"),
 			jen.Return().Op("&").Id(nextBuilderName).Values(jen.Id("response").Op(":").Id("builder").Dot("response"))))
-	return
-}
-
-func (generator *Generator) responseContentTypeBuilder(contentTypeName string, contentType string, contentTypeBuilderName string, bodyBuilderName string, nextBuilderName string) (results []jen.Code) {
-	//content-type -> body
-	contentTypeFuncName := generator.contentTypeFuncName(contentTypeName)
-	results = append(results, jen.Func().Params(
-		jen.Id("builder").Op("*").Id(contentTypeBuilderName)).Id(contentTypeFuncName).Params().Params(
-		jen.Op("*").Id(bodyBuilderName)).Block(
-		jen.Id("builder").Dot("response").Dot("contentType").Op("=").Lit(contentTypeName),
-		jen.Line().Return().Op("&").Id(bodyBuilderName).Values(jen.Id("response").Op(":").Id("builder").Dot("response")),
-	))
-
-	//body struct
-	results = append(results, jen.Type().Id(bodyBuilderName).Struct(jen.Id("response")))
-
-	//body builder
-	results = append(results, jen.Func().Params(
-		jen.Id("builder").Op("*").Id(bodyBuilderName)).Id("Body").Params(
-		jen.Id("body").Qual(generator.config.ComponentsPackage, contentType)).Params(
-		jen.Op("*").Id(nextBuilderName)).Block(
-		jen.Id("builder").Dot("response").Dot("body").Op("=").Id("body"),
-		jen.Line().Return().Op("&").Id(nextBuilderName).Values(jen.Id("response").Op(":").Id("builder").Dot("response")),
-	))
 	return
 }
 

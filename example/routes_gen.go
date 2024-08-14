@@ -300,26 +300,25 @@ func (router *callbacksRouter) PostCallbacksCallbackType(w http.ResponseWriter, 
 
 	w.WriteHeader(response.statusCode())
 
+	var body []byte
+
 	if response.body() != nil {
-		var (
-			data []byte
-			err  error
-		)
+		var err error
 
 		switch response.contentType() {
 		case "application/xml":
-			data, err = xml.Marshal(response.body())
+			body, err = xml.Marshal(response.body())
 		case "application/octet-stream":
 			var ok bool
-			if data, ok = (response.body()).([]byte); !ok {
+			if body, ok = (response.body()).([]byte); !ok {
 				err = errors.New("body is not []byte")
 			}
 		case "text/html":
-			data = []byte(fmt.Sprint(response.body()))
+			body = []byte(fmt.Sprint(response.body()))
 		case "application/json":
 			fallthrough
 		default:
-			data, err = json.Marshal(response.body())
+			body, err = json.Marshal(response.body())
 		}
 
 		if err != nil {
@@ -333,8 +332,12 @@ func (router *callbacksRouter) PostCallbacksCallbackType(w http.ResponseWriter, 
 		if router.hooks.ResponseBodyMarshalCompleted != nil {
 			router.hooks.ResponseBodyMarshalCompleted(r, "PostCallbacksCallbackType")
 		}
+	} else if len(response.bodyRaw()) >= 0 {
+		body = response.bodyRaw()
+	}
 
-		count, err := w.Write(data)
+	if len(body) >= 0 {
+		count, err := w.Write(body)
 		if err != nil {
 			if router.hooks.ResponseBodyWriteFailed != nil {
 				router.hooks.ResponseBodyWriteFailed(r, "PostCallbacksCallbackType", count, err)
@@ -511,26 +514,25 @@ func (router *transactionsRouter) PostTransaction(w http.ResponseWriter, r *http
 
 	w.WriteHeader(response.statusCode())
 
+	var body []byte
+
 	if response.body() != nil {
-		var (
-			data []byte
-			err  error
-		)
+		var err error
 
 		switch response.contentType() {
 		case "application/xml":
-			data, err = xml.Marshal(response.body())
+			body, err = xml.Marshal(response.body())
 		case "application/octet-stream":
 			var ok bool
-			if data, ok = (response.body()).([]byte); !ok {
+			if body, ok = (response.body()).([]byte); !ok {
 				err = errors.New("body is not []byte")
 			}
 		case "text/html":
-			data = []byte(fmt.Sprint(response.body()))
+			body = []byte(fmt.Sprint(response.body()))
 		case "application/json":
 			fallthrough
 		default:
-			data, err = json.Marshal(response.body())
+			body, err = json.Marshal(response.body())
 		}
 
 		if err != nil {
@@ -544,8 +546,12 @@ func (router *transactionsRouter) PostTransaction(w http.ResponseWriter, r *http
 		if router.hooks.ResponseBodyMarshalCompleted != nil {
 			router.hooks.ResponseBodyMarshalCompleted(r, "PostTransaction")
 		}
+	} else if len(response.bodyRaw()) >= 0 {
+		body = response.bodyRaw()
+	}
 
-		count, err := w.Write(data)
+	if len(body) >= 0 {
+		count, err := w.Write(body)
 		if err != nil {
 			if router.hooks.ResponseBodyWriteFailed != nil {
 				router.hooks.ResponseBodyWriteFailed(r, "PostTransaction", count, err)
@@ -679,26 +685,25 @@ func (router *transactionsRouter) PutTransaction(w http.ResponseWriter, r *http.
 
 	w.WriteHeader(response.statusCode())
 
+	var body []byte
+
 	if response.body() != nil {
-		var (
-			data []byte
-			err  error
-		)
+		var err error
 
 		switch response.contentType() {
 		case "application/xml":
-			data, err = xml.Marshal(response.body())
+			body, err = xml.Marshal(response.body())
 		case "application/octet-stream":
 			var ok bool
-			if data, ok = (response.body()).([]byte); !ok {
+			if body, ok = (response.body()).([]byte); !ok {
 				err = errors.New("body is not []byte")
 			}
 		case "text/html":
-			data = []byte(fmt.Sprint(response.body()))
+			body = []byte(fmt.Sprint(response.body()))
 		case "application/json":
 			fallthrough
 		default:
-			data, err = json.Marshal(response.body())
+			body, err = json.Marshal(response.body())
 		}
 
 		if err != nil {
@@ -712,8 +717,12 @@ func (router *transactionsRouter) PutTransaction(w http.ResponseWriter, r *http.
 		if router.hooks.ResponseBodyMarshalCompleted != nil {
 			router.hooks.ResponseBodyMarshalCompleted(r, "PutTransaction")
 		}
+	} else if len(response.bodyRaw()) >= 0 {
+		body = response.bodyRaw()
+	}
 
-		count, err := w.Write(data)
+	if len(body) >= 0 {
+		count, err := w.Write(body)
 		if err != nil {
 			if router.hooks.ResponseBodyWriteFailed != nil {
 				router.hooks.ResponseBodyWriteFailed(r, "PutTransaction", count, err)
@@ -960,26 +969,25 @@ func (router *transactionsRouter) DeleteTransactionsUUID(w http.ResponseWriter, 
 
 	w.WriteHeader(response.statusCode())
 
+	var body []byte
+
 	if response.body() != nil {
-		var (
-			data []byte
-			err  error
-		)
+		var err error
 
 		switch response.contentType() {
 		case "application/xml":
-			data, err = xml.Marshal(response.body())
+			body, err = xml.Marshal(response.body())
 		case "application/octet-stream":
 			var ok bool
-			if data, ok = (response.body()).([]byte); !ok {
+			if body, ok = (response.body()).([]byte); !ok {
 				err = errors.New("body is not []byte")
 			}
 		case "text/html":
-			data = []byte(fmt.Sprint(response.body()))
+			body = []byte(fmt.Sprint(response.body()))
 		case "application/json":
 			fallthrough
 		default:
-			data, err = json.Marshal(response.body())
+			body, err = json.Marshal(response.body())
 		}
 
 		if err != nil {
@@ -993,8 +1001,12 @@ func (router *transactionsRouter) DeleteTransactionsUUID(w http.ResponseWriter, 
 		if router.hooks.ResponseBodyMarshalCompleted != nil {
 			router.hooks.ResponseBodyMarshalCompleted(r, "DeleteTransactionsUUID")
 		}
+	} else if len(response.bodyRaw()) >= 0 {
+		body = response.bodyRaw()
+	}
 
-		count, err := w.Write(data)
+	if len(body) >= 0 {
+		count, err := w.Write(body)
 		if err != nil {
 			if router.hooks.ResponseBodyWriteFailed != nil {
 				router.hooks.ResponseBodyWriteFailed(r, "DeleteTransactionsUUID", count, err)
@@ -1020,6 +1032,7 @@ func (router *transactionsRouter) DeleteTransactionsUUID(w http.ResponseWriter, 
 type response struct {
 	statusCode  int
 	body        interface{}
+	bodyRaw     []byte
 	contentType string
 	redirectURL string
 	headers     map[string]string
@@ -1029,6 +1042,7 @@ type response struct {
 type responseInterface interface {
 	statusCode() int
 	body() interface{}
+	bodyRaw() []byte
 	contentType() string
 	redirectURL() string
 	cookies() []http.Cookie
@@ -1052,6 +1066,10 @@ func (response postCallbacksCallbackTypeResponse) statusCode() int {
 
 func (response postCallbacksCallbackTypeResponse) body() interface{} {
 	return response.response.body
+}
+
+func (response postCallbacksCallbackTypeResponse) bodyRaw() []byte {
+	return response.response.bodyRaw
 }
 
 func (response postCallbacksCallbackTypeResponse) contentType() string {
@@ -1089,6 +1107,10 @@ func (response postTransactionResponse) body() interface{} {
 	return response.response.body
 }
 
+func (response postTransactionResponse) bodyRaw() []byte {
+	return response.response.bodyRaw
+}
+
 func (response postTransactionResponse) contentType() string {
 	return response.response.contentType
 }
@@ -1124,6 +1146,10 @@ func (response putTransactionResponse) body() interface{} {
 	return response.response.body
 }
 
+func (response putTransactionResponse) bodyRaw() []byte {
+	return response.response.bodyRaw
+}
+
 func (response putTransactionResponse) contentType() string {
 	return response.response.contentType
 }
@@ -1157,6 +1183,10 @@ func (response deleteTransactionsUUIDResponse) statusCode() int {
 
 func (response deleteTransactionsUUIDResponse) body() interface{} {
 	return response.response.body
+}
+
+func (response deleteTransactionsUUIDResponse) bodyRaw() []byte {
+	return response.response.bodyRaw
 }
 
 func (response deleteTransactionsUUIDResponse) contentType() string {
@@ -1236,6 +1266,20 @@ func (builder *postCallbacksCallbackType200ContentTypeBuilder) ApplicationOctetS
 
 type postCallbacksCallbackType200ApplicationOctetStreamBodyBuilder struct {
 	response
+	rawBytes []byte
+}
+
+func (builder *postCallbacksCallbackType200ApplicationOctetStreamBodyBuilder) BodyBytesWithEncoding(encoding string, body []byte) *PostCallbacksCallbackType200ApplicationOctetStreamResponseBuilder {
+	builder.rawBytes = body
+	builder.response.headers["Content-Encoding"] = encoding
+
+	return &PostCallbacksCallbackType200ApplicationOctetStreamResponseBuilder{response: builder.response}
+}
+
+func (builder *postCallbacksCallbackType200ApplicationOctetStreamBodyBuilder) BodyBytes(body []byte) *PostCallbacksCallbackType200ApplicationOctetStreamResponseBuilder {
+	builder.rawBytes = body
+
+	return &PostCallbacksCallbackType200ApplicationOctetStreamResponseBuilder{response: builder.response}
 }
 
 func (builder *postCallbacksCallbackType200ApplicationOctetStreamBodyBuilder) Body(body RawPayload) *PostCallbacksCallbackType200ApplicationOctetStreamResponseBuilder {
@@ -1250,40 +1294,6 @@ type postTransactionStatusCodeResponseBuilder struct {
 
 func PostTransactionResponseBuilder() *postTransactionStatusCodeResponseBuilder {
 	return new(postTransactionStatusCodeResponseBuilder)
-}
-
-func (builder *postTransactionStatusCodeResponseBuilder) StatusCode201() *postTransaction201ContentTypeBuilder {
-	builder.response.statusCode = 201
-
-	return &postTransaction201ContentTypeBuilder{response: builder.response}
-}
-
-type postTransaction201ContentTypeBuilder struct {
-	response
-}
-
-type PostTransaction201ApplicationJsonResponseBuilder struct {
-	response
-}
-
-func (builder *PostTransaction201ApplicationJsonResponseBuilder) Build() PostTransactionResponse {
-	return postTransactionResponse{response: builder.response}
-}
-
-func (builder *postTransaction201ContentTypeBuilder) ApplicationJson() *postTransaction201ApplicationJsonBodyBuilder {
-	builder.response.contentType = "application/json"
-
-	return &postTransaction201ApplicationJsonBodyBuilder{response: builder.response}
-}
-
-type postTransaction201ApplicationJsonBodyBuilder struct {
-	response
-}
-
-func (builder *postTransaction201ApplicationJsonBodyBuilder) Body(body GenericResponse) *PostTransaction201ApplicationJsonResponseBuilder {
-	builder.response.body = body
-
-	return &PostTransaction201ApplicationJsonResponseBuilder{response: builder.response}
 }
 
 func (builder *postTransactionStatusCodeResponseBuilder) StatusCode400() *postTransaction400ContentTypeBuilder {
@@ -1312,6 +1322,20 @@ func (builder *postTransaction400ContentTypeBuilder) ApplicationJson() *postTran
 
 type postTransaction400ApplicationJsonBodyBuilder struct {
 	response
+	rawBytes []byte
+}
+
+func (builder *postTransaction400ApplicationJsonBodyBuilder) BodyBytesWithEncoding(encoding string, body []byte) *PostTransaction400ApplicationJsonResponseBuilder {
+	builder.rawBytes = body
+	builder.response.headers["Content-Encoding"] = encoding
+
+	return &PostTransaction400ApplicationJsonResponseBuilder{response: builder.response}
+}
+
+func (builder *postTransaction400ApplicationJsonBodyBuilder) BodyBytes(body []byte) *PostTransaction400ApplicationJsonResponseBuilder {
+	builder.rawBytes = body
+
+	return &PostTransaction400ApplicationJsonResponseBuilder{response: builder.response}
 }
 
 func (builder *postTransaction400ApplicationJsonBodyBuilder) Body(body GenericResponse) *PostTransaction400ApplicationJsonResponseBuilder {
@@ -1346,6 +1370,20 @@ func (builder *postTransaction500ContentTypeBuilder) ApplicationJson() *postTran
 
 type postTransaction500ApplicationJsonBodyBuilder struct {
 	response
+	rawBytes []byte
+}
+
+func (builder *postTransaction500ApplicationJsonBodyBuilder) BodyBytesWithEncoding(encoding string, body []byte) *PostTransaction500ApplicationJsonResponseBuilder {
+	builder.rawBytes = body
+	builder.response.headers["Content-Encoding"] = encoding
+
+	return &PostTransaction500ApplicationJsonResponseBuilder{response: builder.response}
+}
+
+func (builder *postTransaction500ApplicationJsonBodyBuilder) BodyBytes(body []byte) *PostTransaction500ApplicationJsonResponseBuilder {
+	builder.rawBytes = body
+
+	return &PostTransaction500ApplicationJsonResponseBuilder{response: builder.response}
 }
 
 func (builder *postTransaction500ApplicationJsonBodyBuilder) Body(body GenericResponse) *PostTransaction500ApplicationJsonResponseBuilder {
@@ -1354,46 +1392,60 @@ func (builder *postTransaction500ApplicationJsonBodyBuilder) Body(body GenericRe
 	return &PostTransaction500ApplicationJsonResponseBuilder{response: builder.response}
 }
 
+func (builder *postTransactionStatusCodeResponseBuilder) StatusCode201() *postTransaction201ContentTypeBuilder {
+	builder.response.statusCode = 201
+
+	return &postTransaction201ContentTypeBuilder{response: builder.response}
+}
+
+type postTransaction201ContentTypeBuilder struct {
+	response
+}
+
+type PostTransaction201ApplicationJsonResponseBuilder struct {
+	response
+}
+
+func (builder *PostTransaction201ApplicationJsonResponseBuilder) Build() PostTransactionResponse {
+	return postTransactionResponse{response: builder.response}
+}
+
+func (builder *postTransaction201ContentTypeBuilder) ApplicationJson() *postTransaction201ApplicationJsonBodyBuilder {
+	builder.response.contentType = "application/json"
+
+	return &postTransaction201ApplicationJsonBodyBuilder{response: builder.response}
+}
+
+type postTransaction201ApplicationJsonBodyBuilder struct {
+	response
+	rawBytes []byte
+}
+
+func (builder *postTransaction201ApplicationJsonBodyBuilder) BodyBytesWithEncoding(encoding string, body []byte) *PostTransaction201ApplicationJsonResponseBuilder {
+	builder.rawBytes = body
+	builder.response.headers["Content-Encoding"] = encoding
+
+	return &PostTransaction201ApplicationJsonResponseBuilder{response: builder.response}
+}
+
+func (builder *postTransaction201ApplicationJsonBodyBuilder) BodyBytes(body []byte) *PostTransaction201ApplicationJsonResponseBuilder {
+	builder.rawBytes = body
+
+	return &PostTransaction201ApplicationJsonResponseBuilder{response: builder.response}
+}
+
+func (builder *postTransaction201ApplicationJsonBodyBuilder) Body(body GenericResponse) *PostTransaction201ApplicationJsonResponseBuilder {
+	builder.response.body = body
+
+	return &PostTransaction201ApplicationJsonResponseBuilder{response: builder.response}
+}
+
 type putTransactionStatusCodeResponseBuilder struct {
 	response
 }
 
 func PutTransactionResponseBuilder() *putTransactionStatusCodeResponseBuilder {
 	return new(putTransactionStatusCodeResponseBuilder)
-}
-
-func (builder *putTransactionStatusCodeResponseBuilder) StatusCode500() *putTransaction500ContentTypeBuilder {
-	builder.response.statusCode = 500
-
-	return &putTransaction500ContentTypeBuilder{response: builder.response}
-}
-
-type putTransaction500ContentTypeBuilder struct {
-	response
-}
-
-type PutTransaction500ApplicationJsonResponseBuilder struct {
-	response
-}
-
-func (builder *PutTransaction500ApplicationJsonResponseBuilder) Build() PutTransactionResponse {
-	return putTransactionResponse{response: builder.response}
-}
-
-func (builder *putTransaction500ContentTypeBuilder) ApplicationJson() *putTransaction500ApplicationJsonBodyBuilder {
-	builder.response.contentType = "application/json"
-
-	return &putTransaction500ApplicationJsonBodyBuilder{response: builder.response}
-}
-
-type putTransaction500ApplicationJsonBodyBuilder struct {
-	response
-}
-
-func (builder *putTransaction500ApplicationJsonBodyBuilder) Body(body GenericResponse) *PutTransaction500ApplicationJsonResponseBuilder {
-	builder.response.body = body
-
-	return &PutTransaction500ApplicationJsonResponseBuilder{response: builder.response}
 }
 
 func (builder *putTransactionStatusCodeResponseBuilder) StatusCode200() *putTransaction200ContentTypeBuilder {
@@ -1422,6 +1474,20 @@ func (builder *putTransaction200ContentTypeBuilder) ApplicationJson() *putTransa
 
 type putTransaction200ApplicationJsonBodyBuilder struct {
 	response
+	rawBytes []byte
+}
+
+func (builder *putTransaction200ApplicationJsonBodyBuilder) BodyBytesWithEncoding(encoding string, body []byte) *PutTransaction200ApplicationJsonResponseBuilder {
+	builder.rawBytes = body
+	builder.response.headers["Content-Encoding"] = encoding
+
+	return &PutTransaction200ApplicationJsonResponseBuilder{response: builder.response}
+}
+
+func (builder *putTransaction200ApplicationJsonBodyBuilder) BodyBytes(body []byte) *PutTransaction200ApplicationJsonResponseBuilder {
+	builder.rawBytes = body
+
+	return &PutTransaction200ApplicationJsonResponseBuilder{response: builder.response}
 }
 
 func (builder *putTransaction200ApplicationJsonBodyBuilder) Body(body GenericResponse) *PutTransaction200ApplicationJsonResponseBuilder {
@@ -1456,6 +1522,20 @@ func (builder *putTransaction400ContentTypeBuilder) ApplicationJson() *putTransa
 
 type putTransaction400ApplicationJsonBodyBuilder struct {
 	response
+	rawBytes []byte
+}
+
+func (builder *putTransaction400ApplicationJsonBodyBuilder) BodyBytesWithEncoding(encoding string, body []byte) *PutTransaction400ApplicationJsonResponseBuilder {
+	builder.rawBytes = body
+	builder.response.headers["Content-Encoding"] = encoding
+
+	return &PutTransaction400ApplicationJsonResponseBuilder{response: builder.response}
+}
+
+func (builder *putTransaction400ApplicationJsonBodyBuilder) BodyBytes(body []byte) *PutTransaction400ApplicationJsonResponseBuilder {
+	builder.rawBytes = body
+
+	return &PutTransaction400ApplicationJsonResponseBuilder{response: builder.response}
 }
 
 func (builder *putTransaction400ApplicationJsonBodyBuilder) Body(body GenericResponse) *PutTransaction400ApplicationJsonResponseBuilder {
@@ -1464,46 +1544,60 @@ func (builder *putTransaction400ApplicationJsonBodyBuilder) Body(body GenericRes
 	return &PutTransaction400ApplicationJsonResponseBuilder{response: builder.response}
 }
 
+func (builder *putTransactionStatusCodeResponseBuilder) StatusCode500() *putTransaction500ContentTypeBuilder {
+	builder.response.statusCode = 500
+
+	return &putTransaction500ContentTypeBuilder{response: builder.response}
+}
+
+type putTransaction500ContentTypeBuilder struct {
+	response
+}
+
+type PutTransaction500ApplicationJsonResponseBuilder struct {
+	response
+}
+
+func (builder *PutTransaction500ApplicationJsonResponseBuilder) Build() PutTransactionResponse {
+	return putTransactionResponse{response: builder.response}
+}
+
+func (builder *putTransaction500ContentTypeBuilder) ApplicationJson() *putTransaction500ApplicationJsonBodyBuilder {
+	builder.response.contentType = "application/json"
+
+	return &putTransaction500ApplicationJsonBodyBuilder{response: builder.response}
+}
+
+type putTransaction500ApplicationJsonBodyBuilder struct {
+	response
+	rawBytes []byte
+}
+
+func (builder *putTransaction500ApplicationJsonBodyBuilder) BodyBytesWithEncoding(encoding string, body []byte) *PutTransaction500ApplicationJsonResponseBuilder {
+	builder.rawBytes = body
+	builder.response.headers["Content-Encoding"] = encoding
+
+	return &PutTransaction500ApplicationJsonResponseBuilder{response: builder.response}
+}
+
+func (builder *putTransaction500ApplicationJsonBodyBuilder) BodyBytes(body []byte) *PutTransaction500ApplicationJsonResponseBuilder {
+	builder.rawBytes = body
+
+	return &PutTransaction500ApplicationJsonResponseBuilder{response: builder.response}
+}
+
+func (builder *putTransaction500ApplicationJsonBodyBuilder) Body(body GenericResponse) *PutTransaction500ApplicationJsonResponseBuilder {
+	builder.response.body = body
+
+	return &PutTransaction500ApplicationJsonResponseBuilder{response: builder.response}
+}
+
 type deleteTransactionsUUIDStatusCodeResponseBuilder struct {
 	response
 }
 
 func DeleteTransactionsUUIDResponseBuilder() *deleteTransactionsUUIDStatusCodeResponseBuilder {
 	return new(deleteTransactionsUUIDStatusCodeResponseBuilder)
-}
-
-func (builder *deleteTransactionsUUIDStatusCodeResponseBuilder) StatusCode200() *deleteTransactionsUUID200ContentTypeBuilder {
-	builder.response.statusCode = 200
-
-	return &deleteTransactionsUUID200ContentTypeBuilder{response: builder.response}
-}
-
-type deleteTransactionsUUID200ContentTypeBuilder struct {
-	response
-}
-
-type DeleteTransactionsUUID200ApplicationJsonResponseBuilder struct {
-	response
-}
-
-func (builder *DeleteTransactionsUUID200ApplicationJsonResponseBuilder) Build() DeleteTransactionsUUIDResponse {
-	return deleteTransactionsUUIDResponse{response: builder.response}
-}
-
-func (builder *deleteTransactionsUUID200ContentTypeBuilder) ApplicationJson() *deleteTransactionsUUID200ApplicationJsonBodyBuilder {
-	builder.response.contentType = "application/json"
-
-	return &deleteTransactionsUUID200ApplicationJsonBodyBuilder{response: builder.response}
-}
-
-type deleteTransactionsUUID200ApplicationJsonBodyBuilder struct {
-	response
-}
-
-func (builder *deleteTransactionsUUID200ApplicationJsonBodyBuilder) Body(body GenericResponse) *DeleteTransactionsUUID200ApplicationJsonResponseBuilder {
-	builder.response.body = body
-
-	return &DeleteTransactionsUUID200ApplicationJsonResponseBuilder{response: builder.response}
 }
 
 func (builder *deleteTransactionsUUIDStatusCodeResponseBuilder) StatusCode400() *deleteTransactionsUUID400ContentTypeBuilder {
@@ -1532,6 +1626,20 @@ func (builder *deleteTransactionsUUID400ContentTypeBuilder) ApplicationJson() *d
 
 type deleteTransactionsUUID400ApplicationJsonBodyBuilder struct {
 	response
+	rawBytes []byte
+}
+
+func (builder *deleteTransactionsUUID400ApplicationJsonBodyBuilder) BodyBytesWithEncoding(encoding string, body []byte) *DeleteTransactionsUUID400ApplicationJsonResponseBuilder {
+	builder.rawBytes = body
+	builder.response.headers["Content-Encoding"] = encoding
+
+	return &DeleteTransactionsUUID400ApplicationJsonResponseBuilder{response: builder.response}
+}
+
+func (builder *deleteTransactionsUUID400ApplicationJsonBodyBuilder) BodyBytes(body []byte) *DeleteTransactionsUUID400ApplicationJsonResponseBuilder {
+	builder.rawBytes = body
+
+	return &DeleteTransactionsUUID400ApplicationJsonResponseBuilder{response: builder.response}
 }
 
 func (builder *deleteTransactionsUUID400ApplicationJsonBodyBuilder) Body(body GenericResponse) *DeleteTransactionsUUID400ApplicationJsonResponseBuilder {
@@ -1540,14 +1648,94 @@ func (builder *deleteTransactionsUUID400ApplicationJsonBodyBuilder) Body(body Ge
 	return &DeleteTransactionsUUID400ApplicationJsonResponseBuilder{response: builder.response}
 }
 
-type TransactionsService interface {
-	PutTransaction(context.Context, PutTransactionRequest) PutTransactionResponse
-	PostTransaction(context.Context, PostTransactionRequest) PostTransactionResponse
-	DeleteTransactionsUUID(context.Context, DeleteTransactionsUUIDRequest) DeleteTransactionsUUIDResponse
+func (builder *deleteTransactionsUUIDStatusCodeResponseBuilder) StatusCode200() *deleteTransactionsUUID200ContentTypeBuilder {
+	builder.response.statusCode = 200
+
+	return &deleteTransactionsUUID200ContentTypeBuilder{response: builder.response}
+}
+
+type deleteTransactionsUUID200ContentTypeBuilder struct {
+	response
+}
+
+type DeleteTransactionsUUID200ApplicationJsonResponseBuilder struct {
+	response
+}
+
+func (builder *DeleteTransactionsUUID200ApplicationJsonResponseBuilder) Build() DeleteTransactionsUUIDResponse {
+	return deleteTransactionsUUIDResponse{response: builder.response}
+}
+
+func (builder *deleteTransactionsUUID200ContentTypeBuilder) ApplicationJson() *deleteTransactionsUUID200ApplicationJsonBodyBuilder {
+	builder.response.contentType = "application/json"
+
+	return &deleteTransactionsUUID200ApplicationJsonBodyBuilder{response: builder.response}
+}
+
+type deleteTransactionsUUID200ApplicationJsonBodyBuilder struct {
+	response
+	rawBytes []byte
+}
+
+func (builder *deleteTransactionsUUID200ApplicationJsonBodyBuilder) BodyBytesWithEncoding(encoding string, body []byte) *DeleteTransactionsUUID200ApplicationJsonResponseBuilder {
+	builder.rawBytes = body
+	builder.response.headers["Content-Encoding"] = encoding
+
+	return &DeleteTransactionsUUID200ApplicationJsonResponseBuilder{response: builder.response}
+}
+
+func (builder *deleteTransactionsUUID200ApplicationJsonBodyBuilder) BodyBytes(body []byte) *DeleteTransactionsUUID200ApplicationJsonResponseBuilder {
+	builder.rawBytes = body
+
+	return &DeleteTransactionsUUID200ApplicationJsonResponseBuilder{response: builder.response}
+}
+
+func (builder *deleteTransactionsUUID200ApplicationJsonBodyBuilder) Body(body GenericResponse) *DeleteTransactionsUUID200ApplicationJsonResponseBuilder {
+	builder.response.body = body
+
+	return &DeleteTransactionsUUID200ApplicationJsonResponseBuilder{response: builder.response}
 }
 
 type CallbacksService interface {
 	PostCallbacksCallbackType(context.Context, PostCallbacksCallbackTypeRequest) PostCallbacksCallbackTypeResponse
+}
+
+type TransactionsService interface {
+	PostTransaction(context.Context, PostTransactionRequest) PostTransactionResponse
+	PutTransaction(context.Context, PutTransactionRequest) PutTransactionResponse
+	DeleteTransactionsUUID(context.Context, DeleteTransactionsUUIDRequest) DeleteTransactionsUUIDResponse
+}
+
+type PostCallbacksCallbackTypeRequestPath struct {
+	CallbackType string
+}
+
+func (path PostCallbacksCallbackTypeRequestPath) GetCallbackType() string {
+	return path.CallbackType
+}
+
+func (path PostCallbacksCallbackTypeRequestPath) Validate() error {
+	return nil
+}
+
+type PostCallbacksCallbackTypeRequestQuery struct {
+	HasSmth bool
+}
+
+func (query PostCallbacksCallbackTypeRequestQuery) GetHasSmth() bool {
+	return query.HasSmth
+}
+
+func (query PostCallbacksCallbackTypeRequestQuery) Validate() error {
+	return nil
+}
+
+type PostCallbacksCallbackTypeRequest struct {
+	Body                 RawPayload
+	Path                 PostCallbacksCallbackTypeRequestPath
+	Query                PostCallbacksCallbackTypeRequestQuery
+	ProcessingResult     RequestProcessingResult
+	SecurityCheckResults map[SecurityScheme]string
 }
 
 type PostTransactionRequestHeader struct {
@@ -1600,18 +1788,6 @@ type PutTransactionRequest struct {
 	ProcessingResult RequestProcessingResult
 }
 
-type DeleteTransactionsUUIDRequestQuery struct {
-	TimeParam time.Time
-}
-
-func (query DeleteTransactionsUUIDRequestQuery) GetTimeParam() time.Time {
-	return query.TimeParam
-}
-
-func (query DeleteTransactionsUUIDRequestQuery) Validate() error {
-	return nil
-}
-
 type DeleteTransactionsUUIDRequestHeader struct {
 	XFingerprint string `json:"x-fingerprint"`
 	XSignature   string `json:"x-signature"`
@@ -1649,42 +1825,22 @@ func (path DeleteTransactionsUUIDRequestPath) Validate() error {
 		validation.Field(&path.RegexParam, validation.Required, validation.RuneLength(5, 0)))
 }
 
+type DeleteTransactionsUUIDRequestQuery struct {
+	TimeParam time.Time
+}
+
+func (query DeleteTransactionsUUIDRequestQuery) GetTimeParam() time.Time {
+	return query.TimeParam
+}
+
+func (query DeleteTransactionsUUIDRequestQuery) Validate() error {
+	return nil
+}
+
 type DeleteTransactionsUUIDRequest struct {
 	Header               DeleteTransactionsUUIDRequestHeader
 	Path                 DeleteTransactionsUUIDRequestPath
 	Query                DeleteTransactionsUUIDRequestQuery
-	ProcessingResult     RequestProcessingResult
-	SecurityCheckResults map[SecurityScheme]string
-}
-
-type PostCallbacksCallbackTypeRequestPath struct {
-	CallbackType string
-}
-
-func (path PostCallbacksCallbackTypeRequestPath) GetCallbackType() string {
-	return path.CallbackType
-}
-
-func (path PostCallbacksCallbackTypeRequestPath) Validate() error {
-	return nil
-}
-
-type PostCallbacksCallbackTypeRequestQuery struct {
-	HasSmth bool
-}
-
-func (query PostCallbacksCallbackTypeRequestQuery) GetHasSmth() bool {
-	return query.HasSmth
-}
-
-func (query PostCallbacksCallbackTypeRequestQuery) Validate() error {
-	return nil
-}
-
-type PostCallbacksCallbackTypeRequest struct {
-	Body                 RawPayload
-	Path                 PostCallbacksCallbackTypeRequestPath
-	Query                PostCallbacksCallbackTypeRequestQuery
 	ProcessingResult     RequestProcessingResult
 	SecurityCheckResults map[SecurityScheme]string
 }
@@ -1704,15 +1860,6 @@ type securityProcessor struct {
 }
 
 var securityExtractorsFuncs = map[SecurityScheme]func(r *http.Request) (string, string, bool){
-	SecuritySchemeCookie: func(r *http.Request) (string, string, bool) {
-		cookie, err := r.Cookie("JSESSIONID")
-
-		if err != nil {
-			return "", "", false
-		}
-
-		return cookie.Name, cookie.Value, true
-	},
 	SecuritySchemeBasic: func(r *http.Request) (string, string, bool) {
 		value := r.Header.Get("Authorization")
 
@@ -1729,12 +1876,21 @@ var securityExtractorsFuncs = map[SecurityScheme]func(r *http.Request) (string, 
 
 		return "Authorization", value, value != ""
 	},
+	SecuritySchemeCookie: func(r *http.Request) (string, string, bool) {
+		cookie, err := r.Cookie("JSESSIONID")
+
+		if err != nil {
+			return "", "", false
+		}
+
+		return cookie.Name, cookie.Value, true
+	},
 }
 
 type SecuritySchemas interface {
+	SecuritySchemeCookie(r *http.Request, scheme SecurityScheme, name string, value string) error
 	SecuritySchemeBasic(r *http.Request, scheme SecurityScheme, name string, value string) error
 	SecuritySchemeBearer(r *http.Request, scheme SecurityScheme, name string, value string) error
-	SecuritySchemeCookie(r *http.Request, scheme SecurityScheme, name string, value string) error
 }
 
 type SecurityCheckResult struct {

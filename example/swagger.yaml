@@ -113,6 +113,12 @@ paths:
       responses:
         200:
           description: transaction deleted
+          headers:
+            Content-Encoding:
+              description: Indicates that the response is compressed with Gzip
+              schema:
+                type: string
+                example: gzip
           content:
             application/json:
               schema:
