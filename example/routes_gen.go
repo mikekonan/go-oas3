@@ -84,282 +84,6 @@ func (r RequestProcessingResult) Err() error {
 	return r.error
 }
 
-func CallbacksHandler(impl CallbacksService, r chi.Router, hooks *Hooks, securitySchemas SecuritySchemas) http.Handler {
-	router := &callbacksRouter{router: r, service: impl, hooks: hooks}
-
-	router.securityHandlers = map[SecurityScheme]securityProcessor{
-		SecuritySchemeCookie: {
-			scheme:  SecuritySchemeCookie,
-			extract: securityExtractorsFuncs[SecuritySchemeCookie],
-			handle:  securitySchemas.SecuritySchemeCookie,
-		},
-	}
-
-	router.mount()
-
-	return router.router
-}
-
-type callbacksRouter struct {
-	router           chi.Router
-	service          CallbacksService
-	hooks            *Hooks
-	securityHandlers map[SecurityScheme]securityProcessor
-}
-
-func (router *callbacksRouter) mount() {
-	router.router.Post("/callbacks/{callbackType}", router.PostCallbacksCallbackType)
-}
-
-func (router *callbacksRouter) parsePostCallbacksCallbackTypeRequest(r *http.Request) (request PostCallbacksCallbackTypeRequest) {
-	request.ProcessingResult = RequestProcessingResult{typee: ParseSucceed}
-
-	isSecurityCheckPassed := false
-	for _, processors := range [][]securityProcessor{{router.securityHandlers[SecuritySchemeCookie]}} {
-		isLinkedChecksValid := true
-
-		for _, processor := range processors {
-			name, value, isExtracted := processor.extract(r)
-
-			if !isExtracted {
-				isLinkedChecksValid = false
-				break
-			}
-
-			if err := processor.handle(r, processor.scheme, name, value); err != nil {
-				if router.hooks.RequestSecurityCheckFailed != nil {
-					router.hooks.RequestSecurityCheckFailed(r, "PostCallbacksCallbackType", string(processor.scheme), RequestProcessingResult{error: err, typee: SecurityCheckFailed})
-				}
-
-				isLinkedChecksValid = false
-
-				break
-			}
-
-			if router.hooks.RequestSecurityCheckCompleted != nil {
-				router.hooks.RequestSecurityCheckCompleted(r, "PostCallbacksCallbackType", string(processor.scheme))
-			}
-
-			if len(request.SecurityCheckResults) == 0 {
-				request.SecurityCheckResults = map[SecurityScheme]string{}
-			}
-
-			request.SecurityCheckResults[processor.scheme] = value
-		}
-
-		if isLinkedChecksValid {
-			isSecurityCheckPassed = true
-			break
-		}
-	}
-
-	if !isSecurityCheckPassed {
-		err := fmt.Errorf("failed passing security checks")
-
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: SecurityParseFailed}
-
-		if router.hooks.RequestSecurityParseFailed != nil {
-			router.hooks.RequestSecurityParseFailed(r, "PostCallbacksCallbackType", request.ProcessingResult)
-		}
-
-		return
-	}
-
-	if router.hooks.RequestSecurityParseCompleted != nil {
-		router.hooks.RequestSecurityParseCompleted(r, "PostCallbacksCallbackType")
-	}
-
-	pathCallbackType := chi.URLParam(r, "callbackType")
-	if pathCallbackType == "" {
-		err := fmt.Errorf("callbackType is empty")
-
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathParseFailed}
-		if router.hooks.RequestPathParseFailed != nil {
-			router.hooks.RequestPathParseFailed(r, "PostCallbacksCallbackType", "callbackType", request.ProcessingResult)
-		}
-
-		return
-	}
-
-	request.Path.CallbackType = pathCallbackType
-
-	if err := request.Path.Validate(); err != nil {
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathValidationFailed}
-		if router.hooks.RequestPathValidationFailed != nil {
-			router.hooks.RequestPathValidationFailed(r, "PostCallbacksCallbackType", request.ProcessingResult)
-		}
-
-		return
-	}
-
-	if router.hooks.RequestPathParseCompleted != nil {
-		router.hooks.RequestPathParseCompleted(r, "PostCallbacksCallbackType")
-	}
-
-	queryHasSmthStr := r.URL.Query().Get("hasSmth")
-	if queryHasSmthStr != "" {
-		queryHasSmth, err := strconv.ParseBool(queryHasSmthStr)
-		if err != nil {
-			request.ProcessingResult = RequestProcessingResult{error: err, typee: QueryParseFailed}
-			if router.hooks.RequestQueryParseFailed != nil {
-				router.hooks.RequestQueryParseFailed(r, "PostCallbacksCallbackType", "hasSmth", request.ProcessingResult)
-			}
-
-			return
-		}
-
-		request.Query.HasSmth = queryHasSmth
-	}
-
-	if err := request.Query.Validate(); err != nil {
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: QueryValidationFailed}
-		if router.hooks.RequestQueryValidationFailed != nil {
-			router.hooks.RequestQueryValidationFailed(r, "PostCallbacksCallbackType", request.ProcessingResult)
-		}
-
-		return
-	}
-
-	if router.hooks.RequestQueryParseCompleted != nil {
-		router.hooks.RequestQueryParseCompleted(r, "PostCallbacksCallbackType")
-	}
-
-	var (
-		body      RawPayload
-		decodeErr error
-	)
-	var (
-		buf     interface{}
-		ok      bool
-		readErr error
-	)
-	if buf, readErr = ioutil.ReadAll(r.Body); readErr == nil {
-		if body, ok = buf.(RawPayload); !ok {
-			decodeErr = errors.New("body is not []byte")
-		}
-	}
-	if decodeErr != nil {
-		request.ProcessingResult = RequestProcessingResult{error: decodeErr, typee: BodyUnmarshalFailed}
-		if router.hooks.RequestBodyUnmarshalFailed != nil {
-			router.hooks.RequestBodyUnmarshalFailed(r, "PostCallbacksCallbackType", request.ProcessingResult)
-
-			return
-		}
-
-		return
-	}
-
-	request.Body = body
-
-	if router.hooks.RequestBodyUnmarshalCompleted != nil {
-		router.hooks.RequestBodyUnmarshalCompleted(r, "PostCallbacksCallbackType")
-	}
-
-	if router.hooks.RequestParseCompleted != nil {
-		router.hooks.RequestParseCompleted(r, "PostCallbacksCallbackType")
-	}
-
-	return
-}
-
-func (router *callbacksRouter) PostCallbacksCallbackType(w http.ResponseWriter, r *http.Request) {
-	defer r.Body.Close()
-
-	response := router.service.PostCallbacksCallbackType(r.Context(), router.parsePostCallbacksCallbackTypeRequest(r))
-
-	if response.statusCode() == 302 && response.redirectURL() != "" {
-		if router.hooks.RequestRedirectStarted != nil {
-			router.hooks.RequestRedirectStarted(r, "PostCallbacksCallbackType", response.redirectURL())
-		}
-
-		http.Redirect(w, r, response.redirectURL(), 302)
-
-		if router.hooks.ServiceCompleted != nil {
-			router.hooks.ServiceCompleted(r, "PostCallbacksCallbackType")
-		}
-
-		return
-	}
-
-	for header, value := range response.headers() {
-		w.Header().Set(header, value)
-	}
-
-	for _, c := range response.cookies() {
-		cookie := c
-		http.SetCookie(w, &cookie)
-	}
-
-	if router.hooks.RequestProcessingCompleted != nil {
-		router.hooks.RequestProcessingCompleted(r, "PostCallbacksCallbackType")
-	}
-
-	if len(response.contentType()) > 0 {
-		w.Header().Set("content-type", response.contentType())
-	}
-
-	w.WriteHeader(response.statusCode())
-
-	var body []byte
-
-	if response.body() != nil {
-		var err error
-
-		switch response.contentType() {
-		case "application/xml":
-			body, err = xml.Marshal(response.body())
-		case "application/octet-stream":
-			var ok bool
-			if body, ok = (response.body()).([]byte); !ok {
-				err = errors.New("body is not []byte")
-			}
-		case "text/html":
-			body = []byte(fmt.Sprint(response.body()))
-		case "application/json":
-			fallthrough
-		default:
-			body, err = json.Marshal(response.body())
-		}
-
-		if err != nil {
-			if router.hooks.ResponseBodyMarshalFailed != nil {
-				router.hooks.ResponseBodyMarshalFailed(w, r, "PostCallbacksCallbackType", err)
-			}
-
-			return
-		}
-
-		if router.hooks.ResponseBodyMarshalCompleted != nil {
-			router.hooks.ResponseBodyMarshalCompleted(r, "PostCallbacksCallbackType")
-		}
-	} else if len(response.bodyRaw()) >= 0 {
-		body = response.bodyRaw()
-	}
-
-	if len(body) >= 0 {
-		count, err := w.Write(body)
-		if err != nil {
-			if router.hooks.ResponseBodyWriteFailed != nil {
-				router.hooks.ResponseBodyWriteFailed(r, "PostCallbacksCallbackType", count, err)
-			}
-
-			if router.hooks.ResponseBodyWriteCompleted != nil {
-				router.hooks.ResponseBodyWriteCompleted(r, "PostCallbacksCallbackType", count)
-			}
-
-			return
-		}
-
-		if router.hooks.ResponseBodyWriteCompleted != nil {
-			router.hooks.ResponseBodyWriteCompleted(r, "PostCallbacksCallbackType", count)
-		}
-	}
-
-	if router.hooks.ServiceCompleted != nil {
-		router.hooks.ServiceCompleted(r, "PostCallbacksCallbackType")
-	}
-}
-
 func TransactionsHandler(impl TransactionsService, r chi.Router, hooks *Hooks, securitySchemas SecuritySchemas) http.Handler {
 	router := &transactionsRouter{router: r, service: impl, hooks: hooks}
 
@@ -389,360 +113,9 @@ type transactionsRouter struct {
 }
 
 func (router *transactionsRouter) mount() {
+	router.router.Delete("/transactions/{uuid}", router.DeleteTransactionsUUID)
 	router.router.Post("/transaction", router.PostTransaction)
 	router.router.Put("/transaction", router.PutTransaction)
-	router.router.Delete("/transactions/{uuid}", router.DeleteTransactionsUUID)
-}
-
-func (router *transactionsRouter) parsePostTransactionRequest(r *http.Request) (request PostTransactionRequest) {
-	request.ProcessingResult = RequestProcessingResult{typee: ParseSucceed}
-
-	headerXSignature := r.Header.Get("x-signature")
-	request.Header.XSignature = headerXSignature
-
-	headerXFingerprint := r.Header.Get("x-fingerprint")
-	if headerXFingerprint == "" {
-		err := fmt.Errorf("x-fingerprint is empty")
-
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderParseFailed}
-		if router.hooks.RequestHeaderParseFailed != nil {
-			router.hooks.RequestHeaderParseFailed(r, "PostTransaction", "x-fingerprint", request.ProcessingResult)
-		}
-
-		return
-	}
-
-	if !xFingerprintRegex.MatchString(headerXFingerprint) {
-		err := fmt.Errorf("x-fingerprint not matched by the '[0-9a-fA-F]+' regex")
-
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderParseFailed}
-		if router.hooks.RequestHeaderParseFailed != nil {
-			router.hooks.RequestHeaderParseFailed(r, "PostTransaction", "x-fingerprint", request.ProcessingResult)
-		}
-
-		return
-	}
-
-	request.Header.XFingerprint = headerXFingerprint
-
-	if err := request.Header.Validate(); err != nil {
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderValidationFailed}
-		if router.hooks.RequestHeaderValidationFailed != nil {
-			router.hooks.RequestHeaderValidationFailed(r, "PostTransaction", request.ProcessingResult)
-		}
-
-		return
-	}
-
-	if router.hooks.RequestHeaderParseCompleted != nil {
-		router.hooks.RequestHeaderParseCompleted(r, "PostTransaction")
-	}
-
-	var (
-		body      CreateTransactionRequest
-		decodeErr error
-	)
-	decodeErr = json.NewDecoder(r.Body).Decode(&body)
-	if decodeErr != nil {
-		request.ProcessingResult = RequestProcessingResult{error: decodeErr, typee: BodyUnmarshalFailed}
-		if router.hooks.RequestBodyUnmarshalFailed != nil {
-			router.hooks.RequestBodyUnmarshalFailed(r, "PostTransaction", request.ProcessingResult)
-
-			return
-		}
-
-		return
-	}
-
-	request.Body = body
-
-	if err := request.Body.Validate(); err != nil {
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: BodyValidationFailed}
-		if router.hooks.RequestBodyValidationFailed != nil {
-			router.hooks.RequestBodyValidationFailed(r, "PostTransaction", request.ProcessingResult)
-		}
-
-		return
-	}
-
-	if router.hooks.RequestBodyUnmarshalCompleted != nil {
-		router.hooks.RequestBodyUnmarshalCompleted(r, "PostTransaction")
-	}
-
-	if router.hooks.RequestParseCompleted != nil {
-		router.hooks.RequestParseCompleted(r, "PostTransaction")
-	}
-
-	return
-}
-
-func (router *transactionsRouter) PostTransaction(w http.ResponseWriter, r *http.Request) {
-	defer r.Body.Close()
-
-	response := router.service.PostTransaction(r.Context(), router.parsePostTransactionRequest(r))
-
-	if response.statusCode() == 302 && response.redirectURL() != "" {
-		if router.hooks.RequestRedirectStarted != nil {
-			router.hooks.RequestRedirectStarted(r, "PostTransaction", response.redirectURL())
-		}
-
-		http.Redirect(w, r, response.redirectURL(), 302)
-
-		if router.hooks.ServiceCompleted != nil {
-			router.hooks.ServiceCompleted(r, "PostTransaction")
-		}
-
-		return
-	}
-
-	for header, value := range response.headers() {
-		w.Header().Set(header, value)
-	}
-
-	for _, c := range response.cookies() {
-		cookie := c
-		http.SetCookie(w, &cookie)
-	}
-
-	if router.hooks.RequestProcessingCompleted != nil {
-		router.hooks.RequestProcessingCompleted(r, "PostTransaction")
-	}
-
-	if len(response.contentType()) > 0 {
-		w.Header().Set("content-type", response.contentType())
-	}
-
-	w.WriteHeader(response.statusCode())
-
-	var body []byte
-
-	if response.body() != nil {
-		var err error
-
-		switch response.contentType() {
-		case "application/xml":
-			body, err = xml.Marshal(response.body())
-		case "application/octet-stream":
-			var ok bool
-			if body, ok = (response.body()).([]byte); !ok {
-				err = errors.New("body is not []byte")
-			}
-		case "text/html":
-			body = []byte(fmt.Sprint(response.body()))
-		case "application/json":
-			fallthrough
-		default:
-			body, err = json.Marshal(response.body())
-		}
-
-		if err != nil {
-			if router.hooks.ResponseBodyMarshalFailed != nil {
-				router.hooks.ResponseBodyMarshalFailed(w, r, "PostTransaction", err)
-			}
-
-			return
-		}
-
-		if router.hooks.ResponseBodyMarshalCompleted != nil {
-			router.hooks.ResponseBodyMarshalCompleted(r, "PostTransaction")
-		}
-	} else if len(response.bodyRaw()) >= 0 {
-		body = response.bodyRaw()
-	}
-
-	if len(body) >= 0 {
-		count, err := w.Write(body)
-		if err != nil {
-			if router.hooks.ResponseBodyWriteFailed != nil {
-				router.hooks.ResponseBodyWriteFailed(r, "PostTransaction", count, err)
-			}
-
-			if router.hooks.ResponseBodyWriteCompleted != nil {
-				router.hooks.ResponseBodyWriteCompleted(r, "PostTransaction", count)
-			}
-
-			return
-		}
-
-		if router.hooks.ResponseBodyWriteCompleted != nil {
-			router.hooks.ResponseBodyWriteCompleted(r, "PostTransaction", count)
-		}
-	}
-
-	if router.hooks.ServiceCompleted != nil {
-		router.hooks.ServiceCompleted(r, "PostTransaction")
-	}
-}
-
-func (router *transactionsRouter) parsePutTransactionRequest(r *http.Request) (request PutTransactionRequest) {
-	request.ProcessingResult = RequestProcessingResult{typee: ParseSucceed}
-
-	headerXSignature := r.Header.Get("x-signature")
-	request.Header.XSignature = headerXSignature
-
-	headerXFingerprint := r.Header.Get("x-fingerprint")
-	if headerXFingerprint == "" {
-		err := fmt.Errorf("x-fingerprint is empty")
-
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderParseFailed}
-		if router.hooks.RequestHeaderParseFailed != nil {
-			router.hooks.RequestHeaderParseFailed(r, "PutTransaction", "x-fingerprint", request.ProcessingResult)
-		}
-
-		return
-	}
-
-	if !xFingerprintRegex.MatchString(headerXFingerprint) {
-		err := fmt.Errorf("x-fingerprint not matched by the '[0-9a-fA-F]+' regex")
-
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderParseFailed}
-		if router.hooks.RequestHeaderParseFailed != nil {
-			router.hooks.RequestHeaderParseFailed(r, "PutTransaction", "x-fingerprint", request.ProcessingResult)
-		}
-
-		return
-	}
-
-	request.Header.XFingerprint = headerXFingerprint
-
-	if err := request.Header.Validate(); err != nil {
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderValidationFailed}
-		if router.hooks.RequestHeaderValidationFailed != nil {
-			router.hooks.RequestHeaderValidationFailed(r, "PutTransaction", request.ProcessingResult)
-		}
-
-		return
-	}
-
-	if router.hooks.RequestHeaderParseCompleted != nil {
-		router.hooks.RequestHeaderParseCompleted(r, "PutTransaction")
-	}
-
-	var (
-		body      UpdateTransactionRequest
-		decodeErr error
-	)
-	decodeErr = json.NewDecoder(r.Body).Decode(&body)
-	if decodeErr != nil {
-		request.ProcessingResult = RequestProcessingResult{error: decodeErr, typee: BodyUnmarshalFailed}
-		if router.hooks.RequestBodyUnmarshalFailed != nil {
-			router.hooks.RequestBodyUnmarshalFailed(r, "PutTransaction", request.ProcessingResult)
-
-			return
-		}
-
-		return
-	}
-
-	request.Body = body
-
-	if router.hooks.RequestBodyUnmarshalCompleted != nil {
-		router.hooks.RequestBodyUnmarshalCompleted(r, "PutTransaction")
-	}
-
-	if router.hooks.RequestParseCompleted != nil {
-		router.hooks.RequestParseCompleted(r, "PutTransaction")
-	}
-
-	return
-}
-
-func (router *transactionsRouter) PutTransaction(w http.ResponseWriter, r *http.Request) {
-	defer r.Body.Close()
-
-	response := router.service.PutTransaction(r.Context(), router.parsePutTransactionRequest(r))
-
-	if response.statusCode() == 302 && response.redirectURL() != "" {
-		if router.hooks.RequestRedirectStarted != nil {
-			router.hooks.RequestRedirectStarted(r, "PutTransaction", response.redirectURL())
-		}
-
-		http.Redirect(w, r, response.redirectURL(), 302)
-
-		if router.hooks.ServiceCompleted != nil {
-			router.hooks.ServiceCompleted(r, "PutTransaction")
-		}
-
-		return
-	}
-
-	for header, value := range response.headers() {
-		w.Header().Set(header, value)
-	}
-
-	for _, c := range response.cookies() {
-		cookie := c
-		http.SetCookie(w, &cookie)
-	}
-
-	if router.hooks.RequestProcessingCompleted != nil {
-		router.hooks.RequestProcessingCompleted(r, "PutTransaction")
-	}
-
-	if len(response.contentType()) > 0 {
-		w.Header().Set("content-type", response.contentType())
-	}
-
-	w.WriteHeader(response.statusCode())
-
-	var body []byte
-
-	if response.body() != nil {
-		var err error
-
-		switch response.contentType() {
-		case "application/xml":
-			body, err = xml.Marshal(response.body())
-		case "application/octet-stream":
-			var ok bool
-			if body, ok = (response.body()).([]byte); !ok {
-				err = errors.New("body is not []byte")
-			}
-		case "text/html":
-			body = []byte(fmt.Sprint(response.body()))
-		case "application/json":
-			fallthrough
-		default:
-			body, err = json.Marshal(response.body())
-		}
-
-		if err != nil {
-			if router.hooks.ResponseBodyMarshalFailed != nil {
-				router.hooks.ResponseBodyMarshalFailed(w, r, "PutTransaction", err)
-			}
-
-			return
-		}
-
-		if router.hooks.ResponseBodyMarshalCompleted != nil {
-			router.hooks.ResponseBodyMarshalCompleted(r, "PutTransaction")
-		}
-	} else if len(response.bodyRaw()) >= 0 {
-		body = response.bodyRaw()
-	}
-
-	if len(body) >= 0 {
-		count, err := w.Write(body)
-		if err != nil {
-			if router.hooks.ResponseBodyWriteFailed != nil {
-				router.hooks.ResponseBodyWriteFailed(r, "PutTransaction", count, err)
-			}
-
-			if router.hooks.ResponseBodyWriteCompleted != nil {
-				router.hooks.ResponseBodyWriteCompleted(r, "PutTransaction", count)
-			}
-
-			return
-		}
-
-		if router.hooks.ResponseBodyWriteCompleted != nil {
-			router.hooks.ResponseBodyWriteCompleted(r, "PutTransaction", count)
-		}
-	}
-
-	if router.hooks.ServiceCompleted != nil {
-		router.hooks.ServiceCompleted(r, "PutTransaction")
-	}
 }
 
 func (router *transactionsRouter) parseDeleteTransactionsUUIDRequest(r *http.Request) (request DeleteTransactionsUUIDRequest) {
@@ -1001,11 +374,11 @@ func (router *transactionsRouter) DeleteTransactionsUUID(w http.ResponseWriter, 
 		if router.hooks.ResponseBodyMarshalCompleted != nil {
 			router.hooks.ResponseBodyMarshalCompleted(r, "DeleteTransactionsUUID")
 		}
-	} else if len(response.bodyRaw()) >= 0 {
+	} else if len(response.bodyRaw()) > 0 {
 		body = response.bodyRaw()
 	}
 
-	if len(body) >= 0 {
+	if len(body) > 0 {
 		count, err := w.Write(body)
 		if err != nil {
 			if router.hooks.ResponseBodyWriteFailed != nil {
@@ -1026,6 +399,633 @@ func (router *transactionsRouter) DeleteTransactionsUUID(w http.ResponseWriter, 
 
 	if router.hooks.ServiceCompleted != nil {
 		router.hooks.ServiceCompleted(r, "DeleteTransactionsUUID")
+	}
+}
+
+func (router *transactionsRouter) parsePostTransactionRequest(r *http.Request) (request PostTransactionRequest) {
+	request.ProcessingResult = RequestProcessingResult{typee: ParseSucceed}
+
+	headerXSignature := r.Header.Get("x-signature")
+	request.Header.XSignature = headerXSignature
+
+	headerXFingerprint := r.Header.Get("x-fingerprint")
+	if headerXFingerprint == "" {
+		err := fmt.Errorf("x-fingerprint is empty")
+
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderParseFailed}
+		if router.hooks.RequestHeaderParseFailed != nil {
+			router.hooks.RequestHeaderParseFailed(r, "PostTransaction", "x-fingerprint", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	if !xFingerprintRegex.MatchString(headerXFingerprint) {
+		err := fmt.Errorf("x-fingerprint not matched by the '[0-9a-fA-F]+' regex")
+
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderParseFailed}
+		if router.hooks.RequestHeaderParseFailed != nil {
+			router.hooks.RequestHeaderParseFailed(r, "PostTransaction", "x-fingerprint", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	request.Header.XFingerprint = headerXFingerprint
+
+	if err := request.Header.Validate(); err != nil {
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderValidationFailed}
+		if router.hooks.RequestHeaderValidationFailed != nil {
+			router.hooks.RequestHeaderValidationFailed(r, "PostTransaction", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	if router.hooks.RequestHeaderParseCompleted != nil {
+		router.hooks.RequestHeaderParseCompleted(r, "PostTransaction")
+	}
+
+	var (
+		body      CreateTransactionRequest
+		decodeErr error
+	)
+	decodeErr = json.NewDecoder(r.Body).Decode(&body)
+	if decodeErr != nil {
+		request.ProcessingResult = RequestProcessingResult{error: decodeErr, typee: BodyUnmarshalFailed}
+		if router.hooks.RequestBodyUnmarshalFailed != nil {
+			router.hooks.RequestBodyUnmarshalFailed(r, "PostTransaction", request.ProcessingResult)
+
+			return
+		}
+
+		return
+	}
+
+	request.Body = body
+
+	if err := request.Body.Validate(); err != nil {
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: BodyValidationFailed}
+		if router.hooks.RequestBodyValidationFailed != nil {
+			router.hooks.RequestBodyValidationFailed(r, "PostTransaction", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	if router.hooks.RequestBodyUnmarshalCompleted != nil {
+		router.hooks.RequestBodyUnmarshalCompleted(r, "PostTransaction")
+	}
+
+	if router.hooks.RequestParseCompleted != nil {
+		router.hooks.RequestParseCompleted(r, "PostTransaction")
+	}
+
+	return
+}
+
+func (router *transactionsRouter) PostTransaction(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
+	response := router.service.PostTransaction(r.Context(), router.parsePostTransactionRequest(r))
+
+	if response.statusCode() == 302 && response.redirectURL() != "" {
+		if router.hooks.RequestRedirectStarted != nil {
+			router.hooks.RequestRedirectStarted(r, "PostTransaction", response.redirectURL())
+		}
+
+		http.Redirect(w, r, response.redirectURL(), 302)
+
+		if router.hooks.ServiceCompleted != nil {
+			router.hooks.ServiceCompleted(r, "PostTransaction")
+		}
+
+		return
+	}
+
+	for header, value := range response.headers() {
+		w.Header().Set(header, value)
+	}
+
+	for _, c := range response.cookies() {
+		cookie := c
+		http.SetCookie(w, &cookie)
+	}
+
+	if router.hooks.RequestProcessingCompleted != nil {
+		router.hooks.RequestProcessingCompleted(r, "PostTransaction")
+	}
+
+	if len(response.contentType()) > 0 {
+		w.Header().Set("content-type", response.contentType())
+	}
+
+	w.WriteHeader(response.statusCode())
+
+	var body []byte
+
+	if response.body() != nil {
+		var err error
+
+		switch response.contentType() {
+		case "application/xml":
+			body, err = xml.Marshal(response.body())
+		case "application/octet-stream":
+			var ok bool
+			if body, ok = (response.body()).([]byte); !ok {
+				err = errors.New("body is not []byte")
+			}
+		case "text/html":
+			body = []byte(fmt.Sprint(response.body()))
+		case "application/json":
+			fallthrough
+		default:
+			body, err = json.Marshal(response.body())
+		}
+
+		if err != nil {
+			if router.hooks.ResponseBodyMarshalFailed != nil {
+				router.hooks.ResponseBodyMarshalFailed(w, r, "PostTransaction", err)
+			}
+
+			return
+		}
+
+		if router.hooks.ResponseBodyMarshalCompleted != nil {
+			router.hooks.ResponseBodyMarshalCompleted(r, "PostTransaction")
+		}
+	} else if len(response.bodyRaw()) > 0 {
+		body = response.bodyRaw()
+	}
+
+	if len(body) > 0 {
+		count, err := w.Write(body)
+		if err != nil {
+			if router.hooks.ResponseBodyWriteFailed != nil {
+				router.hooks.ResponseBodyWriteFailed(r, "PostTransaction", count, err)
+			}
+
+			if router.hooks.ResponseBodyWriteCompleted != nil {
+				router.hooks.ResponseBodyWriteCompleted(r, "PostTransaction", count)
+			}
+
+			return
+		}
+
+		if router.hooks.ResponseBodyWriteCompleted != nil {
+			router.hooks.ResponseBodyWriteCompleted(r, "PostTransaction", count)
+		}
+	}
+
+	if router.hooks.ServiceCompleted != nil {
+		router.hooks.ServiceCompleted(r, "PostTransaction")
+	}
+}
+
+func (router *transactionsRouter) parsePutTransactionRequest(r *http.Request) (request PutTransactionRequest) {
+	request.ProcessingResult = RequestProcessingResult{typee: ParseSucceed}
+
+	headerXSignature := r.Header.Get("x-signature")
+	request.Header.XSignature = headerXSignature
+
+	headerXFingerprint := r.Header.Get("x-fingerprint")
+	if headerXFingerprint == "" {
+		err := fmt.Errorf("x-fingerprint is empty")
+
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderParseFailed}
+		if router.hooks.RequestHeaderParseFailed != nil {
+			router.hooks.RequestHeaderParseFailed(r, "PutTransaction", "x-fingerprint", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	if !xFingerprintRegex.MatchString(headerXFingerprint) {
+		err := fmt.Errorf("x-fingerprint not matched by the '[0-9a-fA-F]+' regex")
+
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderParseFailed}
+		if router.hooks.RequestHeaderParseFailed != nil {
+			router.hooks.RequestHeaderParseFailed(r, "PutTransaction", "x-fingerprint", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	request.Header.XFingerprint = headerXFingerprint
+
+	if err := request.Header.Validate(); err != nil {
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderValidationFailed}
+		if router.hooks.RequestHeaderValidationFailed != nil {
+			router.hooks.RequestHeaderValidationFailed(r, "PutTransaction", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	if router.hooks.RequestHeaderParseCompleted != nil {
+		router.hooks.RequestHeaderParseCompleted(r, "PutTransaction")
+	}
+
+	var (
+		body      UpdateTransactionRequest
+		decodeErr error
+	)
+	decodeErr = json.NewDecoder(r.Body).Decode(&body)
+	if decodeErr != nil {
+		request.ProcessingResult = RequestProcessingResult{error: decodeErr, typee: BodyUnmarshalFailed}
+		if router.hooks.RequestBodyUnmarshalFailed != nil {
+			router.hooks.RequestBodyUnmarshalFailed(r, "PutTransaction", request.ProcessingResult)
+
+			return
+		}
+
+		return
+	}
+
+	request.Body = body
+
+	if router.hooks.RequestBodyUnmarshalCompleted != nil {
+		router.hooks.RequestBodyUnmarshalCompleted(r, "PutTransaction")
+	}
+
+	if router.hooks.RequestParseCompleted != nil {
+		router.hooks.RequestParseCompleted(r, "PutTransaction")
+	}
+
+	return
+}
+
+func (router *transactionsRouter) PutTransaction(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
+	response := router.service.PutTransaction(r.Context(), router.parsePutTransactionRequest(r))
+
+	if response.statusCode() == 302 && response.redirectURL() != "" {
+		if router.hooks.RequestRedirectStarted != nil {
+			router.hooks.RequestRedirectStarted(r, "PutTransaction", response.redirectURL())
+		}
+
+		http.Redirect(w, r, response.redirectURL(), 302)
+
+		if router.hooks.ServiceCompleted != nil {
+			router.hooks.ServiceCompleted(r, "PutTransaction")
+		}
+
+		return
+	}
+
+	for header, value := range response.headers() {
+		w.Header().Set(header, value)
+	}
+
+	for _, c := range response.cookies() {
+		cookie := c
+		http.SetCookie(w, &cookie)
+	}
+
+	if router.hooks.RequestProcessingCompleted != nil {
+		router.hooks.RequestProcessingCompleted(r, "PutTransaction")
+	}
+
+	if len(response.contentType()) > 0 {
+		w.Header().Set("content-type", response.contentType())
+	}
+
+	w.WriteHeader(response.statusCode())
+
+	var body []byte
+
+	if response.body() != nil {
+		var err error
+
+		switch response.contentType() {
+		case "application/xml":
+			body, err = xml.Marshal(response.body())
+		case "application/octet-stream":
+			var ok bool
+			if body, ok = (response.body()).([]byte); !ok {
+				err = errors.New("body is not []byte")
+			}
+		case "text/html":
+			body = []byte(fmt.Sprint(response.body()))
+		case "application/json":
+			fallthrough
+		default:
+			body, err = json.Marshal(response.body())
+		}
+
+		if err != nil {
+			if router.hooks.ResponseBodyMarshalFailed != nil {
+				router.hooks.ResponseBodyMarshalFailed(w, r, "PutTransaction", err)
+			}
+
+			return
+		}
+
+		if router.hooks.ResponseBodyMarshalCompleted != nil {
+			router.hooks.ResponseBodyMarshalCompleted(r, "PutTransaction")
+		}
+	} else if len(response.bodyRaw()) > 0 {
+		body = response.bodyRaw()
+	}
+
+	if len(body) > 0 {
+		count, err := w.Write(body)
+		if err != nil {
+			if router.hooks.ResponseBodyWriteFailed != nil {
+				router.hooks.ResponseBodyWriteFailed(r, "PutTransaction", count, err)
+			}
+
+			if router.hooks.ResponseBodyWriteCompleted != nil {
+				router.hooks.ResponseBodyWriteCompleted(r, "PutTransaction", count)
+			}
+
+			return
+		}
+
+		if router.hooks.ResponseBodyWriteCompleted != nil {
+			router.hooks.ResponseBodyWriteCompleted(r, "PutTransaction", count)
+		}
+	}
+
+	if router.hooks.ServiceCompleted != nil {
+		router.hooks.ServiceCompleted(r, "PutTransaction")
+	}
+}
+
+func CallbacksHandler(impl CallbacksService, r chi.Router, hooks *Hooks, securitySchemas SecuritySchemas) http.Handler {
+	router := &callbacksRouter{router: r, service: impl, hooks: hooks}
+
+	router.securityHandlers = map[SecurityScheme]securityProcessor{
+		SecuritySchemeCookie: {
+			scheme:  SecuritySchemeCookie,
+			extract: securityExtractorsFuncs[SecuritySchemeCookie],
+			handle:  securitySchemas.SecuritySchemeCookie,
+		},
+	}
+
+	router.mount()
+
+	return router.router
+}
+
+type callbacksRouter struct {
+	router           chi.Router
+	service          CallbacksService
+	hooks            *Hooks
+	securityHandlers map[SecurityScheme]securityProcessor
+}
+
+func (router *callbacksRouter) mount() {
+	router.router.Post("/callbacks/{callbackType}", router.PostCallbacksCallbackType)
+}
+
+func (router *callbacksRouter) parsePostCallbacksCallbackTypeRequest(r *http.Request) (request PostCallbacksCallbackTypeRequest) {
+	request.ProcessingResult = RequestProcessingResult{typee: ParseSucceed}
+
+	isSecurityCheckPassed := false
+	for _, processors := range [][]securityProcessor{{router.securityHandlers[SecuritySchemeCookie]}} {
+		isLinkedChecksValid := true
+
+		for _, processor := range processors {
+			name, value, isExtracted := processor.extract(r)
+
+			if !isExtracted {
+				isLinkedChecksValid = false
+				break
+			}
+
+			if err := processor.handle(r, processor.scheme, name, value); err != nil {
+				if router.hooks.RequestSecurityCheckFailed != nil {
+					router.hooks.RequestSecurityCheckFailed(r, "PostCallbacksCallbackType", string(processor.scheme), RequestProcessingResult{error: err, typee: SecurityCheckFailed})
+				}
+
+				isLinkedChecksValid = false
+
+				break
+			}
+
+			if router.hooks.RequestSecurityCheckCompleted != nil {
+				router.hooks.RequestSecurityCheckCompleted(r, "PostCallbacksCallbackType", string(processor.scheme))
+			}
+
+			if len(request.SecurityCheckResults) == 0 {
+				request.SecurityCheckResults = map[SecurityScheme]string{}
+			}
+
+			request.SecurityCheckResults[processor.scheme] = value
+		}
+
+		if isLinkedChecksValid {
+			isSecurityCheckPassed = true
+			break
+		}
+	}
+
+	if !isSecurityCheckPassed {
+		err := fmt.Errorf("failed passing security checks")
+
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: SecurityParseFailed}
+
+		if router.hooks.RequestSecurityParseFailed != nil {
+			router.hooks.RequestSecurityParseFailed(r, "PostCallbacksCallbackType", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	if router.hooks.RequestSecurityParseCompleted != nil {
+		router.hooks.RequestSecurityParseCompleted(r, "PostCallbacksCallbackType")
+	}
+
+	pathCallbackType := chi.URLParam(r, "callbackType")
+	if pathCallbackType == "" {
+		err := fmt.Errorf("callbackType is empty")
+
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathParseFailed}
+		if router.hooks.RequestPathParseFailed != nil {
+			router.hooks.RequestPathParseFailed(r, "PostCallbacksCallbackType", "callbackType", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	request.Path.CallbackType = pathCallbackType
+
+	if err := request.Path.Validate(); err != nil {
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathValidationFailed}
+		if router.hooks.RequestPathValidationFailed != nil {
+			router.hooks.RequestPathValidationFailed(r, "PostCallbacksCallbackType", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	if router.hooks.RequestPathParseCompleted != nil {
+		router.hooks.RequestPathParseCompleted(r, "PostCallbacksCallbackType")
+	}
+
+	queryHasSmthStr := r.URL.Query().Get("hasSmth")
+	if queryHasSmthStr != "" {
+		queryHasSmth, err := strconv.ParseBool(queryHasSmthStr)
+		if err != nil {
+			request.ProcessingResult = RequestProcessingResult{error: err, typee: QueryParseFailed}
+			if router.hooks.RequestQueryParseFailed != nil {
+				router.hooks.RequestQueryParseFailed(r, "PostCallbacksCallbackType", "hasSmth", request.ProcessingResult)
+			}
+
+			return
+		}
+
+		request.Query.HasSmth = queryHasSmth
+	}
+
+	if err := request.Query.Validate(); err != nil {
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: QueryValidationFailed}
+		if router.hooks.RequestQueryValidationFailed != nil {
+			router.hooks.RequestQueryValidationFailed(r, "PostCallbacksCallbackType", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	if router.hooks.RequestQueryParseCompleted != nil {
+		router.hooks.RequestQueryParseCompleted(r, "PostCallbacksCallbackType")
+	}
+
+	var (
+		body      RawPayload
+		decodeErr error
+	)
+	var (
+		buf     interface{}
+		ok      bool
+		readErr error
+	)
+	if buf, readErr = ioutil.ReadAll(r.Body); readErr == nil {
+		if body, ok = buf.(RawPayload); !ok {
+			decodeErr = errors.New("body is not []byte")
+		}
+	}
+	if decodeErr != nil {
+		request.ProcessingResult = RequestProcessingResult{error: decodeErr, typee: BodyUnmarshalFailed}
+		if router.hooks.RequestBodyUnmarshalFailed != nil {
+			router.hooks.RequestBodyUnmarshalFailed(r, "PostCallbacksCallbackType", request.ProcessingResult)
+
+			return
+		}
+
+		return
+	}
+
+	request.Body = body
+
+	if router.hooks.RequestBodyUnmarshalCompleted != nil {
+		router.hooks.RequestBodyUnmarshalCompleted(r, "PostCallbacksCallbackType")
+	}
+
+	if router.hooks.RequestParseCompleted != nil {
+		router.hooks.RequestParseCompleted(r, "PostCallbacksCallbackType")
+	}
+
+	return
+}
+
+func (router *callbacksRouter) PostCallbacksCallbackType(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
+	response := router.service.PostCallbacksCallbackType(r.Context(), router.parsePostCallbacksCallbackTypeRequest(r))
+
+	if response.statusCode() == 302 && response.redirectURL() != "" {
+		if router.hooks.RequestRedirectStarted != nil {
+			router.hooks.RequestRedirectStarted(r, "PostCallbacksCallbackType", response.redirectURL())
+		}
+
+		http.Redirect(w, r, response.redirectURL(), 302)
+
+		if router.hooks.ServiceCompleted != nil {
+			router.hooks.ServiceCompleted(r, "PostCallbacksCallbackType")
+		}
+
+		return
+	}
+
+	for header, value := range response.headers() {
+		w.Header().Set(header, value)
+	}
+
+	for _, c := range response.cookies() {
+		cookie := c
+		http.SetCookie(w, &cookie)
+	}
+
+	if router.hooks.RequestProcessingCompleted != nil {
+		router.hooks.RequestProcessingCompleted(r, "PostCallbacksCallbackType")
+	}
+
+	if len(response.contentType()) > 0 {
+		w.Header().Set("content-type", response.contentType())
+	}
+
+	w.WriteHeader(response.statusCode())
+
+	var body []byte
+
+	if response.body() != nil {
+		var err error
+
+		switch response.contentType() {
+		case "application/xml":
+			body, err = xml.Marshal(response.body())
+		case "application/octet-stream":
+			var ok bool
+			if body, ok = (response.body()).([]byte); !ok {
+				err = errors.New("body is not []byte")
+			}
+		case "text/html":
+			body = []byte(fmt.Sprint(response.body()))
+		case "application/json":
+			fallthrough
+		default:
+			body, err = json.Marshal(response.body())
+		}
+
+		if err != nil {
+			if router.hooks.ResponseBodyMarshalFailed != nil {
+				router.hooks.ResponseBodyMarshalFailed(w, r, "PostCallbacksCallbackType", err)
+			}
+
+			return
+		}
+
+		if router.hooks.ResponseBodyMarshalCompleted != nil {
+			router.hooks.ResponseBodyMarshalCompleted(r, "PostCallbacksCallbackType")
+		}
+	} else if len(response.bodyRaw()) > 0 {
+		body = response.bodyRaw()
+	}
+
+	if len(body) > 0 {
+		count, err := w.Write(body)
+		if err != nil {
+			if router.hooks.ResponseBodyWriteFailed != nil {
+				router.hooks.ResponseBodyWriteFailed(r, "PostCallbacksCallbackType", count, err)
+			}
+
+			if router.hooks.ResponseBodyWriteCompleted != nil {
+				router.hooks.ResponseBodyWriteCompleted(r, "PostCallbacksCallbackType", count)
+			}
+
+			return
+		}
+
+		if router.hooks.ResponseBodyWriteCompleted != nil {
+			router.hooks.ResponseBodyWriteCompleted(r, "PostCallbacksCallbackType", count)
+		}
+	}
+
+	if router.hooks.ServiceCompleted != nil {
+		router.hooks.ServiceCompleted(r, "PostCallbacksCallbackType")
 	}
 }
 
@@ -1266,18 +1266,17 @@ func (builder *postCallbacksCallbackType200ContentTypeBuilder) ApplicationOctetS
 
 type postCallbacksCallbackType200ApplicationOctetStreamBodyBuilder struct {
 	response
-	rawBytes []byte
 }
 
 func (builder *postCallbacksCallbackType200ApplicationOctetStreamBodyBuilder) BodyBytesWithEncoding(encoding string, body []byte) *PostCallbacksCallbackType200ApplicationOctetStreamResponseBuilder {
-	builder.rawBytes = body
+	builder.response.bodyRaw = body
 	builder.response.headers["Content-Encoding"] = encoding
 
 	return &PostCallbacksCallbackType200ApplicationOctetStreamResponseBuilder{response: builder.response}
 }
 
 func (builder *postCallbacksCallbackType200ApplicationOctetStreamBodyBuilder) BodyBytes(body []byte) *PostCallbacksCallbackType200ApplicationOctetStreamResponseBuilder {
-	builder.rawBytes = body
+	builder.response.bodyRaw = body
 
 	return &PostCallbacksCallbackType200ApplicationOctetStreamResponseBuilder{response: builder.response}
 }
@@ -1294,6 +1293,53 @@ type postTransactionStatusCodeResponseBuilder struct {
 
 func PostTransactionResponseBuilder() *postTransactionStatusCodeResponseBuilder {
 	return new(postTransactionStatusCodeResponseBuilder)
+}
+
+func (builder *postTransactionStatusCodeResponseBuilder) StatusCode201() *postTransaction201ContentTypeBuilder {
+	builder.response.statusCode = 201
+
+	return &postTransaction201ContentTypeBuilder{response: builder.response}
+}
+
+type postTransaction201ContentTypeBuilder struct {
+	response
+}
+
+type PostTransaction201ApplicationJsonResponseBuilder struct {
+	response
+}
+
+func (builder *PostTransaction201ApplicationJsonResponseBuilder) Build() PostTransactionResponse {
+	return postTransactionResponse{response: builder.response}
+}
+
+func (builder *postTransaction201ContentTypeBuilder) ApplicationJson() *postTransaction201ApplicationJsonBodyBuilder {
+	builder.response.contentType = "application/json"
+
+	return &postTransaction201ApplicationJsonBodyBuilder{response: builder.response}
+}
+
+type postTransaction201ApplicationJsonBodyBuilder struct {
+	response
+}
+
+func (builder *postTransaction201ApplicationJsonBodyBuilder) BodyBytesWithEncoding(encoding string, body []byte) *PostTransaction201ApplicationJsonResponseBuilder {
+	builder.response.bodyRaw = body
+	builder.response.headers["Content-Encoding"] = encoding
+
+	return &PostTransaction201ApplicationJsonResponseBuilder{response: builder.response}
+}
+
+func (builder *postTransaction201ApplicationJsonBodyBuilder) BodyBytes(body []byte) *PostTransaction201ApplicationJsonResponseBuilder {
+	builder.response.bodyRaw = body
+
+	return &PostTransaction201ApplicationJsonResponseBuilder{response: builder.response}
+}
+
+func (builder *postTransaction201ApplicationJsonBodyBuilder) Body(body GenericResponse) *PostTransaction201ApplicationJsonResponseBuilder {
+	builder.response.body = body
+
+	return &PostTransaction201ApplicationJsonResponseBuilder{response: builder.response}
 }
 
 func (builder *postTransactionStatusCodeResponseBuilder) StatusCode400() *postTransaction400ContentTypeBuilder {
@@ -1322,18 +1368,17 @@ func (builder *postTransaction400ContentTypeBuilder) ApplicationJson() *postTran
 
 type postTransaction400ApplicationJsonBodyBuilder struct {
 	response
-	rawBytes []byte
 }
 
 func (builder *postTransaction400ApplicationJsonBodyBuilder) BodyBytesWithEncoding(encoding string, body []byte) *PostTransaction400ApplicationJsonResponseBuilder {
-	builder.rawBytes = body
+	builder.response.bodyRaw = body
 	builder.response.headers["Content-Encoding"] = encoding
 
 	return &PostTransaction400ApplicationJsonResponseBuilder{response: builder.response}
 }
 
 func (builder *postTransaction400ApplicationJsonBodyBuilder) BodyBytes(body []byte) *PostTransaction400ApplicationJsonResponseBuilder {
-	builder.rawBytes = body
+	builder.response.bodyRaw = body
 
 	return &PostTransaction400ApplicationJsonResponseBuilder{response: builder.response}
 }
@@ -1370,18 +1415,17 @@ func (builder *postTransaction500ContentTypeBuilder) ApplicationJson() *postTran
 
 type postTransaction500ApplicationJsonBodyBuilder struct {
 	response
-	rawBytes []byte
 }
 
 func (builder *postTransaction500ApplicationJsonBodyBuilder) BodyBytesWithEncoding(encoding string, body []byte) *PostTransaction500ApplicationJsonResponseBuilder {
-	builder.rawBytes = body
+	builder.response.bodyRaw = body
 	builder.response.headers["Content-Encoding"] = encoding
 
 	return &PostTransaction500ApplicationJsonResponseBuilder{response: builder.response}
 }
 
 func (builder *postTransaction500ApplicationJsonBodyBuilder) BodyBytes(body []byte) *PostTransaction500ApplicationJsonResponseBuilder {
-	builder.rawBytes = body
+	builder.response.bodyRaw = body
 
 	return &PostTransaction500ApplicationJsonResponseBuilder{response: builder.response}
 }
@@ -1390,54 +1434,6 @@ func (builder *postTransaction500ApplicationJsonBodyBuilder) Body(body GenericRe
 	builder.response.body = body
 
 	return &PostTransaction500ApplicationJsonResponseBuilder{response: builder.response}
-}
-
-func (builder *postTransactionStatusCodeResponseBuilder) StatusCode201() *postTransaction201ContentTypeBuilder {
-	builder.response.statusCode = 201
-
-	return &postTransaction201ContentTypeBuilder{response: builder.response}
-}
-
-type postTransaction201ContentTypeBuilder struct {
-	response
-}
-
-type PostTransaction201ApplicationJsonResponseBuilder struct {
-	response
-}
-
-func (builder *PostTransaction201ApplicationJsonResponseBuilder) Build() PostTransactionResponse {
-	return postTransactionResponse{response: builder.response}
-}
-
-func (builder *postTransaction201ContentTypeBuilder) ApplicationJson() *postTransaction201ApplicationJsonBodyBuilder {
-	builder.response.contentType = "application/json"
-
-	return &postTransaction201ApplicationJsonBodyBuilder{response: builder.response}
-}
-
-type postTransaction201ApplicationJsonBodyBuilder struct {
-	response
-	rawBytes []byte
-}
-
-func (builder *postTransaction201ApplicationJsonBodyBuilder) BodyBytesWithEncoding(encoding string, body []byte) *PostTransaction201ApplicationJsonResponseBuilder {
-	builder.rawBytes = body
-	builder.response.headers["Content-Encoding"] = encoding
-
-	return &PostTransaction201ApplicationJsonResponseBuilder{response: builder.response}
-}
-
-func (builder *postTransaction201ApplicationJsonBodyBuilder) BodyBytes(body []byte) *PostTransaction201ApplicationJsonResponseBuilder {
-	builder.rawBytes = body
-
-	return &PostTransaction201ApplicationJsonResponseBuilder{response: builder.response}
-}
-
-func (builder *postTransaction201ApplicationJsonBodyBuilder) Body(body GenericResponse) *PostTransaction201ApplicationJsonResponseBuilder {
-	builder.response.body = body
-
-	return &PostTransaction201ApplicationJsonResponseBuilder{response: builder.response}
 }
 
 type putTransactionStatusCodeResponseBuilder struct {
@@ -1474,18 +1470,17 @@ func (builder *putTransaction200ContentTypeBuilder) ApplicationJson() *putTransa
 
 type putTransaction200ApplicationJsonBodyBuilder struct {
 	response
-	rawBytes []byte
 }
 
 func (builder *putTransaction200ApplicationJsonBodyBuilder) BodyBytesWithEncoding(encoding string, body []byte) *PutTransaction200ApplicationJsonResponseBuilder {
-	builder.rawBytes = body
+	builder.response.bodyRaw = body
 	builder.response.headers["Content-Encoding"] = encoding
 
 	return &PutTransaction200ApplicationJsonResponseBuilder{response: builder.response}
 }
 
 func (builder *putTransaction200ApplicationJsonBodyBuilder) BodyBytes(body []byte) *PutTransaction200ApplicationJsonResponseBuilder {
-	builder.rawBytes = body
+	builder.response.bodyRaw = body
 
 	return &PutTransaction200ApplicationJsonResponseBuilder{response: builder.response}
 }
@@ -1522,18 +1517,17 @@ func (builder *putTransaction400ContentTypeBuilder) ApplicationJson() *putTransa
 
 type putTransaction400ApplicationJsonBodyBuilder struct {
 	response
-	rawBytes []byte
 }
 
 func (builder *putTransaction400ApplicationJsonBodyBuilder) BodyBytesWithEncoding(encoding string, body []byte) *PutTransaction400ApplicationJsonResponseBuilder {
-	builder.rawBytes = body
+	builder.response.bodyRaw = body
 	builder.response.headers["Content-Encoding"] = encoding
 
 	return &PutTransaction400ApplicationJsonResponseBuilder{response: builder.response}
 }
 
 func (builder *putTransaction400ApplicationJsonBodyBuilder) BodyBytes(body []byte) *PutTransaction400ApplicationJsonResponseBuilder {
-	builder.rawBytes = body
+	builder.response.bodyRaw = body
 
 	return &PutTransaction400ApplicationJsonResponseBuilder{response: builder.response}
 }
@@ -1570,18 +1564,17 @@ func (builder *putTransaction500ContentTypeBuilder) ApplicationJson() *putTransa
 
 type putTransaction500ApplicationJsonBodyBuilder struct {
 	response
-	rawBytes []byte
 }
 
 func (builder *putTransaction500ApplicationJsonBodyBuilder) BodyBytesWithEncoding(encoding string, body []byte) *PutTransaction500ApplicationJsonResponseBuilder {
-	builder.rawBytes = body
+	builder.response.bodyRaw = body
 	builder.response.headers["Content-Encoding"] = encoding
 
 	return &PutTransaction500ApplicationJsonResponseBuilder{response: builder.response}
 }
 
 func (builder *putTransaction500ApplicationJsonBodyBuilder) BodyBytes(body []byte) *PutTransaction500ApplicationJsonResponseBuilder {
-	builder.rawBytes = body
+	builder.response.bodyRaw = body
 
 	return &PutTransaction500ApplicationJsonResponseBuilder{response: builder.response}
 }
@@ -1598,54 +1591,6 @@ type deleteTransactionsUUIDStatusCodeResponseBuilder struct {
 
 func DeleteTransactionsUUIDResponseBuilder() *deleteTransactionsUUIDStatusCodeResponseBuilder {
 	return new(deleteTransactionsUUIDStatusCodeResponseBuilder)
-}
-
-func (builder *deleteTransactionsUUIDStatusCodeResponseBuilder) StatusCode400() *deleteTransactionsUUID400ContentTypeBuilder {
-	builder.response.statusCode = 400
-
-	return &deleteTransactionsUUID400ContentTypeBuilder{response: builder.response}
-}
-
-type deleteTransactionsUUID400ContentTypeBuilder struct {
-	response
-}
-
-type DeleteTransactionsUUID400ApplicationJsonResponseBuilder struct {
-	response
-}
-
-func (builder *DeleteTransactionsUUID400ApplicationJsonResponseBuilder) Build() DeleteTransactionsUUIDResponse {
-	return deleteTransactionsUUIDResponse{response: builder.response}
-}
-
-func (builder *deleteTransactionsUUID400ContentTypeBuilder) ApplicationJson() *deleteTransactionsUUID400ApplicationJsonBodyBuilder {
-	builder.response.contentType = "application/json"
-
-	return &deleteTransactionsUUID400ApplicationJsonBodyBuilder{response: builder.response}
-}
-
-type deleteTransactionsUUID400ApplicationJsonBodyBuilder struct {
-	response
-	rawBytes []byte
-}
-
-func (builder *deleteTransactionsUUID400ApplicationJsonBodyBuilder) BodyBytesWithEncoding(encoding string, body []byte) *DeleteTransactionsUUID400ApplicationJsonResponseBuilder {
-	builder.rawBytes = body
-	builder.response.headers["Content-Encoding"] = encoding
-
-	return &DeleteTransactionsUUID400ApplicationJsonResponseBuilder{response: builder.response}
-}
-
-func (builder *deleteTransactionsUUID400ApplicationJsonBodyBuilder) BodyBytes(body []byte) *DeleteTransactionsUUID400ApplicationJsonResponseBuilder {
-	builder.rawBytes = body
-
-	return &DeleteTransactionsUUID400ApplicationJsonResponseBuilder{response: builder.response}
-}
-
-func (builder *deleteTransactionsUUID400ApplicationJsonBodyBuilder) Body(body GenericResponse) *DeleteTransactionsUUID400ApplicationJsonResponseBuilder {
-	builder.response.body = body
-
-	return &DeleteTransactionsUUID400ApplicationJsonResponseBuilder{response: builder.response}
 }
 
 func (builder *deleteTransactionsUUIDStatusCodeResponseBuilder) StatusCode200() *deleteTransactionsUUID200ContentTypeBuilder {
@@ -1674,18 +1619,17 @@ func (builder *deleteTransactionsUUID200ContentTypeBuilder) ApplicationJson() *d
 
 type deleteTransactionsUUID200ApplicationJsonBodyBuilder struct {
 	response
-	rawBytes []byte
 }
 
 func (builder *deleteTransactionsUUID200ApplicationJsonBodyBuilder) BodyBytesWithEncoding(encoding string, body []byte) *DeleteTransactionsUUID200ApplicationJsonResponseBuilder {
-	builder.rawBytes = body
+	builder.response.bodyRaw = body
 	builder.response.headers["Content-Encoding"] = encoding
 
 	return &DeleteTransactionsUUID200ApplicationJsonResponseBuilder{response: builder.response}
 }
 
 func (builder *deleteTransactionsUUID200ApplicationJsonBodyBuilder) BodyBytes(body []byte) *DeleteTransactionsUUID200ApplicationJsonResponseBuilder {
-	builder.rawBytes = body
+	builder.response.bodyRaw = body
 
 	return &DeleteTransactionsUUID200ApplicationJsonResponseBuilder{response: builder.response}
 }
@@ -1696,6 +1640,53 @@ func (builder *deleteTransactionsUUID200ApplicationJsonBodyBuilder) Body(body Ge
 	return &DeleteTransactionsUUID200ApplicationJsonResponseBuilder{response: builder.response}
 }
 
+func (builder *deleteTransactionsUUIDStatusCodeResponseBuilder) StatusCode400() *deleteTransactionsUUID400ContentTypeBuilder {
+	builder.response.statusCode = 400
+
+	return &deleteTransactionsUUID400ContentTypeBuilder{response: builder.response}
+}
+
+type deleteTransactionsUUID400ContentTypeBuilder struct {
+	response
+}
+
+type DeleteTransactionsUUID400ApplicationJsonResponseBuilder struct {
+	response
+}
+
+func (builder *DeleteTransactionsUUID400ApplicationJsonResponseBuilder) Build() DeleteTransactionsUUIDResponse {
+	return deleteTransactionsUUIDResponse{response: builder.response}
+}
+
+func (builder *deleteTransactionsUUID400ContentTypeBuilder) ApplicationJson() *deleteTransactionsUUID400ApplicationJsonBodyBuilder {
+	builder.response.contentType = "application/json"
+
+	return &deleteTransactionsUUID400ApplicationJsonBodyBuilder{response: builder.response}
+}
+
+type deleteTransactionsUUID400ApplicationJsonBodyBuilder struct {
+	response
+}
+
+func (builder *deleteTransactionsUUID400ApplicationJsonBodyBuilder) BodyBytesWithEncoding(encoding string, body []byte) *DeleteTransactionsUUID400ApplicationJsonResponseBuilder {
+	builder.response.bodyRaw = body
+	builder.response.headers["Content-Encoding"] = encoding
+
+	return &DeleteTransactionsUUID400ApplicationJsonResponseBuilder{response: builder.response}
+}
+
+func (builder *deleteTransactionsUUID400ApplicationJsonBodyBuilder) BodyBytes(body []byte) *DeleteTransactionsUUID400ApplicationJsonResponseBuilder {
+	builder.response.bodyRaw = body
+
+	return &DeleteTransactionsUUID400ApplicationJsonResponseBuilder{response: builder.response}
+}
+
+func (builder *deleteTransactionsUUID400ApplicationJsonBodyBuilder) Body(body GenericResponse) *DeleteTransactionsUUID400ApplicationJsonResponseBuilder {
+	builder.response.body = body
+
+	return &DeleteTransactionsUUID400ApplicationJsonResponseBuilder{response: builder.response}
+}
+
 type CallbacksService interface {
 	PostCallbacksCallbackType(context.Context, PostCallbacksCallbackTypeRequest) PostCallbacksCallbackTypeResponse
 }
@@ -1704,18 +1695,6 @@ type TransactionsService interface {
 	PostTransaction(context.Context, PostTransactionRequest) PostTransactionResponse
 	PutTransaction(context.Context, PutTransactionRequest) PutTransactionResponse
 	DeleteTransactionsUUID(context.Context, DeleteTransactionsUUIDRequest) DeleteTransactionsUUIDResponse
-}
-
-type PostCallbacksCallbackTypeRequestPath struct {
-	CallbackType string
-}
-
-func (path PostCallbacksCallbackTypeRequestPath) GetCallbackType() string {
-	return path.CallbackType
-}
-
-func (path PostCallbacksCallbackTypeRequestPath) Validate() error {
-	return nil
 }
 
 type PostCallbacksCallbackTypeRequestQuery struct {
@@ -1730,37 +1709,24 @@ func (query PostCallbacksCallbackTypeRequestQuery) Validate() error {
 	return nil
 }
 
+type PostCallbacksCallbackTypeRequestPath struct {
+	CallbackType string
+}
+
+func (path PostCallbacksCallbackTypeRequestPath) GetCallbackType() string {
+	return path.CallbackType
+}
+
+func (path PostCallbacksCallbackTypeRequestPath) Validate() error {
+	return nil
+}
+
 type PostCallbacksCallbackTypeRequest struct {
 	Body                 RawPayload
 	Path                 PostCallbacksCallbackTypeRequestPath
 	Query                PostCallbacksCallbackTypeRequestQuery
 	ProcessingResult     RequestProcessingResult
 	SecurityCheckResults map[SecurityScheme]string
-}
-
-type PostTransactionRequestHeader struct {
-	XFingerprint string `json:"x-fingerprint"`
-	XSignature   string `json:"x-signature"`
-}
-
-func (header PostTransactionRequestHeader) GetXFingerprint() string {
-	return header.XFingerprint
-}
-
-func (header PostTransactionRequestHeader) GetXSignature() string {
-	return header.XSignature
-}
-
-func (header PostTransactionRequestHeader) Validate() error {
-	return validation.ValidateStruct(&header,
-		validation.Field(&header.XFingerprint, validation.Required, validation.RuneLength(32, 32)),
-		validation.Field(&header.XSignature, validation.RuneLength(0, 5)))
-}
-
-type PostTransactionRequest struct {
-	Body             CreateTransactionRequest
-	Header           PostTransactionRequestHeader
-	ProcessingResult RequestProcessingResult
 }
 
 type PutTransactionRequestHeader struct {
@@ -1785,6 +1751,31 @@ func (header PutTransactionRequestHeader) Validate() error {
 type PutTransactionRequest struct {
 	Body             UpdateTransactionRequest
 	Header           PutTransactionRequestHeader
+	ProcessingResult RequestProcessingResult
+}
+
+type PostTransactionRequestHeader struct {
+	XFingerprint string `json:"x-fingerprint"`
+	XSignature   string `json:"x-signature"`
+}
+
+func (header PostTransactionRequestHeader) GetXFingerprint() string {
+	return header.XFingerprint
+}
+
+func (header PostTransactionRequestHeader) GetXSignature() string {
+	return header.XSignature
+}
+
+func (header PostTransactionRequestHeader) Validate() error {
+	return validation.ValidateStruct(&header,
+		validation.Field(&header.XFingerprint, validation.Required, validation.RuneLength(32, 32)),
+		validation.Field(&header.XSignature, validation.RuneLength(0, 5)))
+}
+
+type PostTransactionRequest struct {
+	Body             CreateTransactionRequest
+	Header           PostTransactionRequestHeader
 	ProcessingResult RequestProcessingResult
 }
 
@@ -1860,6 +1851,15 @@ type securityProcessor struct {
 }
 
 var securityExtractorsFuncs = map[SecurityScheme]func(r *http.Request) (string, string, bool){
+	SecuritySchemeCookie: func(r *http.Request) (string, string, bool) {
+		cookie, err := r.Cookie("JSESSIONID")
+
+		if err != nil {
+			return "", "", false
+		}
+
+		return cookie.Name, cookie.Value, true
+	},
 	SecuritySchemeBasic: func(r *http.Request) (string, string, bool) {
 		value := r.Header.Get("Authorization")
 
@@ -1876,21 +1876,12 @@ var securityExtractorsFuncs = map[SecurityScheme]func(r *http.Request) (string, 
 
 		return "Authorization", value, value != ""
 	},
-	SecuritySchemeCookie: func(r *http.Request) (string, string, bool) {
-		cookie, err := r.Cookie("JSESSIONID")
-
-		if err != nil {
-			return "", "", false
-		}
-
-		return cookie.Name, cookie.Value, true
-	},
 }
 
 type SecuritySchemas interface {
-	SecuritySchemeCookie(r *http.Request, scheme SecurityScheme, name string, value string) error
 	SecuritySchemeBasic(r *http.Request, scheme SecurityScheme, name string, value string) error
 	SecuritySchemeBearer(r *http.Request, scheme SecurityScheme, name string, value string) error
+	SecuritySchemeCookie(r *http.Request, scheme SecurityScheme, name string, value string) error
 }
 
 type SecurityCheckResult struct {

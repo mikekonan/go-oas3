@@ -2152,14 +2152,13 @@ func (generator *Generator) responseContentTypeBuilder(contentTypeName string, c
 
 	results = append(results, jen.Type().Id(bodyBuilderName).Struct(
 		jen.Id("response"),
-		jen.Id("rawBytes").Index().Byte(), // Поле для хранения сырых байтов
 	))
 
 	results = append(results, jen.Func().Params(
 		jen.Id("builder").Op("*").Id(bodyBuilderName)).Id("BodyBytesWithEncoding").Params(
 		jen.Id("encoding").String(), jen.Id("body").Index().Byte()).Params(
 		jen.Op("*").Id(nextBuilderName)).Block(
-		jen.Id("builder").Dot("rawBytes").Op("=").Id("body"),
+		jen.Id("builder").Dot("response").Dot("bodyRaw").Op("=").Id("body"),
 		jen.Id("builder").Dot("response").Dot("headers").Index(jen.Lit("Content-Encoding")).Op("=").Id("encoding"),
 		jen.Line().Return().Op("&").Id(nextBuilderName).Values(jen.Id("response").Op(":").Id("builder").Dot("response"))))
 
@@ -2167,7 +2166,7 @@ func (generator *Generator) responseContentTypeBuilder(contentTypeName string, c
 		jen.Id("builder").Op("*").Id(bodyBuilderName)).Id("BodyBytes").Params(
 		jen.Id("body").Index().Byte()).Params(
 		jen.Op("*").Id(nextBuilderName)).Block(
-		jen.Id("builder").Dot("rawBytes").Op("=").Id("body"),
+		jen.Id("builder").Dot("response").Dot("bodyRaw").Op("=").Id("body"),
 		jen.Line().Return().Op("&").Id(nextBuilderName).Values(jen.Id("response").Op(":").Id("builder").Dot("response")),
 	))
 
