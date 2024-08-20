@@ -87,8 +87,6 @@ func (t transactionsService) DeleteTransactionsUUID(ctx context.Context, request
 type callbacksService struct{}
 
 func (c callbacksService) PostCallbacksCallbackType(ctx context.Context, request PostCallbacksCallbackTypeRequest) PostCallbacksCallbackTypeResponse {
-	return PostCallbacksCallbackTypeResponseBuilder().StatusCode307().Headers(PostCallbacksCallbackType307Headers{ReferrerPolicy: "sad"}).Build()
-
 	return PostCallbacksCallbackTypeResponseBuilder().
 		StatusCode200().
 		Headers(PostCallbacksCallbackType200Headers{XJwsSignature: ""}).

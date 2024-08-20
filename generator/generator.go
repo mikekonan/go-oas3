@@ -2191,9 +2191,8 @@ func (generator *Generator) responseContentTypeBuilder(contentTypeName string, c
 }
 
 func (generator *Generator) responseStatusCodeBuilder(resp operationResponse, builderName string, nextBuilderName string) (results []jen.Code) {
-	hasHeaders := len(resp.Headers) > 0
 	hasContentTypes := len(resp.ContentTypeBodyNameMap) > 0
-	isRedirect := slices.Contains([]string{"301", "302", "303", "307", "308"}, resp.StatusCode) && !hasHeaders && !hasContentTypes
+	isRedirect := slices.Contains([]string{"301", "302", "303", "307", "308"}, resp.StatusCode) && !hasContentTypes
 
 	if isRedirect {
 		results = append(results, jen.Func().Params(
