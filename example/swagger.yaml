@@ -129,6 +129,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/GenericResponse"
+
   /callbacks/{callbackType}:
     post:
       parameters:
@@ -144,6 +145,14 @@ paths:
           schema:
             $ref: '#/components/schemas/Boolean'
       responses:
+        '307':
+          description: performs redirection
+          headers:
+            Referrer-Policy:
+              schema:
+                type: string
+              description: response signature cookie
+              example: no-referrer
         '200':
           headers:
             x-jws-signature:

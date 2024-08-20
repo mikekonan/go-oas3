@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"slices"
 	"strings"
 
 	"github.com/ahmetb/go-linq"
@@ -1104,10 +1105,24 @@ func (generator *Generator) wrapper(name string, requestName string, routerName,
 
 	funcCode = append(funcCode, jen.Defer().Id("r").Dot("Body").Dot("Close").Call().Line())
 
+	slicesThatContainsRedirectCodes := jen.Qual("slices", "Contains").Call(
+		jen.Index().Int().ValuesFunc(func(g *jen.Group) {
+			for _, code := range []int{301, 302, 303, 307, 308} {
+				g.Lit(code)
+			}
+		}),
+		jen.Id("response").Dot("statusCode").Call(),
+	)
+
 	funcCode = append(funcCode, jen.Id("response").Op(":=").Id("router").Dot("service").Dot(name).Call(jen.Id("r").Dot("Context").Call(),
 		jen.Id("router").Dot("parse"+name+"Request").Call(jen.Id("r"))),
 		jen.Line().Line(),
-		jen.If(jen.Id("response").Dot("statusCode").Call().Op("==").Lit(302).Op("&&").Id("response").Dot("redirectURL").Call().Op("!=").Lit("")).Block(
+		jen.For(jen.List(jen.Id("header"),
+			jen.Id("value")).Op(":=").Range().Id("response").Dot("headers").Call()).Block(
+			jen.Id("w").Dot("Header").Call().Dot("Set").Call(jen.Id("header"),
+				jen.Id("value"))),
+		jen.Line().Line(),
+		jen.If(slicesThatContainsRedirectCodes.Op("&&").Id("response").Dot("redirectURL").Call().Op("!=").Lit("")).Block(
 			jen.If(jen.Id("router").Dot("hooks").Dot("RequestRedirectStarted").Op("!=").Id("nil")).Block(
 				jen.Id("router").Dot("hooks").Dot("RequestRedirectStarted").Call(jen.Id("r"),
 					jen.Lit(name), jen.Id("response").Dot("redirectURL").Call())),
@@ -1116,18 +1131,13 @@ func (generator *Generator) wrapper(name string, requestName string, routerName,
 				"Redirect").Call(jen.Id("w"),
 				jen.Id("r"),
 				jen.Id("response").Dot("redirectURL").Call(),
-				jen.Lit(302)),
+				jen.Id("response").Dot("statusCode").Call()),
 			jen.Line().Line(),
 			jen.If(jen.Id("router").Dot("hooks").Dot("ServiceCompleted").Op("!=").Id("nil")).
 				Block(jen.Id("router").Dot("hooks").Dot("ServiceCompleted").Call(jen.Id("r"), jen.Lit(name))),
 			jen.Line().Line(),
 			jen.Return(),
 		),
-		jen.Line().Line(),
-		jen.For(jen.List(jen.Id("header"),
-			jen.Id("value")).Op(":=").Range().Id("response").Dot("headers").Call()).Block(
-			jen.Id("w").Dot("Header").Call().Dot("Set").Call(jen.Id("header"),
-				jen.Id("value"))),
 		jen.Line().Line(),
 		jen.For(jen.List(jen.Id("_"),
 			jen.Id("c")).Op(":=").Range().Id("response").Dot("cookies").Call()).Block(
@@ -2080,7 +2090,6 @@ func (generator *Generator) responseBuilders(operationStruct operationStruct) je
 		SelectT(func(resp operationResponse) (results []jen.Code) {
 			hasHeaders := len(resp.Headers) > 0
 			hasContentTypes := len(resp.ContentTypeBodyNameMap) > 0
-			isRedirect := resp.StatusCode == "302" && !hasHeaders && !hasContentTypes
 
 			//prepend generated code in following order: assemble -> (optional: content type) -> (optional: headers) -> status codes
 			var nextBuilderName string
@@ -2132,7 +2141,7 @@ func (generator *Generator) responseBuilders(operationStruct operationStruct) je
 				nextBuilderName = headersBuilderName
 			}
 
-			results = append(generator.responseStatusCodeBuilder(isRedirect, resp.StatusCode, statusCodesBuilderName, nextBuilderName), results...)
+			results = append(generator.responseStatusCodeBuilder(resp, statusCodesBuilderName, nextBuilderName), results...)
 			return
 		}).
 		SelectManyT(func(builders []jen.Code) linq.Query { return linq.From(builders) }).
@@ -2181,20 +2190,24 @@ func (generator *Generator) responseContentTypeBuilder(contentTypeName string, c
 	return results
 }
 
-func (generator *Generator) responseStatusCodeBuilder(isRedirect bool, statusCode string, builderName string, nextBuilderName string) (results []jen.Code) {
+func (generator *Generator) responseStatusCodeBuilder(resp operationResponse, builderName string, nextBuilderName string) (results []jen.Code) {
+	hasHeaders := len(resp.Headers) > 0
+	hasContentTypes := len(resp.ContentTypeBodyNameMap) > 0
+	isRedirect := slices.Contains([]string{"301", "302", "303", "307", "308"}, resp.StatusCode) && !hasHeaders && !hasContentTypes
+
 	if isRedirect {
 		results = append(results, jen.Func().Params(
-			jen.Id("builder").Op("*").Id(builderName)).Id("StatusCode"+statusCode).Params(jen.Id("redirectURL").String()).Params(
+			jen.Id("builder").Op("*").Id(builderName)).Id("StatusCode"+resp.StatusCode).Params(jen.Id("redirectURL").String()).Params(
 			jen.Op("*").Id(nextBuilderName)).Block(
-			jen.Id("builder").Dot("response").Dot("statusCode").Op("=").Lit(cast.ToInt(statusCode)),
+			jen.Id("builder").Dot("response").Dot("statusCode").Op("=").Lit(cast.ToInt(resp.StatusCode)),
 			jen.Id("builder").Dot("response").Dot("redirectURL").Op("=").Id("redirectURL"),
 			jen.Line().Return().Op("&").Id(nextBuilderName).Values(jen.Id("response").Op(":").Id("builder").Dot("response")),
 		))
 	} else {
 		results = append(results, jen.Func().Params(
-			jen.Id("builder").Op("*").Id(builderName)).Id("StatusCode"+statusCode).Params().Params(
+			jen.Id("builder").Op("*").Id(builderName)).Id("StatusCode"+resp.StatusCode).Params().Params(
 			jen.Op("*").Id(nextBuilderName)).Block(
-			jen.Id("builder").Dot("response").Dot("statusCode").Op("=").Lit(cast.ToInt(statusCode)),
+			jen.Id("builder").Dot("response").Dot("statusCode").Op("=").Lit(cast.ToInt(resp.StatusCode)),
 			jen.Line().Return().Op("&").Id(nextBuilderName).Values(jen.Id("response").Op(":").Id("builder").Dot("response")),
 		))
 	}
