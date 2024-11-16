@@ -9,7 +9,7 @@ require (
 	github.com/go-chi/chi/v5 v5.0.10
 	github.com/go-ozzo/ozzo-validation/v4 v4.3.0
 	github.com/goioc/di v1.5.0
-	github.com/google/uuid v1.2.0
+	github.com/google/uuid v1.6.0
 	github.com/heetch/confita v0.9.2
 	github.com/imdario/mergo v0.3.12
 	github.com/mikekonan/go-types/v2 v2.0.1
