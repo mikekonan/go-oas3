@@ -4,7 +4,7 @@ go 1.22
 
 require (
 	github.com/ahmetb/go-linq v3.0.0+incompatible
-	github.com/dave/jennifer v1.4.1
+	github.com/dave/jennifer v1.7.1
 	github.com/getkin/kin-openapi v0.128.0
 	github.com/go-chi/chi/v5 v5.1.0
 	github.com/go-ozzo/ozzo-validation/v4 v4.3.0
