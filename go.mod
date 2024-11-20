@@ -10,7 +10,7 @@ require (
 	github.com/go-ozzo/ozzo-validation/v4 v4.3.0
 	github.com/goioc/di v1.7.1
 	github.com/google/uuid v1.6.0
-	github.com/heetch/confita v0.9.2
+	github.com/heetch/confita v0.10.0
 	github.com/imdario/mergo v0.3.12
 	github.com/mikekonan/go-types/v2 v2.0.25
 	github.com/spf13/cast v1.7.0

@@ -106,8 +106,8 @@ github.com/hashicorp/vault/api v1.0.4/go.mod h1:gDcqh3WGcR1cpF5AJz/B1UFheUEneMoI
 github.com/hashicorp/vault/sdk v0.1.13/go.mod h1:B+hVj7TpuQY1Y/GPbCpffmgd+tSEwvhkWnjtSYCaS2M=
 github.com/hashicorp/yamux v0.0.0-20180604194846-3520598351bb/go.mod h1:+NfK9FKeTrX5uv1uIXGdwYDTeHna2qgaIlx54MXqjAM=
 github.com/hashicorp/yamux v0.0.0-20181012175058-2f1d1f20f75d/go.mod h1:+NfK9FKeTrX5uv1uIXGdwYDTeHna2qgaIlx54MXqjAM=
-github.com/heetch/confita v0.9.2 h1:NNN99OG3xRgvBgpaVSFQht6/JrI7ax2kNKp2ayCSNR0=
-github.com/heetch/confita v0.9.2/go.mod h1:W6GDCVPvi2LpvdEriwZTu2fyxuK+Grx1vY302gtWfvM=
+github.com/heetch/confita v0.10.0 h1:00V4eQPDU71v9nZD7N/DsSb9cnPJh59CjrpQPfln47A=
+github.com/heetch/confita v0.10.0/go.mod h1:W6GDCVPvi2LpvdEriwZTu2fyxuK+Grx1vY302gtWfvM=
 github.com/imdario/mergo v0.3.12 h1:b6R2BslTbIEToALKP7LxUvijTsNI9TAe80pLWN2g/HU=
 github.com/imdario/mergo v0.3.12/go.mod h1:jmQim1M+e3UYxmgPu/WyfjB3N3VflVyUjjjwH0dnCYA=
 github.com/invopop/yaml v0.3.1 h1:f0+ZpmhfBSS4MhG+4HYseMdJhoeeopbSKbq5Rpeelso=
