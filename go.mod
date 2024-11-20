@@ -8,7 +8,7 @@ require (
 	github.com/getkin/kin-openapi v0.128.0
 	github.com/go-chi/chi/v5 v5.1.0
 	github.com/go-ozzo/ozzo-validation/v4 v4.3.0
-	github.com/goioc/di v1.5.0
+	github.com/goioc/di v1.7.1
 	github.com/google/uuid v1.6.0
 	github.com/heetch/confita v0.9.2
 	github.com/imdario/mergo v0.3.12
@@ -27,7 +27,7 @@ require (
 	github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826 // indirect
 	github.com/perimeterx/marshmallow v1.1.5 // indirect
 	github.com/pkg/errors v0.8.1 // indirect
-	github.com/sirupsen/logrus v1.7.0 // indirect
+	github.com/sirupsen/logrus v1.8.1 // indirect
 	github.com/tdewolff/parse/v2 v2.7.18 // indirect
 	golang.org/x/sys v0.25.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
