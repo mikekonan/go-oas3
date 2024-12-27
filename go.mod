@@ -13,7 +13,7 @@ require (
 	github.com/heetch/confita v0.10.0
 	github.com/imdario/mergo v0.3.12
 	github.com/mikekonan/go-types/v2 v2.0.25
-	github.com/spf13/cast v1.7.0
+	github.com/spf13/cast v1.7.1
 	github.com/tdewolff/minify/v2 v2.21.2
 )
 
