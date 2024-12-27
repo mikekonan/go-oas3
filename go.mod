@@ -6,7 +6,7 @@ require (
 	github.com/ahmetb/go-linq v3.0.0+incompatible
 	github.com/dave/jennifer v1.7.1
 	github.com/getkin/kin-openapi v0.128.0
-	github.com/go-chi/chi/v5 v5.1.0
+	github.com/go-chi/chi/v5 v5.2.0
 	github.com/go-ozzo/ozzo-validation/v4 v4.3.0
 	github.com/goioc/di v1.7.1
 	github.com/google/uuid v1.6.0
