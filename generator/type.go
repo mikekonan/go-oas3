@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"strings"
 
+	"dario.cat/mergo"
 	"github.com/dave/jennifer/jen"
 	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/imdario/mergo"
 	"github.com/mikekonan/go-oas3/configurator"
 )
 
