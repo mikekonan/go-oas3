@@ -228,6 +228,10 @@ components:
       $ref: "https://raw.githubusercontent.com/mikekonan/go-types/v2.0.1/swagger.yaml#/components/schemas/Email"
     URL:
       $ref: "https://raw.githubusercontent.com/mikekonan/go-types/v2.0.1/swagger.yaml#/components/schemas/URL"
+    URLWithDescription:
+      allOf:
+        - description: URL with description
+        - $ref: "https://raw.githubusercontent.com/mikekonan/go-types/v2.0.1/swagger.yaml#/components/schemas/URL"
     GenericResponse:
       properties:
         result:

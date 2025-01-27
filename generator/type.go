@@ -65,14 +65,24 @@ func (typ *Type) fillGoType(into *jen.Statement, parentTypeName string, typeName
 	}
 
 	if len(schema.AllOf) > 0 {
-		allOfSchema := schema.AllOf[0]
+		mergedSchema := &openapi3.Schema{}
 
-		for i := 1; i < len(schema.AllOf); i++ {
-			mergo.Merge(&allOfSchema, schema.AllOf[i])
+		for _, schemaRef := range schema.AllOf {
+			if schemaRef.Value == nil {
+				continue
+			}
+
+			clonedSchema := &openapi3.Schema{}
+			if err := mergo.Merge(clonedSchema, schemaRef.Value); err != nil {
+				panic(err)
+			}
+
+			if err := mergo.Merge(mergedSchema, clonedSchema, mergo.WithOverride); err != nil {
+				panic(err)
+			}
 		}
 
-		typ.fillGoType(into, parentTypeName, typeName, allOfSchema, false, needAliasing)
-
+		typ.fillGoType(into, parentTypeName, typeName, &openapi3.SchemaRef{Value: mergedSchema}, false, needAliasing)
 		return
 	}
 
