@@ -18,36 +18,6 @@ import (
 
 var regexParamRegex = regexp.MustCompile("^[.?\\d]+$")
 
-type updateTransactionRequest struct {
-	Description *string `json:"description"`
-	Details     *string `json:"details,omitempty"`
-	Title       string  `json:"title"`
-}
-
-type UpdateTransactionRequest struct {
-	Description string  `json:"description"`
-	Details     *string `json:"details,omitempty"`
-	Title       string  `json:"title"`
-}
-
-func (body *UpdateTransactionRequest) UnmarshalJSON(data []byte) error {
-	var value updateTransactionRequest
-	if err := json.Unmarshal(data, &value); err != nil {
-		return err
-	}
-
-	body.Title = strings.TrimSpace(value.Title)
-	body.Details = value.Details
-
-	if value.Description == nil {
-		return fmt.Errorf("Description is required")
-	}
-
-	body.Description = strings.TrimSpace(*value.Description)
-
-	return nil
-}
-
 type createTransactionRequest struct {
 	Amount        float64              `json:"amount"`
 	AmountCents   int                  `json:"amountCents"`
@@ -82,19 +52,19 @@ func (body *CreateTransactionRequest) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	body.Country = value.Country
-	body.Currency = value.Currency
 	body.Details = value.Details
+	body.Email = value.Email
+	body.Title = strings.TrimSpace(value.Title)
 	body.Amount = value.Amount
 	body.CallbackURL = value.CallbackURL
-	body.Email = value.Email
+	body.Country = value.Country
+	body.TransactionID = value.TransactionID
+	body.AmountCents = value.AmountCents
+	body.Currency = value.Currency
 	if !regexParamRegex.MatchString(body.RegexParam) {
 		return fmt.Errorf("RegexParam not matched by the '^[.?\\d]+$' regex")
 	}
 	body.RegexParam = value.RegexParam
-	body.Title = strings.TrimSpace(value.Title)
-	body.TransactionID = value.TransactionID
-	body.AmountCents = value.AmountCents
 
 	if value.Description == nil {
 		return fmt.Errorf("Description is required")
@@ -106,18 +76,14 @@ func (body *CreateTransactionRequest) UnmarshalJSON(data []byte) error {
 }
 func (body CreateTransactionRequest) Validate() error {
 	return validation.ValidateStruct(&body,
+		validation.Field(&body.Title, validation.Skip.When(body.Title == ""), validation.RuneLength(8, 50)),
+		validation.Field(&body.Amount, validation.Min(0.009).Exclusive()),
 		validation.Field(&body.Country, validation.Skip.When(body.Country == ""), validation.RuneLength(2, 2)),
 		validation.Field(&body.Currency, validation.Skip.When(body.Currency == ""), validation.RuneLength(3, 3)),
-		validation.Field(&body.Amount, validation.Min(0.009).Exclusive()),
-		validation.Field(&body.Title, validation.Skip.When(body.Title == ""), validation.RuneLength(8, 50)),
 		validation.Field(&body.Description, validation.Required, validation.RuneLength(8, 100)))
 }
 
 type Email = email.Email
-
-type Time = time.Time
-
-type Boolean = bool
 
 type genericResponse struct {
 	Result GenericResponseResultEnum `json:"result"`
@@ -144,6 +110,42 @@ func (body GenericResponse) Validate() error {
 type RawPayload = []byte
 
 type URL = url.URL
+
+type Boolean = bool
+
+type Time = time.Time
+
+type URLWithDescription = url.URL
+
+type updateTransactionRequest struct {
+	Description *string `json:"description"`
+	Details     *string `json:"details,omitempty"`
+	Title       string  `json:"title"`
+}
+
+type UpdateTransactionRequest struct {
+	Description string  `json:"description"`
+	Details     *string `json:"details,omitempty"`
+	Title       string  `json:"title"`
+}
+
+func (body *UpdateTransactionRequest) UnmarshalJSON(data []byte) error {
+	var value updateTransactionRequest
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+
+	body.Details = value.Details
+	body.Title = strings.TrimSpace(value.Title)
+
+	if value.Description == nil {
+		return fmt.Errorf("Description is required")
+	}
+
+	body.Description = strings.TrimSpace(*value.Description)
+
+	return nil
+}
 
 type GenericResponseResultEnum string
 

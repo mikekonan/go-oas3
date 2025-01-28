@@ -1371,11 +1371,26 @@ func (generator *Generator) wrapperRequestParsers(wrapperName string, operation 
 				in := parameter.Value.In
 				name := generator.normalizer.normalize(parameter.Value.Name)
 				paramName := in + name
+
+				// Check for allOf
+				if parameter.Value.Schema.Value.AllOf != nil {
+					for _, schema := range parameter.Value.Schema.Value.AllOf {
+						if schema.Ref != "" {
+							// Create a new schema with the ref
+							parameter.Value.Schema = &openapi3.SchemaRef{
+								Ref:   schema.Ref,
+								Value: schema.Value,
+							}
+							break
+						}
+					}
+				}
+
 				if generator.typee.isCustomType(parameter.Value.Schema.Value) {
 					return generator.wrapperCustomType(in, name, paramName, wrapperName, parameter)
 				}
 
-				if len(parameter.Value.Schema.Value.Enum) > 0 { //TODO: support anonymous enum types
+				if len(parameter.Value.Schema.Value.Enum) > 0 {
 					enumType := generator.normalizer.extractNameFromRef(parameter.Value.Schema.Ref)
 					return generator.wrapperEnum(in, enumType, name, paramName, wrapperName, parameter)
 				}
@@ -1413,6 +1428,19 @@ func (generator *Generator) wrapRequired(name string, isRequired bool, code jen.
 	}
 
 	return code
+}
+
+func (generator *Generator) extractRefFromAllOf(schema *openapi3.SchemaRef) string {
+	if schema.Value.AllOf == nil {
+		return schema.Ref
+	}
+
+	for _, s := range schema.Value.AllOf {
+		if s.Ref != "" {
+			return s.Ref
+		}
+	}
+	return ""
 }
 
 func (generator *Generator) wrapperCustomType(in string, name string, paramName string, wrapperName string, parameter *openapi3.ParameterRef) jen.Code {
@@ -1453,6 +1481,11 @@ func (generator *Generator) wrapperCustomType(in string, name string, paramName 
 
 		result.Add(generator.wrapRequired(paramName+"Str", parameter.Value.Required, parameterCode))
 	} else {
+		ref := generator.extractRefFromAllOf(parameter.Value.Schema)
+		if ref != "" {
+			parameter.Value.Schema.Ref = ref
+		}
+
 		switch parameter.Value.Schema.Value.Format {
 		case "uuid":
 			parameterCode := jen.Null().

@@ -27,11 +27,22 @@ type Type struct {
 }
 
 func (typ *Type) fillJsonTag(into *jen.Statement, schemaRef *openapi3.SchemaRef, name string) {
-	var tag = formatTagName(name)
-	if typ.getXGoOmitempty(schemaRef.Value) {
-		tag = tag + ",omitempty"
+	tag := formatTagName(name)
+	if schemaRef.Value != nil && typ.getXGoOmitempty(schemaRef.Value) {
+		tag += ",omitempty"
 	}
 	into.Tag(map[string]string{"json": tag})
+}
+
+func (typ *Type) fillAdditionalProperties(into *jen.Statement, schema *openapi3.Schema) {
+	for propName, propSchema := range schema.Properties {
+		fieldName := typ.normalizer.normalize(propName)
+		field := jen.Id(fieldName)
+
+		typ.fillGoType(field, "", fieldName, propSchema, false, false)
+		typ.fillJsonTag(field, propSchema, propName)
+		into.Line().Add(field)
+	}
 }
 
 func (typ *Type) fillGoType(into *jen.Statement, parentTypeName string, typeName string, schemaRef *openapi3.SchemaRef, asPointer bool, needAliasing bool) {
@@ -65,23 +76,45 @@ func (typ *Type) fillGoType(into *jen.Statement, parentTypeName string, typeName
 	}
 
 	if len(schema.AllOf) > 0 {
-		mergedSchema := &openapi3.Schema{}
+		var refSchema *openapi3.SchemaRef
+		var inlineSchemas []*openapi3.SchemaRef
 
-		for _, schemaRef := range schema.AllOf {
-			if schemaRef.Value == nil {
-				continue
-			}
-
-			clonedSchema := &openapi3.Schema{}
-			if err := mergo.Merge(clonedSchema, schemaRef.Value); err != nil {
-				panic(err)
-			}
-
-			if err := mergo.Merge(mergedSchema, clonedSchema, mergo.WithOverride); err != nil {
-				panic(err)
+		for _, s := range schema.AllOf {
+			if s.Ref != "" {
+				if refSchema == nil {
+					refSchema = s
+				}
+			} else {
+				inlineSchemas = append(inlineSchemas, s)
 			}
 		}
 
+		if refSchema != nil {
+			typ.fillGoType(into, parentTypeName, typeName, refSchema, false, needAliasing)
+
+			if len(inlineSchemas) > 0 {
+				mergedInline := &openapi3.Schema{}
+				for _, s := range inlineSchemas {
+					if err := mergo.Merge(mergedInline, s.Value, mergo.WithOverride); err != nil {
+						panic(err)
+					}
+				}
+				typ.fillAdditionalProperties(into, mergedInline)
+			}
+
+			return
+		}
+
+		mergedSchema := &openapi3.Schema{}
+		for _, s := range schema.AllOf {
+			if s.Value == nil {
+				continue
+			}
+
+			if err := mergo.Merge(mergedSchema, s.Value, mergo.WithOverride); err != nil {
+				panic(err)
+			}
+		}
 		typ.fillGoType(into, parentTypeName, typeName, &openapi3.SchemaRef{Value: mergedSchema}, false, needAliasing)
 		return
 	}
