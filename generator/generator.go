@@ -1122,6 +1122,11 @@ func (generator *Generator) wrapper(name string, requestName string, routerName,
 			jen.Id("w").Dot("Header").Call().Dot("Set").Call(jen.Id("header"),
 				jen.Id("value"))),
 		jen.Line().Line(),
+		jen.For(jen.List(jen.Id("_"),
+			jen.Id("c")).Op(":=").Range().Id("response").Dot("cookies").Call()).Block(
+			jen.Id("cookie").Op(":=").Id("c"),
+			jen.Qual("net/http", "SetCookie").Call(jen.Id("w"), jen.Op("&").Id("cookie"))),
+		jen.Line().Line(),
 		jen.If(slicesThatContainsRedirectCodes.Op("&&").Id("response").Dot("redirectURL").Call().Op("!=").Lit("")).Block(
 			jen.If(jen.Id("router").Dot("hooks").Dot("RequestRedirectStarted").Op("!=").Id("nil")).Block(
 				jen.Id("router").Dot("hooks").Dot("RequestRedirectStarted").Call(jen.Id("r"),
@@ -1137,12 +1142,7 @@ func (generator *Generator) wrapper(name string, requestName string, routerName,
 				Block(jen.Id("router").Dot("hooks").Dot("ServiceCompleted").Call(jen.Id("r"), jen.Lit(name))),
 			jen.Line().Line(),
 			jen.Return(),
-		),
-		jen.Line().Line(),
-		jen.For(jen.List(jen.Id("_"),
-			jen.Id("c")).Op(":=").Range().Id("response").Dot("cookies").Call()).Block(
-			jen.Id("cookie").Op(":=").Id("c"),
-			jen.Qual("net/http", "SetCookie").Call(jen.Id("w"), jen.Op("&").Id("cookie"))))
+		))
 
 	funcCode = append(funcCode, jen.Line().Add(jen.Line()).
 		Add(jen.If(jen.Id("router").Dot("hooks").Dot("RequestProcessingCompleted").Op("!=").Id("nil")).Block(
