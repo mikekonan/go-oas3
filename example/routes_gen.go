@@ -170,6 +170,33 @@ func (router *callbacksRouter) parsePostCallbacksCallbackTypeRequest(r *http.Req
 		router.hooks.RequestSecurityParseCompleted(r, "PostCallbacksCallbackType")
 	}
 
+	pathCallbackType := chi.URLParam(r, "callbackType")
+	if pathCallbackType == "" {
+		err := fmt.Errorf("callbackType is empty")
+
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathParseFailed}
+		if router.hooks.RequestPathParseFailed != nil {
+			router.hooks.RequestPathParseFailed(r, "PostCallbacksCallbackType", "callbackType", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	request.Path.CallbackType = pathCallbackType
+
+	if err := request.Path.Validate(); err != nil {
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathValidationFailed}
+		if router.hooks.RequestPathValidationFailed != nil {
+			router.hooks.RequestPathValidationFailed(r, "PostCallbacksCallbackType", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	if router.hooks.RequestPathParseCompleted != nil {
+		router.hooks.RequestPathParseCompleted(r, "PostCallbacksCallbackType")
+	}
+
 	queryHasSmthStr := r.URL.Query().Get("hasSmth")
 	if queryHasSmthStr != "" {
 		queryHasSmth, err := strconv.ParseBool(queryHasSmthStr)
@@ -196,33 +223,6 @@ func (router *callbacksRouter) parsePostCallbacksCallbackTypeRequest(r *http.Req
 
 	if router.hooks.RequestQueryParseCompleted != nil {
 		router.hooks.RequestQueryParseCompleted(r, "PostCallbacksCallbackType")
-	}
-
-	pathCallbackType := chi.URLParam(r, "callbackType")
-	if pathCallbackType == "" {
-		err := fmt.Errorf("callbackType is empty")
-
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathParseFailed}
-		if router.hooks.RequestPathParseFailed != nil {
-			router.hooks.RequestPathParseFailed(r, "PostCallbacksCallbackType", "callbackType", request.ProcessingResult)
-		}
-
-		return
-	}
-
-	request.Path.CallbackType = pathCallbackType
-
-	if err := request.Path.Validate(); err != nil {
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathValidationFailed}
-		if router.hooks.RequestPathValidationFailed != nil {
-			router.hooks.RequestPathValidationFailed(r, "PostCallbacksCallbackType", request.ProcessingResult)
-		}
-
-		return
-	}
-
-	if router.hooks.RequestPathParseCompleted != nil {
-		router.hooks.RequestPathParseCompleted(r, "PostCallbacksCallbackType")
 	}
 
 	var (
@@ -272,6 +272,11 @@ func (router *callbacksRouter) PostCallbacksCallbackType(w http.ResponseWriter, 
 		w.Header().Set(header, value)
 	}
 
+	for _, c := range response.cookies() {
+		cookie := c
+		http.SetCookie(w, &cookie)
+	}
+
 	if slices.Contains([]int{301, 302, 303, 307, 308}, response.statusCode()) && response.redirectURL() != "" {
 		if router.hooks.RequestRedirectStarted != nil {
 			router.hooks.RequestRedirectStarted(r, "PostCallbacksCallbackType", response.redirectURL())
@@ -284,11 +289,6 @@ func (router *callbacksRouter) PostCallbacksCallbackType(w http.ResponseWriter, 
 		}
 
 		return
-	}
-
-	for _, c := range response.cookies() {
-		cookie := c
-		http.SetCookie(w, &cookie)
 	}
 
 	if router.hooks.RequestProcessingCompleted != nil {
@@ -486,6 +486,11 @@ func (router *transactionsRouter) PostTransaction(w http.ResponseWriter, r *http
 		w.Header().Set(header, value)
 	}
 
+	for _, c := range response.cookies() {
+		cookie := c
+		http.SetCookie(w, &cookie)
+	}
+
 	if slices.Contains([]int{301, 302, 303, 307, 308}, response.statusCode()) && response.redirectURL() != "" {
 		if router.hooks.RequestRedirectStarted != nil {
 			router.hooks.RequestRedirectStarted(r, "PostTransaction", response.redirectURL())
@@ -498,11 +503,6 @@ func (router *transactionsRouter) PostTransaction(w http.ResponseWriter, r *http
 		}
 
 		return
-	}
-
-	for _, c := range response.cookies() {
-		cookie := c
-		http.SetCookie(w, &cookie)
 	}
 
 	if router.hooks.RequestProcessingCompleted != nil {
@@ -657,6 +657,11 @@ func (router *transactionsRouter) PutTransaction(w http.ResponseWriter, r *http.
 		w.Header().Set(header, value)
 	}
 
+	for _, c := range response.cookies() {
+		cookie := c
+		http.SetCookie(w, &cookie)
+	}
+
 	if slices.Contains([]int{301, 302, 303, 307, 308}, response.statusCode()) && response.redirectURL() != "" {
 		if router.hooks.RequestRedirectStarted != nil {
 			router.hooks.RequestRedirectStarted(r, "PutTransaction", response.redirectURL())
@@ -669,11 +674,6 @@ func (router *transactionsRouter) PutTransaction(w http.ResponseWriter, r *http.
 		}
 
 		return
-	}
-
-	for _, c := range response.cookies() {
-		cookie := c
-		http.SetCookie(w, &cookie)
 	}
 
 	if router.hooks.RequestProcessingCompleted != nil {
@@ -941,6 +941,11 @@ func (router *transactionsRouter) DeleteTransactionsUUID(w http.ResponseWriter, 
 		w.Header().Set(header, value)
 	}
 
+	for _, c := range response.cookies() {
+		cookie := c
+		http.SetCookie(w, &cookie)
+	}
+
 	if slices.Contains([]int{301, 302, 303, 307, 308}, response.statusCode()) && response.redirectURL() != "" {
 		if router.hooks.RequestRedirectStarted != nil {
 			router.hooks.RequestRedirectStarted(r, "DeleteTransactionsUUID", response.redirectURL())
@@ -953,11 +958,6 @@ func (router *transactionsRouter) DeleteTransactionsUUID(w http.ResponseWriter, 
 		}
 
 		return
-	}
-
-	for _, c := range response.cookies() {
-		cookie := c
-		http.SetCookie(w, &cookie)
 	}
 
 	if router.hooks.RequestProcessingCompleted != nil {
@@ -1048,6 +1048,45 @@ type responseInterface interface {
 	redirectURL() string
 	cookies() []http.Cookie
 	headers() map[string]string
+}
+
+type PostCallbacksCallbackTypeResponse interface {
+	responseInterface
+	postCallbacksCallbackTypeResponse()
+}
+
+type postCallbacksCallbackTypeResponse struct {
+	response
+}
+
+func (postCallbacksCallbackTypeResponse) postCallbacksCallbackTypeResponse() {}
+
+func (response postCallbacksCallbackTypeResponse) statusCode() int {
+	return response.response.statusCode
+}
+
+func (response postCallbacksCallbackTypeResponse) body() interface{} {
+	return response.response.body
+}
+
+func (response postCallbacksCallbackTypeResponse) bodyRaw() []byte {
+	return response.response.bodyRaw
+}
+
+func (response postCallbacksCallbackTypeResponse) contentType() string {
+	return response.response.contentType
+}
+
+func (response postCallbacksCallbackTypeResponse) redirectURL() string {
+	return response.response.redirectURL
+}
+
+func (response postCallbacksCallbackTypeResponse) headers() map[string]string {
+	return response.response.headers
+}
+
+func (response postCallbacksCallbackTypeResponse) cookies() []http.Cookie {
+	return response.response.cookies
 }
 
 type PostTransactionResponse interface {
@@ -1164,45 +1203,6 @@ func (response deleteTransactionsUUIDResponse) headers() map[string]string {
 }
 
 func (response deleteTransactionsUUIDResponse) cookies() []http.Cookie {
-	return response.response.cookies
-}
-
-type PostCallbacksCallbackTypeResponse interface {
-	responseInterface
-	postCallbacksCallbackTypeResponse()
-}
-
-type postCallbacksCallbackTypeResponse struct {
-	response
-}
-
-func (postCallbacksCallbackTypeResponse) postCallbacksCallbackTypeResponse() {}
-
-func (response postCallbacksCallbackTypeResponse) statusCode() int {
-	return response.response.statusCode
-}
-
-func (response postCallbacksCallbackTypeResponse) body() interface{} {
-	return response.response.body
-}
-
-func (response postCallbacksCallbackTypeResponse) bodyRaw() []byte {
-	return response.response.bodyRaw
-}
-
-func (response postCallbacksCallbackTypeResponse) contentType() string {
-	return response.response.contentType
-}
-
-func (response postCallbacksCallbackTypeResponse) redirectURL() string {
-	return response.response.redirectURL
-}
-
-func (response postCallbacksCallbackTypeResponse) headers() map[string]string {
-	return response.response.headers
-}
-
-func (response postCallbacksCallbackTypeResponse) cookies() []http.Cookie {
 	return response.response.cookies
 }
 
@@ -1478,53 +1478,6 @@ func PutTransactionResponseBuilder() *putTransactionStatusCodeResponseBuilder {
 	return new(putTransactionStatusCodeResponseBuilder)
 }
 
-func (builder *putTransactionStatusCodeResponseBuilder) StatusCode500() *putTransaction500ContentTypeBuilder {
-	builder.response.statusCode = 500
-
-	return &putTransaction500ContentTypeBuilder{response: builder.response}
-}
-
-type putTransaction500ContentTypeBuilder struct {
-	response
-}
-
-type PutTransaction500ApplicationJsonResponseBuilder struct {
-	response
-}
-
-func (builder *PutTransaction500ApplicationJsonResponseBuilder) Build() PutTransactionResponse {
-	return putTransactionResponse{response: builder.response}
-}
-
-func (builder *putTransaction500ContentTypeBuilder) ApplicationJson() *putTransaction500ApplicationJsonBodyBuilder {
-	builder.response.contentType = "application/json"
-
-	return &putTransaction500ApplicationJsonBodyBuilder{response: builder.response}
-}
-
-type putTransaction500ApplicationJsonBodyBuilder struct {
-	response
-}
-
-func (builder *putTransaction500ApplicationJsonBodyBuilder) BodyBytesWithEncoding(encoding string, body []byte) *PutTransaction500ApplicationJsonResponseBuilder {
-	builder.response.bodyRaw = body
-	builder.response.headers["Content-Encoding"] = encoding
-
-	return &PutTransaction500ApplicationJsonResponseBuilder{response: builder.response}
-}
-
-func (builder *putTransaction500ApplicationJsonBodyBuilder) BodyBytes(body []byte) *PutTransaction500ApplicationJsonResponseBuilder {
-	builder.response.bodyRaw = body
-
-	return &PutTransaction500ApplicationJsonResponseBuilder{response: builder.response}
-}
-
-func (builder *putTransaction500ApplicationJsonBodyBuilder) Body(body GenericResponse) *PutTransaction500ApplicationJsonResponseBuilder {
-	builder.response.body = body
-
-	return &PutTransaction500ApplicationJsonResponseBuilder{response: builder.response}
-}
-
 func (builder *putTransactionStatusCodeResponseBuilder) StatusCode200() *putTransaction200ContentTypeBuilder {
 	builder.response.statusCode = 200
 
@@ -1617,6 +1570,53 @@ func (builder *putTransaction400ApplicationJsonBodyBuilder) Body(body GenericRes
 	builder.response.body = body
 
 	return &PutTransaction400ApplicationJsonResponseBuilder{response: builder.response}
+}
+
+func (builder *putTransactionStatusCodeResponseBuilder) StatusCode500() *putTransaction500ContentTypeBuilder {
+	builder.response.statusCode = 500
+
+	return &putTransaction500ContentTypeBuilder{response: builder.response}
+}
+
+type putTransaction500ContentTypeBuilder struct {
+	response
+}
+
+type PutTransaction500ApplicationJsonResponseBuilder struct {
+	response
+}
+
+func (builder *PutTransaction500ApplicationJsonResponseBuilder) Build() PutTransactionResponse {
+	return putTransactionResponse{response: builder.response}
+}
+
+func (builder *putTransaction500ContentTypeBuilder) ApplicationJson() *putTransaction500ApplicationJsonBodyBuilder {
+	builder.response.contentType = "application/json"
+
+	return &putTransaction500ApplicationJsonBodyBuilder{response: builder.response}
+}
+
+type putTransaction500ApplicationJsonBodyBuilder struct {
+	response
+}
+
+func (builder *putTransaction500ApplicationJsonBodyBuilder) BodyBytesWithEncoding(encoding string, body []byte) *PutTransaction500ApplicationJsonResponseBuilder {
+	builder.response.bodyRaw = body
+	builder.response.headers["Content-Encoding"] = encoding
+
+	return &PutTransaction500ApplicationJsonResponseBuilder{response: builder.response}
+}
+
+func (builder *putTransaction500ApplicationJsonBodyBuilder) BodyBytes(body []byte) *PutTransaction500ApplicationJsonResponseBuilder {
+	builder.response.bodyRaw = body
+
+	return &PutTransaction500ApplicationJsonResponseBuilder{response: builder.response}
+}
+
+func (builder *putTransaction500ApplicationJsonBodyBuilder) Body(body GenericResponse) *PutTransaction500ApplicationJsonResponseBuilder {
+	builder.response.body = body
+
+	return &PutTransaction500ApplicationJsonResponseBuilder{response: builder.response}
 }
 
 type deleteTransactionsUUIDStatusCodeResponseBuilder struct {
@@ -1721,14 +1721,46 @@ func (builder *deleteTransactionsUUID400ApplicationJsonBodyBuilder) Body(body Ge
 	return &DeleteTransactionsUUID400ApplicationJsonResponseBuilder{response: builder.response}
 }
 
+type TransactionsService interface {
+	DeleteTransactionsUUID(context.Context, DeleteTransactionsUUIDRequest) DeleteTransactionsUUIDResponse
+	PostTransaction(context.Context, PostTransactionRequest) PostTransactionResponse
+	PutTransaction(context.Context, PutTransactionRequest) PutTransactionResponse
+}
+
 type CallbacksService interface {
 	PostCallbacksCallbackType(context.Context, PostCallbacksCallbackTypeRequest) PostCallbacksCallbackTypeResponse
 }
 
-type TransactionsService interface {
-	PostTransaction(context.Context, PostTransactionRequest) PostTransactionResponse
-	PutTransaction(context.Context, PutTransactionRequest) PutTransactionResponse
-	DeleteTransactionsUUID(context.Context, DeleteTransactionsUUIDRequest) DeleteTransactionsUUIDResponse
+type PostCallbacksCallbackTypeRequestPath struct {
+	CallbackType string
+}
+
+func (path PostCallbacksCallbackTypeRequestPath) GetCallbackType() string {
+	return path.CallbackType
+}
+
+func (path PostCallbacksCallbackTypeRequestPath) Validate() error {
+	return nil
+}
+
+type PostCallbacksCallbackTypeRequestQuery struct {
+	HasSmth bool
+}
+
+func (query PostCallbacksCallbackTypeRequestQuery) GetHasSmth() bool {
+	return query.HasSmth
+}
+
+func (query PostCallbacksCallbackTypeRequestQuery) Validate() error {
+	return nil
+}
+
+type PostCallbacksCallbackTypeRequest struct {
+	Body                 RawPayload
+	Path                 PostCallbacksCallbackTypeRequestPath
+	Query                PostCallbacksCallbackTypeRequestQuery
+	ProcessingResult     RequestProcessingResult
+	SecurityCheckResults map[SecurityScheme]string
 }
 
 type PostTransactionRequestHeader struct {
@@ -1781,6 +1813,18 @@ type PutTransactionRequest struct {
 	ProcessingResult RequestProcessingResult
 }
 
+type DeleteTransactionsUUIDRequestQuery struct {
+	TimeParam time.Time
+}
+
+func (query DeleteTransactionsUUIDRequestQuery) GetTimeParam() time.Time {
+	return query.TimeParam
+}
+
+func (query DeleteTransactionsUUIDRequestQuery) Validate() error {
+	return nil
+}
+
 type DeleteTransactionsUUIDRequestHeader struct {
 	XFingerprint string `json:"x-fingerprint"`
 	XSignature   string `json:"x-signature"`
@@ -1818,54 +1862,10 @@ func (path DeleteTransactionsUUIDRequestPath) Validate() error {
 		validation.Field(&path.RegexParam, validation.Required, validation.RuneLength(5, 0)))
 }
 
-type DeleteTransactionsUUIDRequestQuery struct {
-	TimeParam time.Time
-}
-
-func (query DeleteTransactionsUUIDRequestQuery) GetTimeParam() time.Time {
-	return query.TimeParam
-}
-
-func (query DeleteTransactionsUUIDRequestQuery) Validate() error {
-	return nil
-}
-
 type DeleteTransactionsUUIDRequest struct {
 	Header               DeleteTransactionsUUIDRequestHeader
 	Path                 DeleteTransactionsUUIDRequestPath
 	Query                DeleteTransactionsUUIDRequestQuery
-	ProcessingResult     RequestProcessingResult
-	SecurityCheckResults map[SecurityScheme]string
-}
-
-type PostCallbacksCallbackTypeRequestPath struct {
-	CallbackType string
-}
-
-func (path PostCallbacksCallbackTypeRequestPath) GetCallbackType() string {
-	return path.CallbackType
-}
-
-func (path PostCallbacksCallbackTypeRequestPath) Validate() error {
-	return nil
-}
-
-type PostCallbacksCallbackTypeRequestQuery struct {
-	HasSmth bool
-}
-
-func (query PostCallbacksCallbackTypeRequestQuery) GetHasSmth() bool {
-	return query.HasSmth
-}
-
-func (query PostCallbacksCallbackTypeRequestQuery) Validate() error {
-	return nil
-}
-
-type PostCallbacksCallbackTypeRequest struct {
-	Body                 RawPayload
-	Path                 PostCallbacksCallbackTypeRequestPath
-	Query                PostCallbacksCallbackTypeRequestQuery
 	ProcessingResult     RequestProcessingResult
 	SecurityCheckResults map[SecurityScheme]string
 }
