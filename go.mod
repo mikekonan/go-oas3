@@ -3,7 +3,7 @@ module github.com/mikekonan/go-oas3
 go 1.22
 
 require (
-	dario.cat/mergo v1.0.1
+	dario.cat/mergo v1.0.2
 	github.com/ahmetb/go-linq v3.0.0+incompatible
 	github.com/dave/jennifer v1.7.1
 	github.com/getkin/kin-openapi v0.112.0
