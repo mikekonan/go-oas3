@@ -85,282 +85,6 @@ func (r RequestProcessingResult) Err() error {
 	return r.error
 }
 
-func CallbacksHandler(impl CallbacksService, r chi.Router, hooks *Hooks, securitySchemas SecuritySchemas) http.Handler {
-	router := &callbacksRouter{router: r, service: impl, hooks: hooks}
-
-	router.securityHandlers = map[SecurityScheme]securityProcessor{
-		SecuritySchemeCookie: {
-			scheme:  SecuritySchemeCookie,
-			extract: securityExtractorsFuncs[SecuritySchemeCookie],
-			handle:  securitySchemas.SecuritySchemeCookie,
-		},
-	}
-
-	router.mount()
-
-	return router.router
-}
-
-type callbacksRouter struct {
-	router           chi.Router
-	service          CallbacksService
-	hooks            *Hooks
-	securityHandlers map[SecurityScheme]securityProcessor
-}
-
-func (router *callbacksRouter) mount() {
-	router.router.Post("/callbacks/{callbackType}", router.PostCallbacksCallbackType)
-}
-
-func (router *callbacksRouter) parsePostCallbacksCallbackTypeRequest(r *http.Request) (request PostCallbacksCallbackTypeRequest) {
-	request.ProcessingResult = RequestProcessingResult{typee: ParseSucceed}
-
-	isSecurityCheckPassed := false
-	for _, processors := range [][]securityProcessor{{router.securityHandlers[SecuritySchemeCookie]}} {
-		isLinkedChecksValid := true
-
-		for _, processor := range processors {
-			name, value, isExtracted := processor.extract(r)
-
-			if !isExtracted {
-				isLinkedChecksValid = false
-				break
-			}
-
-			if err := processor.handle(r, processor.scheme, name, value); err != nil {
-				if router.hooks.RequestSecurityCheckFailed != nil {
-					router.hooks.RequestSecurityCheckFailed(r, "PostCallbacksCallbackType", string(processor.scheme), RequestProcessingResult{error: err, typee: SecurityCheckFailed})
-				}
-
-				isLinkedChecksValid = false
-
-				break
-			}
-
-			if router.hooks.RequestSecurityCheckCompleted != nil {
-				router.hooks.RequestSecurityCheckCompleted(r, "PostCallbacksCallbackType", string(processor.scheme))
-			}
-
-			if len(request.SecurityCheckResults) == 0 {
-				request.SecurityCheckResults = map[SecurityScheme]string{}
-			}
-
-			request.SecurityCheckResults[processor.scheme] = value
-		}
-
-		if isLinkedChecksValid {
-			isSecurityCheckPassed = true
-			break
-		}
-	}
-
-	if !isSecurityCheckPassed {
-		err := fmt.Errorf("failed passing security checks")
-
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: SecurityParseFailed}
-
-		if router.hooks.RequestSecurityParseFailed != nil {
-			router.hooks.RequestSecurityParseFailed(r, "PostCallbacksCallbackType", request.ProcessingResult)
-		}
-
-		return
-	}
-
-	if router.hooks.RequestSecurityParseCompleted != nil {
-		router.hooks.RequestSecurityParseCompleted(r, "PostCallbacksCallbackType")
-	}
-
-	pathCallbackType := chi.URLParam(r, "callbackType")
-	if pathCallbackType == "" {
-		err := fmt.Errorf("callbackType is empty")
-
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathParseFailed}
-		if router.hooks.RequestPathParseFailed != nil {
-			router.hooks.RequestPathParseFailed(r, "PostCallbacksCallbackType", "callbackType", request.ProcessingResult)
-		}
-
-		return
-	}
-
-	request.Path.CallbackType = pathCallbackType
-
-	if err := request.Path.Validate(); err != nil {
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathValidationFailed}
-		if router.hooks.RequestPathValidationFailed != nil {
-			router.hooks.RequestPathValidationFailed(r, "PostCallbacksCallbackType", request.ProcessingResult)
-		}
-
-		return
-	}
-
-	if router.hooks.RequestPathParseCompleted != nil {
-		router.hooks.RequestPathParseCompleted(r, "PostCallbacksCallbackType")
-	}
-
-	queryHasSmthStr := r.URL.Query().Get("hasSmth")
-	if queryHasSmthStr != "" {
-		queryHasSmth, err := strconv.ParseBool(queryHasSmthStr)
-		if err != nil {
-			request.ProcessingResult = RequestProcessingResult{error: err, typee: QueryParseFailed}
-			if router.hooks.RequestQueryParseFailed != nil {
-				router.hooks.RequestQueryParseFailed(r, "PostCallbacksCallbackType", "hasSmth", request.ProcessingResult)
-			}
-
-			return
-		}
-
-		request.Query.HasSmth = queryHasSmth
-	}
-
-	if err := request.Query.Validate(); err != nil {
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: QueryValidationFailed}
-		if router.hooks.RequestQueryValidationFailed != nil {
-			router.hooks.RequestQueryValidationFailed(r, "PostCallbacksCallbackType", request.ProcessingResult)
-		}
-
-		return
-	}
-
-	if router.hooks.RequestQueryParseCompleted != nil {
-		router.hooks.RequestQueryParseCompleted(r, "PostCallbacksCallbackType")
-	}
-
-	var (
-		body      RawPayload
-		decodeErr error
-	)
-	var (
-		buf     interface{}
-		ok      bool
-		readErr error
-	)
-	if buf, readErr = ioutil.ReadAll(r.Body); readErr == nil {
-		if body, ok = buf.(RawPayload); !ok {
-			decodeErr = errors.New("body is not []byte")
-		}
-	}
-	if decodeErr != nil {
-		request.ProcessingResult = RequestProcessingResult{error: decodeErr, typee: BodyUnmarshalFailed}
-		if router.hooks.RequestBodyUnmarshalFailed != nil {
-			router.hooks.RequestBodyUnmarshalFailed(r, "PostCallbacksCallbackType", request.ProcessingResult)
-
-			return
-		}
-
-		return
-	}
-
-	request.Body = body
-
-	if router.hooks.RequestBodyUnmarshalCompleted != nil {
-		router.hooks.RequestBodyUnmarshalCompleted(r, "PostCallbacksCallbackType")
-	}
-
-	if router.hooks.RequestParseCompleted != nil {
-		router.hooks.RequestParseCompleted(r, "PostCallbacksCallbackType")
-	}
-
-	return
-}
-
-func (router *callbacksRouter) PostCallbacksCallbackType(w http.ResponseWriter, r *http.Request) {
-	defer r.Body.Close()
-
-	response := router.service.PostCallbacksCallbackType(r.Context(), router.parsePostCallbacksCallbackTypeRequest(r))
-
-	for header, value := range response.headers() {
-		w.Header().Set(header, value)
-	}
-
-	for _, c := range response.cookies() {
-		cookie := c
-		http.SetCookie(w, &cookie)
-	}
-
-	if slices.Contains([]int{301, 302, 303, 307, 308}, response.statusCode()) && response.redirectURL() != "" {
-		if router.hooks.RequestRedirectStarted != nil {
-			router.hooks.RequestRedirectStarted(r, "PostCallbacksCallbackType", response.redirectURL())
-		}
-
-		http.Redirect(w, r, response.redirectURL(), response.statusCode())
-
-		if router.hooks.ServiceCompleted != nil {
-			router.hooks.ServiceCompleted(r, "PostCallbacksCallbackType")
-		}
-
-		return
-	}
-
-	if router.hooks.RequestProcessingCompleted != nil {
-		router.hooks.RequestProcessingCompleted(r, "PostCallbacksCallbackType")
-	}
-
-	if len(response.contentType()) > 0 {
-		w.Header().Set("content-type", response.contentType())
-	}
-
-	w.WriteHeader(response.statusCode())
-
-	var body []byte
-
-	if response.body() != nil {
-		var err error
-
-		switch response.contentType() {
-		case "application/xml":
-			body, err = xml.Marshal(response.body())
-		case "application/octet-stream":
-			var ok bool
-			if body, ok = (response.body()).([]byte); !ok {
-				err = errors.New("body is not []byte")
-			}
-		case "text/html":
-			body = []byte(fmt.Sprint(response.body()))
-		case "application/json":
-			fallthrough
-		default:
-			body, err = json.Marshal(response.body())
-		}
-
-		if err != nil {
-			if router.hooks.ResponseBodyMarshalFailed != nil {
-				router.hooks.ResponseBodyMarshalFailed(w, r, "PostCallbacksCallbackType", err)
-			}
-
-			return
-		}
-
-		if router.hooks.ResponseBodyMarshalCompleted != nil {
-			router.hooks.ResponseBodyMarshalCompleted(r, "PostCallbacksCallbackType")
-		}
-	} else if len(response.bodyRaw()) > 0 {
-		body = response.bodyRaw()
-	}
-
-	if len(body) > 0 {
-		count, err := w.Write(body)
-		if err != nil {
-			if router.hooks.ResponseBodyWriteFailed != nil {
-				router.hooks.ResponseBodyWriteFailed(r, "PostCallbacksCallbackType", count, err)
-			}
-
-			if router.hooks.ResponseBodyWriteCompleted != nil {
-				router.hooks.ResponseBodyWriteCompleted(r, "PostCallbacksCallbackType", count)
-			}
-
-			return
-		}
-
-		if router.hooks.ResponseBodyWriteCompleted != nil {
-			router.hooks.ResponseBodyWriteCompleted(r, "PostCallbacksCallbackType", count)
-		}
-	}
-
-	if router.hooks.ServiceCompleted != nil {
-		router.hooks.ServiceCompleted(r, "PostCallbacksCallbackType")
-	}
-}
-
 func TransactionsHandler(impl TransactionsService, r chi.Router, hooks *Hooks, securitySchemas SecuritySchemas) http.Handler {
 	router := &transactionsRouter{router: r, service: impl, hooks: hooks}
 
@@ -804,47 +528,6 @@ func (router *transactionsRouter) parseDeleteTransactionsUUIDRequest(r *http.Req
 		router.hooks.RequestSecurityParseCompleted(r, "DeleteTransactionsUUID")
 	}
 
-	headerXSignature := r.Header.Get("x-signature")
-	request.Header.XSignature = headerXSignature
-
-	headerXFingerprint := r.Header.Get("x-fingerprint")
-	if headerXFingerprint == "" {
-		err := fmt.Errorf("x-fingerprint is empty")
-
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderParseFailed}
-		if router.hooks.RequestHeaderParseFailed != nil {
-			router.hooks.RequestHeaderParseFailed(r, "DeleteTransactionsUUID", "x-fingerprint", request.ProcessingResult)
-		}
-
-		return
-	}
-
-	if !xFingerprintRegex.MatchString(headerXFingerprint) {
-		err := fmt.Errorf("x-fingerprint not matched by the '[0-9a-fA-F]+' regex")
-
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderParseFailed}
-		if router.hooks.RequestHeaderParseFailed != nil {
-			router.hooks.RequestHeaderParseFailed(r, "DeleteTransactionsUUID", "x-fingerprint", request.ProcessingResult)
-		}
-
-		return
-	}
-
-	request.Header.XFingerprint = headerXFingerprint
-
-	if err := request.Header.Validate(); err != nil {
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderValidationFailed}
-		if router.hooks.RequestHeaderValidationFailed != nil {
-			router.hooks.RequestHeaderValidationFailed(r, "DeleteTransactionsUUID", request.ProcessingResult)
-		}
-
-		return
-	}
-
-	if router.hooks.RequestHeaderParseCompleted != nil {
-		router.hooks.RequestHeaderParseCompleted(r, "DeleteTransactionsUUID")
-	}
-
 	pathUUID := chi.URLParam(r, "uuid")
 	if pathUUID == "" {
 		err := fmt.Errorf("uuid is empty")
@@ -923,6 +606,47 @@ func (router *transactionsRouter) parseDeleteTransactionsUUIDRequest(r *http.Req
 
 	if router.hooks.RequestQueryParseCompleted != nil {
 		router.hooks.RequestQueryParseCompleted(r, "DeleteTransactionsUUID")
+	}
+
+	headerXSignature := r.Header.Get("x-signature")
+	request.Header.XSignature = headerXSignature
+
+	headerXFingerprint := r.Header.Get("x-fingerprint")
+	if headerXFingerprint == "" {
+		err := fmt.Errorf("x-fingerprint is empty")
+
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderParseFailed}
+		if router.hooks.RequestHeaderParseFailed != nil {
+			router.hooks.RequestHeaderParseFailed(r, "DeleteTransactionsUUID", "x-fingerprint", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	if !xFingerprintRegex.MatchString(headerXFingerprint) {
+		err := fmt.Errorf("x-fingerprint not matched by the '[0-9a-fA-F]+' regex")
+
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderParseFailed}
+		if router.hooks.RequestHeaderParseFailed != nil {
+			router.hooks.RequestHeaderParseFailed(r, "DeleteTransactionsUUID", "x-fingerprint", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	request.Header.XFingerprint = headerXFingerprint
+
+	if err := request.Header.Validate(); err != nil {
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderValidationFailed}
+		if router.hooks.RequestHeaderValidationFailed != nil {
+			router.hooks.RequestHeaderValidationFailed(r, "DeleteTransactionsUUID", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	if router.hooks.RequestHeaderParseCompleted != nil {
+		router.hooks.RequestHeaderParseCompleted(r, "DeleteTransactionsUUID")
 	}
 
 	if router.hooks.RequestParseCompleted != nil {
@@ -1027,6 +751,282 @@ func (router *transactionsRouter) DeleteTransactionsUUID(w http.ResponseWriter, 
 
 	if router.hooks.ServiceCompleted != nil {
 		router.hooks.ServiceCompleted(r, "DeleteTransactionsUUID")
+	}
+}
+
+func CallbacksHandler(impl CallbacksService, r chi.Router, hooks *Hooks, securitySchemas SecuritySchemas) http.Handler {
+	router := &callbacksRouter{router: r, service: impl, hooks: hooks}
+
+	router.securityHandlers = map[SecurityScheme]securityProcessor{
+		SecuritySchemeCookie: {
+			scheme:  SecuritySchemeCookie,
+			extract: securityExtractorsFuncs[SecuritySchemeCookie],
+			handle:  securitySchemas.SecuritySchemeCookie,
+		},
+	}
+
+	router.mount()
+
+	return router.router
+}
+
+type callbacksRouter struct {
+	router           chi.Router
+	service          CallbacksService
+	hooks            *Hooks
+	securityHandlers map[SecurityScheme]securityProcessor
+}
+
+func (router *callbacksRouter) mount() {
+	router.router.Post("/callbacks/{callbackType}", router.PostCallbacksCallbackType)
+}
+
+func (router *callbacksRouter) parsePostCallbacksCallbackTypeRequest(r *http.Request) (request PostCallbacksCallbackTypeRequest) {
+	request.ProcessingResult = RequestProcessingResult{typee: ParseSucceed}
+
+	isSecurityCheckPassed := false
+	for _, processors := range [][]securityProcessor{{router.securityHandlers[SecuritySchemeCookie]}} {
+		isLinkedChecksValid := true
+
+		for _, processor := range processors {
+			name, value, isExtracted := processor.extract(r)
+
+			if !isExtracted {
+				isLinkedChecksValid = false
+				break
+			}
+
+			if err := processor.handle(r, processor.scheme, name, value); err != nil {
+				if router.hooks.RequestSecurityCheckFailed != nil {
+					router.hooks.RequestSecurityCheckFailed(r, "PostCallbacksCallbackType", string(processor.scheme), RequestProcessingResult{error: err, typee: SecurityCheckFailed})
+				}
+
+				isLinkedChecksValid = false
+
+				break
+			}
+
+			if router.hooks.RequestSecurityCheckCompleted != nil {
+				router.hooks.RequestSecurityCheckCompleted(r, "PostCallbacksCallbackType", string(processor.scheme))
+			}
+
+			if len(request.SecurityCheckResults) == 0 {
+				request.SecurityCheckResults = map[SecurityScheme]string{}
+			}
+
+			request.SecurityCheckResults[processor.scheme] = value
+		}
+
+		if isLinkedChecksValid {
+			isSecurityCheckPassed = true
+			break
+		}
+	}
+
+	if !isSecurityCheckPassed {
+		err := fmt.Errorf("failed passing security checks")
+
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: SecurityParseFailed}
+
+		if router.hooks.RequestSecurityParseFailed != nil {
+			router.hooks.RequestSecurityParseFailed(r, "PostCallbacksCallbackType", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	if router.hooks.RequestSecurityParseCompleted != nil {
+		router.hooks.RequestSecurityParseCompleted(r, "PostCallbacksCallbackType")
+	}
+
+	pathCallbackType := chi.URLParam(r, "callbackType")
+	if pathCallbackType == "" {
+		err := fmt.Errorf("callbackType is empty")
+
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathParseFailed}
+		if router.hooks.RequestPathParseFailed != nil {
+			router.hooks.RequestPathParseFailed(r, "PostCallbacksCallbackType", "callbackType", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	request.Path.CallbackType = pathCallbackType
+
+	if err := request.Path.Validate(); err != nil {
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathValidationFailed}
+		if router.hooks.RequestPathValidationFailed != nil {
+			router.hooks.RequestPathValidationFailed(r, "PostCallbacksCallbackType", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	if router.hooks.RequestPathParseCompleted != nil {
+		router.hooks.RequestPathParseCompleted(r, "PostCallbacksCallbackType")
+	}
+
+	queryHasSmthStr := r.URL.Query().Get("hasSmth")
+	if queryHasSmthStr != "" {
+		queryHasSmth, err := strconv.ParseBool(queryHasSmthStr)
+		if err != nil {
+			request.ProcessingResult = RequestProcessingResult{error: err, typee: QueryParseFailed}
+			if router.hooks.RequestQueryParseFailed != nil {
+				router.hooks.RequestQueryParseFailed(r, "PostCallbacksCallbackType", "hasSmth", request.ProcessingResult)
+			}
+
+			return
+		}
+
+		request.Query.HasSmth = queryHasSmth
+	}
+
+	if err := request.Query.Validate(); err != nil {
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: QueryValidationFailed}
+		if router.hooks.RequestQueryValidationFailed != nil {
+			router.hooks.RequestQueryValidationFailed(r, "PostCallbacksCallbackType", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	if router.hooks.RequestQueryParseCompleted != nil {
+		router.hooks.RequestQueryParseCompleted(r, "PostCallbacksCallbackType")
+	}
+
+	var (
+		body      RawPayload
+		decodeErr error
+	)
+	var (
+		buf     interface{}
+		ok      bool
+		readErr error
+	)
+	if buf, readErr = ioutil.ReadAll(r.Body); readErr == nil {
+		if body, ok = buf.(RawPayload); !ok {
+			decodeErr = errors.New("body is not []byte")
+		}
+	}
+	if decodeErr != nil {
+		request.ProcessingResult = RequestProcessingResult{error: decodeErr, typee: BodyUnmarshalFailed}
+		if router.hooks.RequestBodyUnmarshalFailed != nil {
+			router.hooks.RequestBodyUnmarshalFailed(r, "PostCallbacksCallbackType", request.ProcessingResult)
+
+			return
+		}
+
+		return
+	}
+
+	request.Body = body
+
+	if router.hooks.RequestBodyUnmarshalCompleted != nil {
+		router.hooks.RequestBodyUnmarshalCompleted(r, "PostCallbacksCallbackType")
+	}
+
+	if router.hooks.RequestParseCompleted != nil {
+		router.hooks.RequestParseCompleted(r, "PostCallbacksCallbackType")
+	}
+
+	return
+}
+
+func (router *callbacksRouter) PostCallbacksCallbackType(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
+	response := router.service.PostCallbacksCallbackType(r.Context(), router.parsePostCallbacksCallbackTypeRequest(r))
+
+	for header, value := range response.headers() {
+		w.Header().Set(header, value)
+	}
+
+	for _, c := range response.cookies() {
+		cookie := c
+		http.SetCookie(w, &cookie)
+	}
+
+	if slices.Contains([]int{301, 302, 303, 307, 308}, response.statusCode()) && response.redirectURL() != "" {
+		if router.hooks.RequestRedirectStarted != nil {
+			router.hooks.RequestRedirectStarted(r, "PostCallbacksCallbackType", response.redirectURL())
+		}
+
+		http.Redirect(w, r, response.redirectURL(), response.statusCode())
+
+		if router.hooks.ServiceCompleted != nil {
+			router.hooks.ServiceCompleted(r, "PostCallbacksCallbackType")
+		}
+
+		return
+	}
+
+	if router.hooks.RequestProcessingCompleted != nil {
+		router.hooks.RequestProcessingCompleted(r, "PostCallbacksCallbackType")
+	}
+
+	if len(response.contentType()) > 0 {
+		w.Header().Set("content-type", response.contentType())
+	}
+
+	w.WriteHeader(response.statusCode())
+
+	var body []byte
+
+	if response.body() != nil {
+		var err error
+
+		switch response.contentType() {
+		case "application/xml":
+			body, err = xml.Marshal(response.body())
+		case "application/octet-stream":
+			var ok bool
+			if body, ok = (response.body()).([]byte); !ok {
+				err = errors.New("body is not []byte")
+			}
+		case "text/html":
+			body = []byte(fmt.Sprint(response.body()))
+		case "application/json":
+			fallthrough
+		default:
+			body, err = json.Marshal(response.body())
+		}
+
+		if err != nil {
+			if router.hooks.ResponseBodyMarshalFailed != nil {
+				router.hooks.ResponseBodyMarshalFailed(w, r, "PostCallbacksCallbackType", err)
+			}
+
+			return
+		}
+
+		if router.hooks.ResponseBodyMarshalCompleted != nil {
+			router.hooks.ResponseBodyMarshalCompleted(r, "PostCallbacksCallbackType")
+		}
+	} else if len(response.bodyRaw()) > 0 {
+		body = response.bodyRaw()
+	}
+
+	if len(body) > 0 {
+		count, err := w.Write(body)
+		if err != nil {
+			if router.hooks.ResponseBodyWriteFailed != nil {
+				router.hooks.ResponseBodyWriteFailed(r, "PostCallbacksCallbackType", count, err)
+			}
+
+			if router.hooks.ResponseBodyWriteCompleted != nil {
+				router.hooks.ResponseBodyWriteCompleted(r, "PostCallbacksCallbackType", count)
+			}
+
+			return
+		}
+
+		if router.hooks.ResponseBodyWriteCompleted != nil {
+			router.hooks.ResponseBodyWriteCompleted(r, "PostCallbacksCallbackType", count)
+		}
+	}
+
+	if router.hooks.ServiceCompleted != nil {
+		router.hooks.ServiceCompleted(r, "PostCallbacksCallbackType")
 	}
 }
 
@@ -1722,9 +1722,9 @@ func (builder *deleteTransactionsUUID400ApplicationJsonBodyBuilder) Body(body Ge
 }
 
 type TransactionsService interface {
-	DeleteTransactionsUUID(context.Context, DeleteTransactionsUUIDRequest) DeleteTransactionsUUIDResponse
 	PostTransaction(context.Context, PostTransactionRequest) PostTransactionResponse
 	PutTransaction(context.Context, PutTransactionRequest) PutTransactionResponse
+	DeleteTransactionsUUID(context.Context, DeleteTransactionsUUIDRequest) DeleteTransactionsUUIDResponse
 }
 
 type CallbacksService interface {
@@ -1813,18 +1813,6 @@ type PutTransactionRequest struct {
 	ProcessingResult RequestProcessingResult
 }
 
-type DeleteTransactionsUUIDRequestQuery struct {
-	TimeParam time.Time
-}
-
-func (query DeleteTransactionsUUIDRequestQuery) GetTimeParam() time.Time {
-	return query.TimeParam
-}
-
-func (query DeleteTransactionsUUIDRequestQuery) Validate() error {
-	return nil
-}
-
 type DeleteTransactionsUUIDRequestHeader struct {
 	XFingerprint string `json:"x-fingerprint"`
 	XSignature   string `json:"x-signature"`
@@ -1860,6 +1848,18 @@ func (path DeleteTransactionsUUIDRequestPath) GetUUID() string {
 func (path DeleteTransactionsUUIDRequestPath) Validate() error {
 	return validation.ValidateStruct(&path,
 		validation.Field(&path.RegexParam, validation.Required, validation.RuneLength(5, 0)))
+}
+
+type DeleteTransactionsUUIDRequestQuery struct {
+	TimeParam time.Time
+}
+
+func (query DeleteTransactionsUUIDRequestQuery) GetTimeParam() time.Time {
+	return query.TimeParam
+}
+
+func (query DeleteTransactionsUUIDRequestQuery) Validate() error {
+	return nil
 }
 
 type DeleteTransactionsUUIDRequest struct {

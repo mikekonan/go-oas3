@@ -25,10 +25,11 @@ Usage of go-oas3:
   -prioritize-x-go-type
     by default, if both properties and x-go-type is provided, the generator will use properties.
     this flag will make generator prioritize x-go-type over properties.
-
+  -pass-raw-request
+    pass raw request to handler function
 ```
 ## Example
-Run with: ```go-oas3 -swagger-addr https://raw.githubusercontent.com/mikekonan/go-oas3/v1.0.54/example/swagger.yaml -package example -path ./example```
+Run with: ```go-oas3 -swagger-addr https://raw.githubusercontent.com/mikekonan/go-oas3/v1.0.62/example/swagger.yaml -package example -path ./example```
 The result generated boilerplate and its client you can see at ./example.
 
 # OpenAPI features
