@@ -1779,6 +1779,8 @@ func (generator *Generator) wrapperSecurity(name string, operation *openapi3.Ope
 		return code
 	}
 
+	skipSecurityCheck := generator.typee.getXGoSkipSecurityCheck(operation)
+
 	var schemasCode []jen.Code
 	linq.From(*operation.Security).
 		SelectT(func(securityRequirement openapi3.SecurityRequirement) jen.Code {
@@ -1791,49 +1793,68 @@ func (generator *Generator) wrapperSecurity(name string, operation *openapi3.Ope
 		}).
 		ToSlice(&schemasCode)
 
-	code = code.Line().Id("isSecurityCheckPassed").Op(":=").Id("false").Line().
-		For(jen.List(jen.Id("_"),
-			jen.Id("processors")).Op(":=").Range().Index().Index().Id("securityProcessor").Values(schemasCode...)).Block(
-		jen.Id("isLinkedChecksValid").Op(":=").Id("true"),
-		jen.Line().For(jen.List(jen.Id("_"),
-			jen.Id("processor")).Op(":=").Range().Id("processors")).Block(
-			jen.List(jen.Id("name"), jen.Id("value"),
-				jen.Id("isExtracted")).Op(":=").Id("processor").Dot("extract").Call(jen.Id("r")),
-			jen.Line().If(jen.Op("!").Id("isExtracted")).Block(
-				jen.Id("isLinkedChecksValid").Op("=").Id("false"),
-				jen.Break()),
-			jen.Line().If(jen.Id("err").Op(":=").Id("processor").Dot("handle").Call(jen.Id("r"),
-				jen.Id("processor").Dot("scheme"),
-				jen.Id("name"),
-				jen.Id("value")),
-				jen.Id("err").Op("!=").Id("nil")).Block(
-				jen.If(jen.Id("router").Dot("hooks").Dot("RequestSecurityCheckFailed").Op("!=").Id("nil")).Block(
-					jen.Id("router").Dot("hooks").Dot("RequestSecurityCheckFailed").Call(jen.Id("r"),
+	if skipSecurityCheck {
+		// Skip security check mode: extract values but don't validate
+		code = code.Line().Comment("Skip security check mode: extract values but don't validate").Line().
+			For(jen.List(jen.Id("_"),
+				jen.Id("processors")).Op(":=").Range().Index().Index().Id("securityProcessor").Values(schemasCode...)).Block(
+			jen.For(jen.List(jen.Id("_"),
+				jen.Id("processor")).Op(":=").Range().Id("processors")).Block(
+				jen.List(jen.Id("_"), jen.Id("value"),
+					jen.Id("isExtracted")).Op(":=").Id("processor").Dot("extract").Call(jen.Id("r")),
+				jen.Line().If(jen.Id("isExtracted")).Block(
+					jen.If(jen.Id("len").Call(jen.Id("request").Dot("SecurityCheckResults")).Op("==").Lit(0)).Block(
+						jen.Id("request").Dot("SecurityCheckResults").Op("=").Map(jen.Id("SecurityScheme")).Id("string").Values()),
+					jen.Line().Id("request").Dot("SecurityCheckResults").Index(jen.Id("processor").Dot("scheme")).Op("=").Id("value")),
+			),
+			jen.Break(), // Take first available security requirement
+		).Line()
+	} else {
+		// Normal security check mode
+		code = code.Line().Id("isSecurityCheckPassed").Op(":=").Id("false").Line().
+			For(jen.List(jen.Id("_"),
+				jen.Id("processors")).Op(":=").Range().Index().Index().Id("securityProcessor").Values(schemasCode...)).Block(
+			jen.Id("isLinkedChecksValid").Op(":=").Id("true"),
+			jen.Line().For(jen.List(jen.Id("_"),
+				jen.Id("processor")).Op(":=").Range().Id("processors")).Block(
+				jen.List(jen.Id("name"), jen.Id("value"),
+					jen.Id("isExtracted")).Op(":=").Id("processor").Dot("extract").Call(jen.Id("r")),
+				jen.Line().If(jen.Op("!").Id("isExtracted")).Block(
+					jen.Id("isLinkedChecksValid").Op("=").Id("false"),
+					jen.Break()),
+				jen.Line().If(jen.Id("err").Op(":=").Id("processor").Dot("handle").Call(jen.Id("r"),
+					jen.Id("processor").Dot("scheme"),
+					jen.Id("name"),
+					jen.Id("value")),
+					jen.Id("err").Op("!=").Id("nil")).Block(
+					jen.If(jen.Id("router").Dot("hooks").Dot("RequestSecurityCheckFailed").Op("!=").Id("nil")).Block(
+						jen.Id("router").Dot("hooks").Dot("RequestSecurityCheckFailed").Call(jen.Id("r"),
+							jen.Lit(name),
+							jen.Id("string").Call(jen.Id("processor").Dot("scheme")),
+							jen.Id("RequestProcessingResult").Values(jen.Id("error").Op(":").Id("err"), jen.Id("typee").Op(":").Id("SecurityCheckFailed")))),
+					jen.Line().Id("isLinkedChecksValid").Op("=").Id("false"),
+					jen.Line().Break()),
+				jen.Line().If(jen.Id("router").Dot("hooks").Dot("RequestSecurityCheckCompleted").Op("!=").Id("nil")).Block(
+					jen.Id("router").Dot("hooks").Dot("RequestSecurityCheckCompleted").Call(jen.Id("r"),
 						jen.Lit(name),
-						jen.Id("string").Call(jen.Id("processor").Dot("scheme")),
-						jen.Id("RequestProcessingResult").Values(jen.Id("error").Op(":").Id("err"), jen.Id("typee").Op(":").Id("SecurityCheckFailed")))),
-				jen.Line().Id("isLinkedChecksValid").Op("=").Id("false"),
-				jen.Line().Break()),
-			jen.Line().If(jen.Id("router").Dot("hooks").Dot("RequestSecurityCheckCompleted").Op("!=").Id("nil")).Block(
-				jen.Id("router").Dot("hooks").Dot("RequestSecurityCheckCompleted").Call(jen.Id("r"),
+						jen.Id("string").Call(jen.Id("processor").Dot("scheme")))),
+				jen.Line().If(jen.Id("len").Call(jen.Id("request").Dot("SecurityCheckResults")).Op("==").Lit(0)).Block(
+					jen.Id("request").Dot("SecurityCheckResults").Op("=").Map(jen.Id("SecurityScheme")).Id("string").Values()),
+				jen.Line().Id("request").Dot("SecurityCheckResults").Index(jen.Id("processor").Dot("scheme")).Op("=").Id("value")),
+			jen.Line().If(jen.Id("isLinkedChecksValid")).Block(
+				jen.Id("isSecurityCheckPassed").Op("=").Id("true"),
+				jen.Break())).
+			Line().Line().If(jen.Op("!").Id("isSecurityCheckPassed")).Block(
+			jen.Id("err").Op(":=").Qual("fmt",
+				"Errorf").Call(jen.Lit("failed passing security checks")),
+			jen.Line().Id("request").Dot("ProcessingResult").Op("=").Id("RequestProcessingResult").Values(jen.Id("error").Op(":").Id("err"),
+				jen.Id("typee").Op(":").Id("SecurityParseFailed")),
+			jen.Line().If(jen.Id("router").Dot("hooks").Dot("RequestSecurityParseFailed").Op("!=").Id("nil")).Block(
+				jen.Id("router").Dot("hooks").Dot("RequestSecurityParseFailed").Call(jen.Id("r"),
 					jen.Lit(name),
-					jen.Id("string").Call(jen.Id("processor").Dot("scheme")))),
-			jen.Line().If(jen.Id("len").Call(jen.Id("request").Dot("SecurityCheckResults")).Op("==").Lit(0)).Block(
-				jen.Id("request").Dot("SecurityCheckResults").Op("=").Map(jen.Id("SecurityScheme")).Id("string").Values()),
-			jen.Line().Id("request").Dot("SecurityCheckResults").Index(jen.Id("processor").Dot("scheme")).Op("=").Id("value")),
-		jen.Line().If(jen.Id("isLinkedChecksValid")).Block(
-			jen.Id("isSecurityCheckPassed").Op("=").Id("true"),
-			jen.Break())).
-		Line().Line().If(jen.Op("!").Id("isSecurityCheckPassed")).Block(
-		jen.Id("err").Op(":=").Qual("fmt",
-			"Errorf").Call(jen.Lit("failed passing security checks")),
-		jen.Line().Id("request").Dot("ProcessingResult").Op("=").Id("RequestProcessingResult").Values(jen.Id("error").Op(":").Id("err"),
-			jen.Id("typee").Op(":").Id("SecurityParseFailed")),
-		jen.Line().If(jen.Id("router").Dot("hooks").Dot("RequestSecurityParseFailed").Op("!=").Id("nil")).Block(
-			jen.Id("router").Dot("hooks").Dot("RequestSecurityParseFailed").Call(jen.Id("r"),
-				jen.Lit(name),
-				jen.Id("request").Dot("ProcessingResult"))),
-		jen.Line().Return()).Line()
+					jen.Id("request").Dot("ProcessingResult"))),
+			jen.Line().Return()).Line()
+	}
 
 	code = code.Line().If(jen.Id("router").Dot("hooks").Dot("RequestSecurityParseCompleted").Op("!=").Id("nil")).Block(
 		jen.Id("router").Dot("hooks").Dot("RequestSecurityParseCompleted").Call(jen.Id("r"), jen.Lit(name)))
@@ -2260,6 +2281,9 @@ func (generator *Generator) responseContentTypeBuilder(contentTypeName string, c
 		jen.Id("encoding").String(), jen.Id("body").Index().Byte()).Params(
 		jen.Op("*").Id(nextBuilderName)).Block(
 		jen.Id("builder").Dot("response").Dot("bodyRaw").Op("=").Id("body"),
+		jen.If(jen.Id("builder").Dot("response").Dot("headers").Op("==").Id("nil")).Block(
+			jen.Id("builder").Dot("response").Dot("headers").Op("=").Id("make").Call(jen.Map(jen.Id("string")).Id("string")),
+		),
 		jen.Id("builder").Dot("response").Dot("headers").Index(jen.Lit("Content-Encoding")).Op("=").Id("encoding"),
 		jen.Line().Return().Op("&").Id(nextBuilderName).Values(jen.Id("response").Op(":").Id("builder").Dot("response"))))
 
@@ -2398,7 +2422,7 @@ func (generator *Generator) securitySchemas(swagger *openapi3.T) jen.Code {
 					jen.Id("value").Op(":=").Id("r").Dot("Header").Dot("Get").Call(jen.Lit("Authorization")).Line(),
 					jen.If(ifStatement).Block(jen.Return().List(jen.Lit(""), jen.Lit(""), jen.Id("false"))).Line(),
 					assignment.Line(),
-					jen.Return().List(jen.Lit(schema.Value.Name), jen.Id("value"), jen.Id("value").Op("!=").Lit("")))
+					jen.Return().List(jen.Lit("Authorization"), jen.Id("value"), jen.Id("value").Op("!=").Lit("")))
 			}
 
 			if schema.Value.Type == "apiKey" {

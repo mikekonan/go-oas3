@@ -11,14 +11,15 @@ import (
 )
 
 const (
-	goType            = "x-go-type"
-	goMapType         = "x-go-map-type"
-	goTypeStringParse = "x-go-type-string-parse"
-	goPointer         = "x-go-pointer"
-	goRegex           = "x-go-regex"
-	goStringTrimmable = "x-go-string-trimmable"
-	goOmitempty       = "x-go-omitempty"
-	goSkipValidation  = "x-go-skip-validation"
+	goType              = "x-go-type"
+	goMapType           = "x-go-map-type"
+	goTypeStringParse   = "x-go-type-string-parse"
+	goPointer           = "x-go-pointer"
+	goRegex             = "x-go-regex"
+	goStringTrimmable   = "x-go-string-trimmable"
+	goOmitempty         = "x-go-omitempty"
+	goSkipValidation    = "x-go-skip-validation"
+	goSkipSecurityCheck = "x-go-skip-security-check"
 )
 
 type Type struct {
@@ -389,6 +390,22 @@ func (typ *Type) getXGoOmitempty(schema *openapi3.Schema) bool {
 
 func (typ *Type) isCustomType(schema *openapi3.Schema) bool {
 	return schema.Type == "string" && (schema.Format != "" || typ.hasXGoTypeStringParse(schema))
+}
+
+func (typ *Type) hasXGoSkipSecurityCheck(operation *openapi3.Operation) bool {
+	return operation != nil && len(operation.Extensions) > 0 && operation.Extensions[goSkipSecurityCheck] != nil
+}
+
+func (typ *Type) getXGoSkipSecurityCheck(operation *openapi3.Operation) bool {
+	var value = false
+
+	if typ.hasXGoSkipSecurityCheck(operation) {
+		if err := json.Unmarshal(operation.Extensions[goSkipSecurityCheck].(json.RawMessage), &value); err != nil {
+			panic(err)
+		}
+	}
+
+	return value
 }
 
 func formatTagName(name string) string {
