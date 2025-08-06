@@ -13,7 +13,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/heetch/confita v0.10.0
 	github.com/mikekonan/go-types/v2 v2.0.25
-	github.com/spf13/cast v1.7.1
+	github.com/spf13/cast v1.9.2
 	github.com/tdewolff/minify/v2 v2.23.10
 )
 
