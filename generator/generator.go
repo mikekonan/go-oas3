@@ -1091,6 +1091,29 @@ func (generator *Generator) wrappers(swagger *openapi3.T) jen.Code {
 
 		}).ToSlice(&results)
 
+	if generator.config.PassRawRequest {
+		results = append(results, jen.Func().Id("cloneWithBody").Params(
+			jen.Id("r").Op("*").Qual("net/http", "Request"),
+		).Params(
+			jen.Op("*").Qual("net/http", "Request"),
+			jen.Error(),
+		).Block(
+			jen.List(jen.Id("bodyBytes"), jen.Id("err")).Op(":=").Qual("io", "ReadAll").Call(jen.Id("r").Dot("Body")),
+			jen.If(jen.Id("err").Op("!=").Nil()).Block(
+				jen.Return(jen.Nil(), jen.Id("err")),
+			),
+			jen.Id("r").Dot("Body").Dot("Close").Call(),
+			jen.Id("r").Dot("Body").Op("=").Qual("io", "NopCloser").Call(
+				jen.Qual("bytes", "NewReader").Call(jen.Id("bodyBytes")),
+			),
+			jen.Id("cloned").Op(":=").Id("r").Dot("Clone").Call(jen.Id("r").Dot("Context").Call()),
+			jen.Id("cloned").Dot("Body").Op("=").Qual("io", "NopCloser").Call(
+				jen.Qual("bytes", "NewReader").Call(jen.Id("bodyBytes")),
+			),
+			jen.Return(jen.Id("cloned"), jen.Nil()),
+		))
+	}
+
 	return jen.Null().
 		Add(generator.hooksStruct()).
 		Add(jen.Line(), jen.Line()).
@@ -1114,8 +1137,21 @@ func (generator *Generator) wrapper(name string, requestName string, routerName,
 		jen.Id("response").Dot("statusCode").Call(),
 	)
 
-	funcCode = append(funcCode, jen.Id("response").Op(":=").Id("router").Dot("service").Dot(name).Call(jen.Id("r").Dot("Context").Call(),
-		jen.Id("router").Dot("parse"+name+"Request").Call(jen.Id("r"))),
+	var params []jen.Code
+
+	if generator.config.PassRawRequest {
+		funcCode = append(funcCode, jen.List(jen.Id("cloned"), jen.Id("_")).Op(":=").Id("cloneWithBody").Call(jen.Id("r")))
+
+		params = []jen.Code{jen.Id("r").Dot("Context").Call(),
+			jen.Id("router").Dot("parse" + name + "Request").Call(jen.Id("cloned")),
+			jen.Id("r")}
+	} else {
+		params = []jen.Code{jen.Id("r").Dot("Context").Call(),
+			jen.Id("router").Dot("parse" + name + "Request").Call(jen.Id("r")),
+		}
+	}
+
+	funcCode = append(funcCode, jen.Id("response").Op(":=").Id("router").Dot("service").Dot(name).Call(params...),
 		jen.Line().Line(),
 		jen.For(jen.List(jen.Id("header"),
 			jen.Id("value")).Op(":=").Range().Id("response").Dot("headers").Call()).Block(
@@ -1970,11 +2006,26 @@ func (generator *Generator) handlersInterfaces(swagger *openapi3.T) jen.Code {
 							operation := kv.Value.(*openapi3.Operation)
 
 							if operation.RequestBody == nil {
+								if generator.config.PassRawRequest {
+									return []jen.Code{jen.Id(name).Params(
+										jen.Qual("context", "Context"), jen.Id(name+"Request"),
+										jen.Id("*").Qual("net/http", "Request"),
+									).Params(jen.Id(name + "Response"))}
+								}
+
 								return []jen.Code{jen.Id(name).Params(jen.Qual("context", "Context"), jen.Id(name+"Request")).Params(jen.Id(name + "Response"))}
 							}
 
-							//if we have only one content type we dont need to have it inside function name
+							//if we have only one content type we don't need to have it inside function name
 							if len(operation.RequestBody.Value.Content) == 1 {
+								if generator.config.PassRawRequest {
+									return []jen.Code{jen.Id(name).Params(
+										jen.Qual("context", "Context"),
+										jen.Id(name+"Request"),
+										jen.Id("*").Qual("net/http", "Request"),
+									).Params(jen.Id(name + "Response"))}
+								}
+
 								return []jen.Code{jen.Id(name).Params(jen.Qual("context", "Context"), jen.Id(name+"Request")).Params(jen.Id(name + "Response"))}
 							}
 
@@ -1982,6 +2033,14 @@ func (generator *Generator) handlersInterfaces(swagger *openapi3.T) jen.Code {
 							linq.From(operation.RequestBody.Value.Content).
 								SelectT(func(kv linq.KeyValue) jen.Code {
 									contentTypedName := name + generator.normalizer.contentType(cast.ToString(kv.Key))
+									if generator.config.PassRawRequest {
+										return jen.Id(contentTypedName).Params(
+											jen.Qual("context", "Context"),
+											jen.Id(contentTypedName+"Request"),
+											jen.Id("*").Qual("net/http", "Request"),
+										).Params(jen.Id(name + "Response"))
+									}
+
 									return jen.Id(contentTypedName).Params(jen.Qual("context", "Context"), jen.Id(contentTypedName+"Request")).Params(jen.Id(name + "Response"))
 								}).ToSlice(&contentTypedInterfaceMethods)
 

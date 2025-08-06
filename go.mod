@@ -14,7 +14,7 @@ require (
 	github.com/heetch/confita v0.10.0
 	github.com/mikekonan/go-types/v2 v2.0.25
 	github.com/spf13/cast v1.9.2
-	github.com/tdewolff/minify/v2 v2.21.3
+	github.com/tdewolff/minify/v2 v2.23.10
 )
 
 require (
@@ -27,7 +27,7 @@ require (
 	github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826 // indirect
 	github.com/pkg/errors v0.8.1 // indirect
 	github.com/sirupsen/logrus v1.8.1 // indirect
-	github.com/tdewolff/parse/v2 v2.7.19 // indirect
-	golang.org/x/sys v0.25.0 // indirect
+	github.com/tdewolff/parse/v2 v2.8.1 // indirect
+	golang.org/x/sys v0.30.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
