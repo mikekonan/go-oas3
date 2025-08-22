@@ -11,15 +11,15 @@ import (
 )
 
 const (
-	goType              = "x-go-type"
-	goMapType           = "x-go-map-type"
-	goTypeStringParse   = "x-go-type-string-parse"
-	goPointer           = "x-go-pointer"
-	goRegex             = "x-go-regex"
-	goStringTrimmable   = "x-go-string-trimmable"
-	goOmitempty         = "x-go-omitempty"
-	goSkipValidation    = "x-go-skip-validation"
-	goSkipSecurityCheck = "x-go-skip-security-check"
+	goType              = ExtGoType
+	goMapType           = ExtGoMapType
+	goTypeStringParse   = ExtGoTypeStringParse
+	goPointer           = ExtGoPointer
+	goRegex             = ExtGoRegex
+	goStringTrimmable   = ExtGoStringTrimmable
+	goOmitempty         = ExtGoOmitempty
+	goSkipValidation    = ExtGoSkipValidation
+	goSkipSecurityCheck = ExtGoSkipSecurityCheck
 )
 
 type Type struct {
@@ -51,7 +51,7 @@ func (typ *Type) fillGoType(into *jen.Statement, parentTypeName string, typeName
 		into.Op("*")
 	}
 
-	if pkg, typee, ok := typ.getXGoType(schemaRef.Value); ok && schemaRef.Value.AdditionalProperties == nil {
+	if pkg, typee, ok := typ.getXGoType(schemaRef.Value); ok && schemaRef.Value.AdditionalProperties.Schema == nil {
 		if needAliasing {
 			into.Op("=")
 		}
@@ -97,7 +97,10 @@ func (typ *Type) fillGoType(into *jen.Statement, parentTypeName string, typeName
 				mergedInline := &openapi3.Schema{}
 				for _, s := range inlineSchemas {
 					if err := mergo.Merge(mergedInline, s.Value, mergo.WithOverride); err != nil {
-						panic(err)
+						PanicOperationError("Schema Merge", err, map[string]interface{}{
+							"operation": "merging inline schemas",
+							"context": "allOf schema processing",
+						})
 					}
 				}
 				typ.fillAdditionalProperties(into, mergedInline)
@@ -113,7 +116,10 @@ func (typ *Type) fillGoType(into *jen.Statement, parentTypeName string, typeName
 			}
 
 			if err := mergo.Merge(mergedSchema, s.Value, mergo.WithOverride); err != nil {
-				panic(err)
+				PanicOperationError("Schema Merge", err, map[string]interface{}{
+					"operation": "merging allOf schemas",
+					"context": "schema combination",
+				})
 			}
 		}
 		typ.fillGoType(into, parentTypeName, typeName, &openapi3.SchemaRef{Value: mergedSchema}, false, needAliasing)
@@ -125,15 +131,14 @@ func (typ *Type) fillGoType(into *jen.Statement, parentTypeName string, typeName
 		return
 	}
 
-	switch schema.Type {
-	case "object":
+	if schema.Type != nil && schema.Type.Is(TypeObject) {
 		if schemaRef.Ref != "" {
 			typeName := typ.normalizer.normalize(typ.normalizer.extractNameFromRef(schemaRef.Ref))
 			into.Qual(typ.config.ComponentsPackage, typeName)
 			return
 		}
 
-		if schema.AdditionalProperties != nil {
+		if schema.AdditionalProperties.Schema != nil {
 			keyCode := jen.Null()
 
 			keyPkg, keyValue, ok := typ.getXGoType(schemaRef.Value)
@@ -149,7 +154,7 @@ func (typ *Type) fillGoType(into *jen.Statement, parentTypeName string, typeName
 
 			into.Map(keyCode)
 
-			typ.fillGoType(into, parentTypeName, typeName, schema.AdditionalProperties, false, false)
+			typ.fillGoType(into, parentTypeName, typeName, schema.AdditionalProperties.Schema, false, false)
 
 			//TODO: ANONYMOUS MAP ENTRIES
 			//if schema.AdditionalProperties.Ref != "" {
@@ -167,7 +172,7 @@ func (typ *Type) fillGoType(into *jen.Statement, parentTypeName string, typeName
 			return
 		}
 		return
-	case "array":
+	} else if schema.Type != nil && schema.Type.Is(TypeArray) {
 		into.Index()
 
 		//TODO: ANONYMOUS SLICES
@@ -180,49 +185,49 @@ func (typ *Type) fillGoType(into *jen.Statement, parentTypeName string, typeName
 
 		typ.fillGoType(into, parentTypeName, typeName, schema.Items, false, needAliasing)
 		return
-	case "integer":
+	} else if schema.Type != nil && schema.Type.Is(TypeInteger) {
 		into.Int()
 		return
-	case "number":
+	} else if schema.Type != nil && schema.Type.Is(TypeNumber) {
 		into.Float64()
 		return
-	case "boolean":
+	} else if schema.Type != nil && schema.Type.Is(TypeBoolean) {
 		into.Bool()
 		return
-	case "string":
+	} else if schema.Type != nil && schema.Type.Is(TypeString) {
 		if needAliasing {
 			into.Op("=")
 		}
 
 		switch schema.Format {
-		case "byte":
+		case FormatByte:
 			into.Index().Byte()
 			return
-		case "binary":
+		case FormatBinary:
 			into.Index().Byte()
 			return
-		case "email":
+		case FormatEmail:
 			into.String()
 			return
-		case "date":
+		case FormatDate:
 			into.String()
 			return
-		case "date-time":
+		case FormatDateTime:
 			into.String()
 			return
-		case "iso4217-currency-code":
+		case FormatISO4217CurrencyCode:
 			into.Qual("github.com/mikekonan/go-types/v2/currency", "Code")
 			return
-		case "iso3166-alpha-2":
+		case FormatISO3166Alpha2:
 			into.Qual("github.com/mikekonan/go-types/v2/country", "Alpha2Code")
 			return
-		case "iso3166-alpha-3":
+		case FormatISO3166Alpha3:
 			into.Qual("github.com/mikekonan/go-types/v2/country", "Alpha3Code")
 			return
-		case "uuid":
+		case FormatUUID:
 			into.Qual("github.com/google/uuid", "UUID")
 			return
-		case "json":
+		case FormatJSON:
 			into.Qual("encoding/json", "RawMessage")
 			return
 		default:
@@ -270,8 +275,19 @@ func (typ *Type) getXGoTypeStringParse(schema *openapi3.Schema) (string, string,
 	if typ.hasXGoTypeStringParse(schema) {
 		var customType string
 
-		if err := json.Unmarshal(schema.Extensions[goTypeStringParse].(json.RawMessage), &customType); err != nil {
-			panic(err)
+		switch v := schema.Extensions[goTypeStringParse].(type) {
+		case json.RawMessage:
+			if err := json.Unmarshal(v, &customType); err != nil {
+				PanicOperationError("JSON Unmarshal", err, map[string]interface{}{
+					"extension": ExtGoTypeStringParse,
+					"operation": "parsing type string parse extension",
+					"data_type": "json.RawMessage",
+				})
+			}
+		case string:
+			customType = v
+		default:
+			PanicUnexpectedExtensionType(ExtGoTypeStringParse, v, map[string]interface{}{"parsing_context": "string parse extension"})
 		}
 
 		index := strings.LastIndex(customType, ".")
@@ -286,8 +302,15 @@ func (typ *Type) getXGoMapType(schema *openapi3.Schema) (keyPkg string, key stri
 	if typ.hasXGoMapType(schema) {
 		var customType string
 
-		if err := json.Unmarshal(schema.Extensions[goMapType].(json.RawMessage), &customType); err != nil {
-			panic(err)
+		switch v := schema.Extensions[goMapType].(type) {
+		case json.RawMessage:
+			if err := json.Unmarshal(v, &customType); err != nil {
+				panic(err)
+			}
+		case string:
+			customType = v
+		default:
+			PanicUnexpectedExtensionType(ExtGoMapType, v, map[string]interface{}{"parsing_context": "map type extension"})
 		}
 
 		if strings.HasPrefix(customType, "map[") {
@@ -329,8 +352,15 @@ func (typ *Type) getXGoSkipValidation(schema *openapi3.Schema) bool {
 	var value = false
 
 	if typ.hasXGoSkipValidation(schema) {
-		if err := json.Unmarshal(schema.Extensions[goSkipValidation].(json.RawMessage), &value); err != nil {
-			panic(err)
+		switch v := schema.Extensions[goSkipValidation].(type) {
+		case json.RawMessage:
+			if err := json.Unmarshal(v, &value); err != nil {
+				panic(err)
+			}
+		case bool:
+			value = v
+		default:
+			PanicUnexpectedExtensionType(ExtGoSkipValidation, v, map[string]interface{}{"parsing_context": "skip validation extension"})
 		}
 	}
 
@@ -341,8 +371,15 @@ func (typ *Type) getXGoType(schema *openapi3.Schema) (string, string, bool) {
 	if typ.hasXGoType(schema) {
 		var customType string
 
-		if err := json.Unmarshal(schema.Extensions[goType].(json.RawMessage), &customType); err != nil {
-			panic(err)
+		switch v := schema.Extensions[goType].(type) {
+		case json.RawMessage:
+			if err := json.Unmarshal(v, &customType); err != nil {
+				panic(err)
+			}
+		case string:
+			customType = v
+		default:
+			PanicUnexpectedExtensionType(ExtGoType, v, map[string]interface{}{"parsing_context": "type extension"})
 		}
 
 		index := strings.LastIndex(customType, ".")
@@ -360,8 +397,15 @@ func (typ *Type) getXGoPointer(schema *openapi3.Schema) bool {
 	var value = false
 
 	if typ.hasXGoPointer(schema) {
-		if err := json.Unmarshal(schema.Extensions[goPointer].(json.RawMessage), &value); err != nil {
-			panic(err)
+		switch v := schema.Extensions[goPointer].(type) {
+		case json.RawMessage:
+			if err := json.Unmarshal(v, &value); err != nil {
+				panic(err)
+			}
+		case bool:
+			value = v
+		default:
+			PanicUnexpectedExtensionType(ExtGoPointer, v, map[string]interface{}{"parsing_context": "pointer extension"})
 		}
 	}
 
@@ -380,8 +424,15 @@ func (typ *Type) getXGoOmitempty(schema *openapi3.Schema) bool {
 	var value = false
 
 	if typ.hasXGoOmitempty(schema) {
-		if err := json.Unmarshal(schema.Extensions[goOmitempty].(json.RawMessage), &value); err != nil {
-			panic(err)
+		switch v := schema.Extensions[goOmitempty].(type) {
+		case json.RawMessage:
+			if err := json.Unmarshal(v, &value); err != nil {
+				panic(err)
+			}
+		case bool:
+			value = v
+		default:
+			PanicUnexpectedExtensionType(ExtGoOmitempty, v, map[string]interface{}{"parsing_context": "omitempty extension"})
 		}
 	}
 
@@ -389,7 +440,7 @@ func (typ *Type) getXGoOmitempty(schema *openapi3.Schema) bool {
 }
 
 func (typ *Type) isCustomType(schema *openapi3.Schema) bool {
-	return schema.Type == "string" && (schema.Format != "" || typ.hasXGoTypeStringParse(schema))
+	return schema.Type != nil && schema.Type.Is(TypeString) && (schema.Format != "" || typ.hasXGoTypeStringParse(schema))
 }
 
 func (typ *Type) hasXGoSkipSecurityCheck(operation *openapi3.Operation) bool {
@@ -400,8 +451,15 @@ func (typ *Type) getXGoSkipSecurityCheck(operation *openapi3.Operation) bool {
 	var value = false
 
 	if typ.hasXGoSkipSecurityCheck(operation) {
-		if err := json.Unmarshal(operation.Extensions[goSkipSecurityCheck].(json.RawMessage), &value); err != nil {
-			panic(err)
+		switch v := operation.Extensions[goSkipSecurityCheck].(type) {
+		case json.RawMessage:
+			if err := json.Unmarshal(v, &value); err != nil {
+				panic(err)
+			}
+		case bool:
+			value = v
+		default:
+			PanicUnexpectedExtensionType(ExtGoSkipSecurityCheck, v, map[string]interface{}{"parsing_context": "skip security check extension"})
 		}
 	}
 

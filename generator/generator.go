@@ -140,7 +140,7 @@ func (generator *Generator) components(swagger *openapi3.T) jen.Code {
 		ToSlice(&componentsResult)
 
 	var componentsFromPathsResult []jen.Code
-	linq.From(swagger.Paths).
+	linq.From(swagger.Paths.Map()).
 		SelectManyT(func(kv linq.KeyValue) linq.Query {
 			path := cast.ToString(kv.Key)
 			componentsByName := map[string]jen.Code{}
@@ -159,7 +159,7 @@ func (generator *Generator) components(swagger *openapi3.T) jen.Code {
 						operation := kv.Value.(*openapi3.Operation)
 
 						if len(operation.RequestBody.Value.Content) == 1 {
-							name += "RequestBody"
+							name += SuffixRequestBody
 							obj := linq.From(operation.RequestBody.Value.Content).SelectT(func(kv linq.KeyValue) interface{} { return kv.Value }).First().(*openapi3.MediaType)
 
 							result[name] = generator.componentFromSchema(name, obj.Schema)
@@ -169,12 +169,12 @@ func (generator *Generator) components(swagger *openapi3.T) jen.Code {
 						linq.From(operation.RequestBody.Value.Content).
 							ToMapByT(&result,
 								func(kv linq.KeyValue) string {
-									return name + generator.normalizer.contentType(cast.ToString(kv.Key)+"RequestBody")
+									return name + generator.normalizer.contentType(cast.ToString(kv.Key)+SuffixRequestBody)
 								},
 								func(kv linq.KeyValue) jen.Code {
 									meType := kv.Value.(*openapi3.MediaType)
 
-									objName := name + generator.normalizer.contentType(cast.ToString(kv.Key)+"RequestBody")
+									objName := name + generator.normalizer.contentType(cast.ToString(kv.Key)+SuffixRequestBody)
 									return generator.componentFromSchema(objName, meType.Schema)
 								})
 
@@ -214,13 +214,24 @@ func (generator *Generator) components(swagger *openapi3.T) jen.Code {
 func (generator *Generator) variableForRegex(name string, schema *openapi3.SchemaRef) jen.Code {
 	hasGoRegexExtension := len(schema.Value.Extensions) > 0 && schema.Value.Extensions[goRegex] != nil
 
-	if !hasGoRegexExtension || schema.Value.Type != "string" {
+	if !hasGoRegexExtension || schema.Value.Type == nil || !schema.Value.Type.Is(TypeString) {
 		return jen.Null()
 	}
 
 	var regex string
-	if err := json.Unmarshal(schema.Value.Extensions[goRegex].(json.RawMessage), &regex); err != nil {
-		panic(err)
+	switch v := schema.Value.Extensions[goRegex].(type) {
+	case json.RawMessage:
+		if err := json.Unmarshal(v, &regex); err != nil {
+			PanicOperationError("JSON Unmarshal", err, map[string]interface{}{
+				"extension": ExtGoRegex,
+				"operation": "parsing regex extension",
+				"data_type": "json.RawMessage",
+			})
+		}
+	case string:
+		regex = v
+	default:
+		PanicUnexpectedExtensionType(ExtGoRegex, v, map[string]interface{}{"parsing_context": "regex extension"})
 	}
 
 	if generator.useRegex == nil {
@@ -231,12 +242,12 @@ func (generator *Generator) variableForRegex(name string, schema *openapi3.Schem
 		return jen.Empty()
 	}
 
-	name = generator.normalizer.decapitalize(name) + "Regex"
+	name = generator.normalizer.decapitalize(name) + SuffixRegex
 	generator.useRegex[regex] = name
 	return jen.Var().
 		Id(name).
 		Op("=").
-		Qual("regexp", "MustCompile").
+		Qual(PackageRegexp, MethodMustCompile).
 		Call(jen.Lit(regex)).
 		Line()
 }
@@ -255,7 +266,7 @@ func (generator *Generator) additionalConstants(swagger *openapi3.T) (jen.Code, 
 
 	var componentsPathsCode []jen.Code
 
-	linq.From(swagger.Paths).
+	linq.From(swagger.Paths.Map()).
 		SelectManyT(func(kv linq.KeyValue) linq.Query {
 			path := cast.ToString(kv.Key)
 
@@ -295,7 +306,7 @@ func (generator *Generator) additionalConstants(swagger *openapi3.T) (jen.Code, 
 
 	var parametersCode []jen.Code
 
-	linq.From(swagger.Paths).
+	linq.From(swagger.Paths.Map()).
 		SelectManyT(func(kv linq.KeyValue) linq.Query {
 			path := cast.ToString(kv.Key)
 
@@ -329,11 +340,11 @@ func (generator *Generator) requestParameterStruct(name string, contentType stri
 
 		bodyTypeName := generator.normalizer.extractNameFromRef(operation.RequestBody.Value.Content[contentType].Schema.Ref)
 		if bodyTypeName == "" {
-			bodyTypeName = name + "RequestBody"
+			bodyTypeName = name + SuffixRequestBody
 		}
 
 		additionalParameters = append(additionalParameters,
-			parameter{In: "Body", Code: jen.Id("Body").Qual(generator.config.ComponentsPackage, bodyTypeName)})
+			parameter{In: InBody, Code: jen.Id(InBody).Qual(generator.config.ComponentsPackage, bodyTypeName)})
 	}
 
 	var parameterStructs []jen.Code
@@ -368,7 +379,7 @@ func (generator *Generator) requestParameterStruct(name string, contentType stri
 						//    name: my-header
 						// example: struct RequestHeader { MyHeader string }.Validate() err with msg: MyHeader invalid (but real header name is my-header)
 						// example: struct RequestHeader { MyHeader string `json:"my-header"` }.Validate() err with msg: my-header invalid (real header name is equal name in err msg)
-						if parameter.Value.In == "header" {
+						if parameter.Value.In == InHeader {
 							generator.typee.fillJsonTag(statement, parameter.Value.Schema, parameter.Value.Name)
 						}
 						return statement
@@ -377,7 +388,7 @@ func (generator *Generator) requestParameterStruct(name string, contentType stri
 
 				var getters []jen.Code
 
-				typeName := name + "Request" + strings.Title(cast.ToString(group.Key))
+				typeName := name + SuffixRequest + strings.Title(cast.ToString(group.Key))
 
 				var fieldValidationRules []jen.Code
 
@@ -385,7 +396,7 @@ func (generator *Generator) requestParameterStruct(name string, contentType stri
 					OrderByT(func(parameter *openapi3.ParameterRef) string { return parameter.Value.Name }).
 					SelectT(func(parameter *openapi3.ParameterRef) (result jen.Code) {
 						name := generator.normalizer.normalize(parameter.Value.Name)
-						var statement = jen.Func().Params(jen.Id(parameter.Value.In).Id(typeName)).Id("Get" + name).Params()
+						var statement = jen.Func().Params(jen.Id(parameter.Value.In).Id(typeName)).Id(MethodGet + name).Params()
 
 						fvRule := generator.fieldValidationRuleFromSchema(parameter.Value.In, name, parameter.Value.Schema, parameter.Value.Required)
 						if fvRule != nil {
@@ -449,7 +460,7 @@ func (generator *Generator) requestParameterStruct(name string, contentType stri
 					ToSlice(&structFields)
 
 				parameter.In = cast.ToString(group.Key)
-				parameter.Code = jen.Id(strings.Title(cast.ToString(group.Key))).Id(name + "Request" + strings.Title(cast.ToString(group.Key)))
+				parameter.Code = jen.Id(strings.Title(cast.ToString(group.Key))).Id(name + SuffixRequest + strings.Title(cast.ToString(group.Key)))
 
 				return
 			}).
@@ -458,17 +469,17 @@ func (generator *Generator) requestParameterStruct(name string, contentType stri
 		SelectT(func(parameter parameter) jen.Code { return parameter.Code }).
 		ToSlice(&parameters)
 
-	parameters = append(parameters, jen.Id("ProcessingResult").Id("RequestProcessingResult"))
+	parameters = append(parameters, jen.Id(FieldProcessingResult).Id("RequestProcessingResult"))
 
 	hasSecuritySchemas := operation.Security != nil && len(*operation.Security) > 0
 	if hasSecuritySchemas {
-		parameters = append(parameters, jen.Id("SecurityCheckResults").Map(jen.Id("SecurityScheme")).Id("string"))
+		parameters = append(parameters, jen.Id(FieldSecurityCheckResults).Map(jen.Id(FieldSecurityScheme)).Id(TypeString))
 	}
 
 	return jen.Null().
 		Add(generator.normalizer.doubleLineAfterEachElement(parameterStructs...)...).
 		Line().Line().
-		Add(jen.Type().Id(name + "Request").Struct(parameters...)).
+		Add(jen.Type().Id(name + SuffixRequest).Struct(parameters...)).
 		Line().Line()
 }
 
@@ -530,8 +541,19 @@ func (generator *Generator) enumFromSchema(name string, schema *openapi3.SchemaR
 func (generator *Generator) getXGoRegex(schema *openapi3.SchemaRef) string {
 	if len(schema.Value.Extensions) > 0 && schema.Value.Extensions[goRegex] != nil {
 		var regex string
-		if err := json.Unmarshal(schema.Value.Extensions[goRegex].(json.RawMessage), &regex); err != nil {
-			panic(err)
+		switch v := schema.Value.Extensions[goRegex].(type) {
+		case json.RawMessage:
+			if err := json.Unmarshal(v, &regex); err != nil {
+				PanicOperationError("JSON Unmarshal", err, map[string]interface{}{
+					"extension": ExtGoRegex,
+					"operation": "parsing regex extension in validation",
+					"data_type": "json.RawMessage",
+				})
+			}
+		case string:
+			regex = v
+		default:
+			PanicUnexpectedExtensionType(ExtGoRegex, v, map[string]interface{}{"parsing_context": "regex extension"})
 		}
 
 		return regex
@@ -543,8 +565,19 @@ func (generator *Generator) getXGoRegex(schema *openapi3.SchemaRef) string {
 func (generator *Generator) getXGoStringTrimmable(schema *openapi3.SchemaRef) bool {
 	if len(schema.Value.Extensions) > 0 && schema.Value.Extensions[goStringTrimmable] != nil {
 		var isTrimmable bool
-		if err := json.Unmarshal(schema.Value.Extensions[goStringTrimmable].(json.RawMessage), &isTrimmable); err != nil {
-			panic(err)
+		switch v := schema.Value.Extensions[goStringTrimmable].(type) {
+		case json.RawMessage:
+			if err := json.Unmarshal(v, &isTrimmable); err != nil {
+				PanicOperationError("JSON Unmarshal", err, map[string]interface{}{
+					"extension": ExtGoStringTrimmable,
+					"operation": "parsing string trimmable extension",
+					"data_type": "json.RawMessage",
+				})
+			}
+		case bool:
+			isTrimmable = v
+		default:
+			PanicUnexpectedExtensionType(ExtGoStringTrimmable, v, map[string]interface{}{"parsing_context": "string trimmable extension in field validation"})
 		}
 
 		return isTrimmable
@@ -577,8 +610,7 @@ func (generator *Generator) fieldValidationRuleFromSchema(receiverName string, p
 		return fieldRule
 	}
 
-	switch v.Type {
-	case "string":
+	if v.Type != nil && v.Type.Is(TypeString) {
 		if v.MaxLength != nil || v.MinLength > 0 {
 			var maxLength uint64
 			if v.MaxLength != nil {
@@ -593,11 +625,11 @@ func (generator *Generator) fieldValidationRuleFromSchema(receiverName string, p
 			params = append(params, jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "RuneLength").Call(jen.Lit(int(v.MinLength)), jen.Lit(int(maxLength))))
 			fieldRule = jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "Field").Call(params...)
 		}
-	case "integer", "number":
+	} else if v.Type != nil && (v.Type.Is(TypeInteger) || v.Type.Is(TypeNumber)) {
 		var rules []jen.Code
 		if v.Min != nil {
 			min := jen.Lit(*v.Min)
-			if v.Type == "integer" {
+			if v.Type != nil && v.Type.Is(TypeInteger) {
 				min = jen.Lit(int(*v.Min))
 			}
 			r := jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "Min").Call(min)
@@ -608,7 +640,7 @@ func (generator *Generator) fieldValidationRuleFromSchema(receiverName string, p
 		}
 		if v.Max != nil {
 			max := jen.Lit(*v.Max)
-			if v.Type == "integer" {
+			if v.Type != nil && v.Type.Is(TypeInteger) {
 				max = jen.Lit(int(*v.Max))
 			}
 			r := jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "Max").Call(max)
@@ -782,7 +814,7 @@ func (generator *Generator) typeProperties(typeName string, schema *openapi3.Sch
 func (generator *Generator) enums(swagger *openapi3.T) jen.Code {
 	var pathsResult []jen.Code
 
-	linq.From(swagger.Paths).
+	linq.From(swagger.Paths.Map()).
 		SelectManyT(func(kv linq.KeyValue) linq.Query {
 			path := cast.ToString(kv.Key)
 
@@ -818,7 +850,7 @@ func (generator *Generator) enums(swagger *openapi3.T) jen.Code {
 					}
 
 					var result []jen.Code
-					linq.From(operation.Responses).
+					linq.From(operation.Responses.Map()).
 						SelectManyT(func(kv linq.KeyValue) linq.Query {
 							return linq.From(kv.Value.(*openapi3.ResponseRef).Value.Content).
 								WhereT(func(kv linq.KeyValue) bool { return kv.Value.(*openapi3.MediaType).Schema.Ref == "" }).
@@ -1186,7 +1218,7 @@ func (generator *Generator) wrapper(name string, requestName string, routerName,
 				jen.Id("r"),
 				jen.Lit(name)))).Line().Line())
 
-	if len(operation.Responses) > 0 && linq.From(operation.Responses).AnyWithT(func(kv linq.KeyValue) bool { return len(kv.Value.(*openapi3.ResponseRef).Value.Content) > 0 }) {
+	if operation.Responses != nil && operation.Responses.Len() > 0 && linq.From(operation.Responses.Map()).AnyWithT(func(kv linq.KeyValue) bool { return len(kv.Value.(*openapi3.ResponseRef).Value.Content) > 0 }) {
 		funcCode = append(funcCode, jen.If(jen.Id("len").Call(jen.Id("response").Dot("contentType").Call()).Op(">").Lit(0)).Block(
 			jen.Id("w").Dot("Header").Call().Dot("Set").Call(jen.Lit("content-type"),
 				jen.Id("response").Dot("contentType").Call())).Line())
@@ -1293,7 +1325,7 @@ type operationWithPath struct {
 func (generator *Generator) groupedOperations(swagger *openapi3.T) []groupedOperations {
 	var result []groupedOperations
 
-	linq.From(swagger.Paths).
+	linq.From(swagger.Paths.Map()).
 		SelectManyT(func(kv linq.KeyValue) linq.Query {
 			path := cast.ToString(kv.Key)
 
@@ -1431,7 +1463,7 @@ func (generator *Generator) wrapperRequestParsers(wrapperName string, operation 
 					return generator.wrapperEnum(in, enumType, name, paramName, wrapperName, parameter)
 				}
 
-				if parameter.Value.Schema.Value.Type == "integer" {
+				if parameter.Value.Schema.Value.Type != nil && parameter.Value.Schema.Value.Type.Is("integer") {
 					return generator.wrapperInteger(in, name, paramName, wrapperName, parameter)
 				}
 
@@ -1490,7 +1522,7 @@ func (generator *Generator) wrapperCustomType(in string, name string, paramName 
 	case "path":
 		result = result.Add(jen.Id(paramName+"Str").Op(":=").Id("chi").Dot("URLParam").Call(jen.Id("r"), jen.Lit(parameter.Value.Name)))
 	default:
-		panic("unsupported " + in + " type")
+		PanicInvalidOperation("Parameter Parsing", "unsupported parameter location", map[string]interface{}{"parameter_in": in, "supported_types": "header, path, query"})
 	}
 
 	result = result.Add(jen.Line())
@@ -1571,7 +1603,7 @@ func (generator *Generator) wrapperEnum(in string, enumType string, name string,
 	case "path":
 		result = result.Add(jen.Id(paramName).Op(":=").Qual(generator.config.ComponentsPackage, enumType).Call(jen.Id("chi").Dot("URLParam").Call(jen.Id("r"), jen.Lit(parameter.Value.Name))))
 	default:
-		panic("unsupported " + in + " type")
+		PanicInvalidOperation("Parameter Parsing", "unsupported parameter location", map[string]interface{}{"parameter_in": in, "supported_types": "header, path, query"})
 	}
 
 	result = result.
@@ -1605,7 +1637,7 @@ func (generator *Generator) wrapperStr(in string, name string, paramName string,
 	case "path":
 		result = result.Add(jen.Id(paramName).Op(":=").Id("chi").Dot("URLParam").Call(jen.Id("r"), jen.Lit(parameter.Value.Name)))
 	default:
-		panic("unsupported " + in + " type")
+		PanicInvalidOperation("Parameter Parsing", "unsupported parameter location", map[string]interface{}{"parameter_in": in, "supported_types": "header, path, query"})
 	}
 
 	if parameter.Value.Required {
@@ -1664,7 +1696,7 @@ func (generator *Generator) wrapperInteger(in string, name string, paramName str
 	case "path":
 		result = result.Add(jen.Id(paramName).Op(":=").Id("chi").Dot("URLParam").Call(jen.Id("r"), jen.Lit(parameter.Value.Name)))
 	default:
-		panic("unsupported " + in + " type")
+		PanicInvalidOperation("Parameter Parsing", "unsupported parameter location", map[string]interface{}{"parameter_in": in, "supported_types": "header, path, query"})
 	}
 
 	if parameter.Value.Required {
@@ -1889,7 +1921,7 @@ func (generator *Generator) requestResponseBuilders(swagger *openapi3.T) jen.Cod
 		generator.handlersTypes(swagger),
 		generator.builders(swagger),
 		generator.handlersInterfaces(swagger),
-		generator.requestParameters(swagger.Paths),
+		generator.requestParameters(swagger.Paths.Map()),
 	}
 
 	result = generator.normalizer.doubleLineAfterEachElement(result...)
@@ -1917,7 +1949,7 @@ type operationStruct struct {
 func (generator *Generator) builders(swagger *openapi3.T) (result jen.Code) {
 	var builders []jen.Code
 
-	linq.From(swagger.Paths).
+	linq.From(swagger.Paths.Map()).
 		SelectManyT(func(kv linq.KeyValue) linq.Query {
 			path := cast.ToString(kv.Key)
 			var operationStructs []operationStruct
@@ -1928,7 +1960,7 @@ func (generator *Generator) builders(swagger *openapi3.T) (result jen.Code) {
 					operation := kv.Value.(*openapi3.Operation)
 					var operationResponses []operationResponse
 
-					linq.From(operation.Responses).
+					linq.From(operation.Responses.Map()).
 						SelectT(func(kv linq.KeyValue) (response operationResponse) {
 							response.ContentTypeBodyNameMap = map[string]string{}
 
@@ -1989,7 +2021,7 @@ func (generator *Generator) builders(swagger *openapi3.T) (result jen.Code) {
 func (generator *Generator) handlersTypes(swagger *openapi3.T) jen.Code {
 	var result []jen.Code
 
-	linq.From(swagger.Paths).
+	linq.From(swagger.Paths.Map()).
 		SelectT(func(kv linq.KeyValue) jen.Code {
 			path := cast.ToString(kv.Key)
 			var result []jen.Code
@@ -2012,7 +2044,7 @@ func (generator *Generator) handlersTypes(swagger *openapi3.T) jen.Code {
 func (generator *Generator) handlersInterfaces(swagger *openapi3.T) jen.Code {
 	var result []jen.Code
 
-	linq.From(swagger.Paths).
+	linq.From(swagger.Paths.Map()).
 		SelectManyT(
 			func(kv linq.KeyValue) linq.Query {
 				path := cast.ToString(kv.Key)
@@ -2519,12 +2551,18 @@ func (generator *Generator) headersStruct(name string, headers map[string]*opena
 func (generator *Generator) specCode(swagger *openapi3.T) jen.Code {
 	specJson, err := json.Marshal(swagger)
 	if err != nil {
-		panic(err)
+		PanicOperationError("JSON Marshal", err, map[string]interface{}{
+			"operation": "marshaling OpenAPI spec to JSON",
+			"data_type": "*openapi3.T",
+		})
 	}
 
 	minifiedJson, err := minify.JSON(string(specJson))
 	if err != nil {
-		panic(err)
+		PanicOperationError("JSON Minify", err, map[string]interface{}{
+			"operation": "minifying JSON spec",
+			"input_size": len(specJson),
+		})
 	}
 
 	return jen.Var().Id("spec").Op("=").Index().Id("byte").Call(jen.Lit(minifiedJson)).
