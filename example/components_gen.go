@@ -3,7 +3,6 @@
 package example
 
 import (
-	"encoding/json"
 	"fmt"
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 	uuid "github.com/google/uuid"
@@ -18,193 +17,2666 @@ import (
 
 var regexParamRegex = regexp.MustCompile("^[.?\\d]+$")
 
-type Boolean = bool
-
-type createTransactionRequest struct {
-	Amount        float64              `json:"amount"`
-	AmountCents   int                  `json:"amountCents"`
-	CallbackURL   url.URL              `json:"callbackURL"`
-	Country       countries.Alpha2Code `json:"country"`
-	Currency      currency.Code        `json:"currency"`
-	Description   *string              `json:"description"`
-	Details       *string              `json:"details,omitempty"`
-	Email         email.Email          `json:"email"`
-	RegexParam    string               `json:"regexParam"`
-	Title         string               `json:"title"`
-	TransactionID uuid.UUID            `json:"transactionID"`
-}
-
-type CreateTransactionRequest struct {
-	Amount        float64              `json:"amount"`
-	AmountCents   int                  `json:"amountCents"`
-	CallbackURL   url.URL              `json:"callbackURL"`
-	Country       countries.Alpha2Code `json:"country"`
-	Currency      currency.Code        `json:"currency"`
-	Description   string               `json:"description"`
-	Details       *string              `json:"details,omitempty"`
-	Email         email.Email          `json:"email"`
-	RegexParam    string               `json:"regexParam"`
-	Title         string               `json:"title"`
-	TransactionID uuid.UUID            `json:"transactionID"`
-}
-
-func (body *CreateTransactionRequest) UnmarshalJSON(data []byte) error {
-	var value createTransactionRequest
-	if err := json.Unmarshal(data, &value); err != nil {
-		return err
-	}
-
-	body.AmountCents = value.AmountCents
-	body.CallbackURL = value.CallbackURL
-	body.Currency = value.Currency
-	body.Details = value.Details
-	body.Email = value.Email
-	body.Title = strings.TrimSpace(value.Title)
-	body.Amount = value.Amount
-	body.Country = value.Country
-	if !regexParamRegex.MatchString(body.RegexParam) {
-		return fmt.Errorf("RegexParam not matched by the '^[.?\\d]+$' regex")
-	}
-	body.RegexParam = value.RegexParam
-	body.TransactionID = value.TransactionID
-
-	if value.Description == nil {
-		return fmt.Errorf("Description is required")
-	}
-
-	body.Description = strings.TrimSpace(*value.Description)
-
-	return nil
-}
-func (body CreateTransactionRequest) Validate() error {
-	return validation.ValidateStruct(&body,
-		validation.Field(&body.Currency, validation.Skip.When(body.Currency == ""), validation.RuneLength(3, 3)),
-		validation.Field(&body.Title, validation.Skip.When(body.Title == ""), validation.RuneLength(8, 50)),
-		validation.Field(&body.Amount, validation.Min(0.009).Exclusive()),
-		validation.Field(&body.Country, validation.Skip.When(body.Country == ""), validation.RuneLength(2, 2)),
-		validation.Field(&body.Description, validation.Required, validation.RuneLength(8, 100)))
-}
-
-type Email = email.Email
-
-type genericResponse struct {
-	Result GenericResponseResultEnum `json:"result"`
-}
-
-type GenericResponse struct {
-	Result GenericResponseResultEnum `json:"result"`
-}
-
-func (body *GenericResponse) UnmarshalJSON(data []byte) error {
-	var value genericResponse
-	if err := json.Unmarshal(data, &value); err != nil {
-		return err
-	}
-
-	body.Result = value.Result
-
-	return nil
-}
-func (body GenericResponse) Validate() error {
-	return nil
-}
+var fingerprintRegex = regexp.MustCompile("[0-9a-fA-F]+")
 
 type URL = url.URL
 
-type URLWithDescription = url.URL
+type Email = email.Email
 
 type RawPayload = []byte
 
-type Time = time.Time
-
-type updateTransactionRequest struct {
-	Description *string `json:"description"`
-	Details     *string `json:"details,omitempty"`
-	Title       string  `json:"title"`
-}
+type Boolean = bool
 
 type UpdateTransactionRequest struct {
-	Description string  `json:"description"`
 	Details     *string `json:"details,omitempty"`
 	Title       string  `json:"title"`
+	Description string  `json:"description"`
 }
 
-func (body *UpdateTransactionRequest) UnmarshalJSON(data []byte) error {
-	var value updateTransactionRequest
-	if err := json.Unmarshal(data, &value); err != nil {
-		return err
-	}
-
-	body.Details = value.Details
-	body.Title = strings.TrimSpace(value.Title)
-
-	if value.Description == nil {
-		return fmt.Errorf("Description is required")
-	}
-
-	body.Description = strings.TrimSpace(*value.Description)
-
-	return nil
+type CreateTransactionRequest struct {
+	CallbackURL   url.URL              `json:"callbackURL"`
+	Title         string               `json:"title"`
+	TransactionID uuid.UUID            `json:"transactionID"`
+	Amount        float64              `json:"amount"`
+	Email         email.Email          `json:"email"`
+	Currency      currency.Code        `json:"currency"`
+	Description   string               `json:"description"`
+	RegexParam    string               `json:"regexParam"`
+	AmountCents   int                  `json:"amountCents"`
+	Country       countries.Alpha2Code `json:"country"`
+	Details       *string              `json:"details,omitempty"`
 }
 
-type GenericResponseResultEnum string
-
-var GenericResponseResultEnumSuccess GenericResponseResultEnum = "success"
-var GenericResponseResultEnumFailed GenericResponseResultEnum = "failed"
-
-func (enum GenericResponseResultEnum) Check() error {
-	switch enum {
-	case GenericResponseResultEnumSuccess, GenericResponseResultEnumFailed:
-
+func (C CreateTransactionRequest) Validate() error {
+	return validation.ValidateStruct(&C, validation.Field(&C.Amount, validation.Min(0.009).Exclusive()), validation.Field(&C.Currency, validation.Skip.When(C.Currency == ""), validation.RuneLength(3, 3)), validation.Field(&C.Description, validation.Required, validation.RuneLength(8, 100)), validation.Field(&C.Description, validation.By(func(value interface{}) error {
+		if str, ok := value.(string); ok {
+			trimmed := strings.TrimSpace(str)
+			if str != trimmed {
+				return fmt.Errorf("value should be trimmed")
+			}
+		}
 		return nil
-	}
-
-	return fmt.Errorf("invalid GenericResponseResultEnum enum value")
+	})), validation.Field(&C.RegexParam, validation.Match(regexParamRegex)), validation.Field(&C.AmountCents, validation.Max(100)), validation.Field(&C.Country, validation.Skip.When(C.Country == ""), validation.RuneLength(2, 2)), validation.Field(&C.Title, validation.Skip.When(C.Title == ""), validation.RuneLength(8, 50)), validation.Field(&C.Title, validation.By(func(value interface{}) error {
+		if str, ok := value.(string); ok {
+			trimmed := strings.TrimSpace(str)
+			if str != trimmed {
+				return fmt.Errorf("value should be trimmed")
+			}
+		}
+		return nil
+	})))
 }
 
-func (enum *GenericResponseResultEnum) UnmarshalJSON(data []byte) error {
-	var strValue string
-	if err := json.Unmarshal(data, &strValue); err != nil {
+type GenericResponse struct {
+	Result Result `json:"result"`
+}
 
-		return err
-	}
-	enumValue := GenericResponseResultEnum(strValue)
-	if err := enumValue.Check(); err != nil {
-
-		return err
-	}
-	*enum = enumValue
-
+func (G GenericResponse) Validate() error {
 	return nil
+}
+
+type Time = time.Time
+
+type CountryAlpha2 string
+
+const (
+	CountryAlpha2AF CountryAlpha2 = "AF"
+	CountryAlpha2AL CountryAlpha2 = "AL"
+	CountryAlpha2DZ CountryAlpha2 = "DZ"
+	CountryAlpha2AS CountryAlpha2 = "AS"
+	CountryAlpha2AD CountryAlpha2 = "AD"
+	CountryAlpha2AO CountryAlpha2 = "AO"
+	CountryAlpha2AI CountryAlpha2 = "AI"
+	CountryAlpha2AQ CountryAlpha2 = "AQ"
+	CountryAlpha2AG CountryAlpha2 = "AG"
+	CountryAlpha2AR CountryAlpha2 = "AR"
+	CountryAlpha2AM CountryAlpha2 = "AM"
+	CountryAlpha2AW CountryAlpha2 = "AW"
+	CountryAlpha2AU CountryAlpha2 = "AU"
+	CountryAlpha2AT CountryAlpha2 = "AT"
+	CountryAlpha2AZ CountryAlpha2 = "AZ"
+	CountryAlpha2BS CountryAlpha2 = "BS"
+	CountryAlpha2BH CountryAlpha2 = "BH"
+	CountryAlpha2BD CountryAlpha2 = "BD"
+	CountryAlpha2BB CountryAlpha2 = "BB"
+	CountryAlpha2BY CountryAlpha2 = "BY"
+	CountryAlpha2BE CountryAlpha2 = "BE"
+	CountryAlpha2BZ CountryAlpha2 = "BZ"
+	CountryAlpha2BJ CountryAlpha2 = "BJ"
+	CountryAlpha2BM CountryAlpha2 = "BM"
+	CountryAlpha2BT CountryAlpha2 = "BT"
+	CountryAlpha2BO CountryAlpha2 = "BO"
+	CountryAlpha2BQ CountryAlpha2 = "BQ"
+	CountryAlpha2BA CountryAlpha2 = "BA"
+	CountryAlpha2BW CountryAlpha2 = "BW"
+	CountryAlpha2BV CountryAlpha2 = "BV"
+	CountryAlpha2BR CountryAlpha2 = "BR"
+	CountryAlpha2IO CountryAlpha2 = "IO"
+	CountryAlpha2BN CountryAlpha2 = "BN"
+	CountryAlpha2BG CountryAlpha2 = "BG"
+	CountryAlpha2BF CountryAlpha2 = "BF"
+	CountryAlpha2BI CountryAlpha2 = "BI"
+	CountryAlpha2CV CountryAlpha2 = "CV"
+	CountryAlpha2KH CountryAlpha2 = "KH"
+	CountryAlpha2CM CountryAlpha2 = "CM"
+	CountryAlpha2CA CountryAlpha2 = "CA"
+	CountryAlpha2KY CountryAlpha2 = "KY"
+	CountryAlpha2CF CountryAlpha2 = "CF"
+	CountryAlpha2TD CountryAlpha2 = "TD"
+	CountryAlpha2CL CountryAlpha2 = "CL"
+	CountryAlpha2CN CountryAlpha2 = "CN"
+	CountryAlpha2CX CountryAlpha2 = "CX"
+	CountryAlpha2CC CountryAlpha2 = "CC"
+	CountryAlpha2CO CountryAlpha2 = "CO"
+	CountryAlpha2KM CountryAlpha2 = "KM"
+	CountryAlpha2CD CountryAlpha2 = "CD"
+	CountryAlpha2CG CountryAlpha2 = "CG"
+	CountryAlpha2CK CountryAlpha2 = "CK"
+	CountryAlpha2CR CountryAlpha2 = "CR"
+	CountryAlpha2HR CountryAlpha2 = "HR"
+	CountryAlpha2CU CountryAlpha2 = "CU"
+	CountryAlpha2CW CountryAlpha2 = "CW"
+	CountryAlpha2CY CountryAlpha2 = "CY"
+	CountryAlpha2CZ CountryAlpha2 = "CZ"
+	CountryAlpha2CI CountryAlpha2 = "CI"
+	CountryAlpha2DK CountryAlpha2 = "DK"
+	CountryAlpha2DJ CountryAlpha2 = "DJ"
+	CountryAlpha2DM CountryAlpha2 = "DM"
+	CountryAlpha2DO CountryAlpha2 = "DO"
+	CountryAlpha2EC CountryAlpha2 = "EC"
+	CountryAlpha2EG CountryAlpha2 = "EG"
+	CountryAlpha2SV CountryAlpha2 = "SV"
+	CountryAlpha2GQ CountryAlpha2 = "GQ"
+	CountryAlpha2ER CountryAlpha2 = "ER"
+	CountryAlpha2EE CountryAlpha2 = "EE"
+	CountryAlpha2SZ CountryAlpha2 = "SZ"
+	CountryAlpha2ET CountryAlpha2 = "ET"
+	CountryAlpha2FK CountryAlpha2 = "FK"
+	CountryAlpha2FO CountryAlpha2 = "FO"
+	CountryAlpha2FJ CountryAlpha2 = "FJ"
+	CountryAlpha2FI CountryAlpha2 = "FI"
+	CountryAlpha2FR CountryAlpha2 = "FR"
+	CountryAlpha2GF CountryAlpha2 = "GF"
+	CountryAlpha2PF CountryAlpha2 = "PF"
+	CountryAlpha2TF CountryAlpha2 = "TF"
+	CountryAlpha2GA CountryAlpha2 = "GA"
+	CountryAlpha2GM CountryAlpha2 = "GM"
+	CountryAlpha2GE CountryAlpha2 = "GE"
+	CountryAlpha2DE CountryAlpha2 = "DE"
+	CountryAlpha2GH CountryAlpha2 = "GH"
+	CountryAlpha2GI CountryAlpha2 = "GI"
+	CountryAlpha2GR CountryAlpha2 = "GR"
+	CountryAlpha2GL CountryAlpha2 = "GL"
+	CountryAlpha2GD CountryAlpha2 = "GD"
+	CountryAlpha2GP CountryAlpha2 = "GP"
+	CountryAlpha2GU CountryAlpha2 = "GU"
+	CountryAlpha2GT CountryAlpha2 = "GT"
+	CountryAlpha2GG CountryAlpha2 = "GG"
+	CountryAlpha2GN CountryAlpha2 = "GN"
+	CountryAlpha2GW CountryAlpha2 = "GW"
+	CountryAlpha2GY CountryAlpha2 = "GY"
+	CountryAlpha2HT CountryAlpha2 = "HT"
+	CountryAlpha2HM CountryAlpha2 = "HM"
+	CountryAlpha2VA CountryAlpha2 = "VA"
+	CountryAlpha2HN CountryAlpha2 = "HN"
+	CountryAlpha2HK CountryAlpha2 = "HK"
+	CountryAlpha2HU CountryAlpha2 = "HU"
+	CountryAlpha2IS CountryAlpha2 = "IS"
+	CountryAlpha2IN CountryAlpha2 = "IN"
+	CountryAlpha2ID CountryAlpha2 = "ID"
+	CountryAlpha2IR CountryAlpha2 = "IR"
+	CountryAlpha2IQ CountryAlpha2 = "IQ"
+	CountryAlpha2IE CountryAlpha2 = "IE"
+	CountryAlpha2IM CountryAlpha2 = "IM"
+	CountryAlpha2IL CountryAlpha2 = "IL"
+	CountryAlpha2IT CountryAlpha2 = "IT"
+	CountryAlpha2JM CountryAlpha2 = "JM"
+	CountryAlpha2JP CountryAlpha2 = "JP"
+	CountryAlpha2JE CountryAlpha2 = "JE"
+	CountryAlpha2JO CountryAlpha2 = "JO"
+	CountryAlpha2KZ CountryAlpha2 = "KZ"
+	CountryAlpha2KE CountryAlpha2 = "KE"
+	CountryAlpha2KI CountryAlpha2 = "KI"
+	CountryAlpha2KP CountryAlpha2 = "KP"
+	CountryAlpha2KR CountryAlpha2 = "KR"
+	CountryAlpha2KW CountryAlpha2 = "KW"
+	CountryAlpha2KG CountryAlpha2 = "KG"
+	CountryAlpha2LA CountryAlpha2 = "LA"
+	CountryAlpha2LV CountryAlpha2 = "LV"
+	CountryAlpha2LB CountryAlpha2 = "LB"
+	CountryAlpha2LS CountryAlpha2 = "LS"
+	CountryAlpha2LR CountryAlpha2 = "LR"
+	CountryAlpha2LY CountryAlpha2 = "LY"
+	CountryAlpha2LI CountryAlpha2 = "LI"
+	CountryAlpha2LT CountryAlpha2 = "LT"
+	CountryAlpha2LU CountryAlpha2 = "LU"
+	CountryAlpha2MO CountryAlpha2 = "MO"
+	CountryAlpha2MG CountryAlpha2 = "MG"
+	CountryAlpha2MW CountryAlpha2 = "MW"
+	CountryAlpha2MY CountryAlpha2 = "MY"
+	CountryAlpha2MV CountryAlpha2 = "MV"
+	CountryAlpha2ML CountryAlpha2 = "ML"
+	CountryAlpha2MT CountryAlpha2 = "MT"
+	CountryAlpha2MH CountryAlpha2 = "MH"
+	CountryAlpha2MQ CountryAlpha2 = "MQ"
+	CountryAlpha2MR CountryAlpha2 = "MR"
+	CountryAlpha2MU CountryAlpha2 = "MU"
+	CountryAlpha2YT CountryAlpha2 = "YT"
+	CountryAlpha2MX CountryAlpha2 = "MX"
+	CountryAlpha2FM CountryAlpha2 = "FM"
+	CountryAlpha2MD CountryAlpha2 = "MD"
+	CountryAlpha2MC CountryAlpha2 = "MC"
+	CountryAlpha2MN CountryAlpha2 = "MN"
+	CountryAlpha2ME CountryAlpha2 = "ME"
+	CountryAlpha2MS CountryAlpha2 = "MS"
+	CountryAlpha2MA CountryAlpha2 = "MA"
+	CountryAlpha2MZ CountryAlpha2 = "MZ"
+	CountryAlpha2MM CountryAlpha2 = "MM"
+	CountryAlpha2NA CountryAlpha2 = "NA"
+	CountryAlpha2NR CountryAlpha2 = "NR"
+	CountryAlpha2NP CountryAlpha2 = "NP"
+	CountryAlpha2NL CountryAlpha2 = "NL"
+	CountryAlpha2NC CountryAlpha2 = "NC"
+	CountryAlpha2NZ CountryAlpha2 = "NZ"
+	CountryAlpha2NI CountryAlpha2 = "NI"
+	CountryAlpha2NE CountryAlpha2 = "NE"
+	CountryAlpha2NG CountryAlpha2 = "NG"
+	CountryAlpha2NU CountryAlpha2 = "NU"
+	CountryAlpha2NF CountryAlpha2 = "NF"
+	CountryAlpha2MK CountryAlpha2 = "MK"
+	CountryAlpha2MP CountryAlpha2 = "MP"
+	CountryAlpha2NO CountryAlpha2 = "NO"
+	CountryAlpha2OM CountryAlpha2 = "OM"
+	CountryAlpha2PK CountryAlpha2 = "PK"
+	CountryAlpha2PW CountryAlpha2 = "PW"
+	CountryAlpha2PS CountryAlpha2 = "PS"
+	CountryAlpha2PA CountryAlpha2 = "PA"
+	CountryAlpha2PG CountryAlpha2 = "PG"
+	CountryAlpha2PY CountryAlpha2 = "PY"
+	CountryAlpha2PE CountryAlpha2 = "PE"
+	CountryAlpha2PH CountryAlpha2 = "PH"
+	CountryAlpha2PN CountryAlpha2 = "PN"
+	CountryAlpha2PL CountryAlpha2 = "PL"
+	CountryAlpha2PT CountryAlpha2 = "PT"
+	CountryAlpha2PR CountryAlpha2 = "PR"
+	CountryAlpha2QA CountryAlpha2 = "QA"
+	CountryAlpha2RO CountryAlpha2 = "RO"
+	CountryAlpha2RU CountryAlpha2 = "RU"
+	CountryAlpha2RW CountryAlpha2 = "RW"
+	CountryAlpha2RE CountryAlpha2 = "RE"
+	CountryAlpha2BL CountryAlpha2 = "BL"
+	CountryAlpha2SH CountryAlpha2 = "SH"
+	CountryAlpha2KN CountryAlpha2 = "KN"
+	CountryAlpha2LC CountryAlpha2 = "LC"
+	CountryAlpha2MF CountryAlpha2 = "MF"
+	CountryAlpha2PM CountryAlpha2 = "PM"
+	CountryAlpha2VC CountryAlpha2 = "VC"
+	CountryAlpha2WS CountryAlpha2 = "WS"
+	CountryAlpha2SM CountryAlpha2 = "SM"
+	CountryAlpha2ST CountryAlpha2 = "ST"
+	CountryAlpha2SA CountryAlpha2 = "SA"
+	CountryAlpha2SN CountryAlpha2 = "SN"
+	CountryAlpha2RS CountryAlpha2 = "RS"
+	CountryAlpha2SC CountryAlpha2 = "SC"
+	CountryAlpha2SL CountryAlpha2 = "SL"
+	CountryAlpha2SG CountryAlpha2 = "SG"
+	CountryAlpha2SX CountryAlpha2 = "SX"
+	CountryAlpha2SK CountryAlpha2 = "SK"
+	CountryAlpha2SI CountryAlpha2 = "SI"
+	CountryAlpha2SB CountryAlpha2 = "SB"
+	CountryAlpha2SO CountryAlpha2 = "SO"
+	CountryAlpha2ZA CountryAlpha2 = "ZA"
+	CountryAlpha2GS CountryAlpha2 = "GS"
+	CountryAlpha2SS CountryAlpha2 = "SS"
+	CountryAlpha2ES CountryAlpha2 = "ES"
+	CountryAlpha2LK CountryAlpha2 = "LK"
+	CountryAlpha2SD CountryAlpha2 = "SD"
+	CountryAlpha2SR CountryAlpha2 = "SR"
+	CountryAlpha2SJ CountryAlpha2 = "SJ"
+	CountryAlpha2SE CountryAlpha2 = "SE"
+	CountryAlpha2CH CountryAlpha2 = "CH"
+	CountryAlpha2SY CountryAlpha2 = "SY"
+	CountryAlpha2TW CountryAlpha2 = "TW"
+	CountryAlpha2TJ CountryAlpha2 = "TJ"
+	CountryAlpha2TZ CountryAlpha2 = "TZ"
+	CountryAlpha2TH CountryAlpha2 = "TH"
+	CountryAlpha2TL CountryAlpha2 = "TL"
+	CountryAlpha2TG CountryAlpha2 = "TG"
+	CountryAlpha2TK CountryAlpha2 = "TK"
+	CountryAlpha2TO CountryAlpha2 = "TO"
+	CountryAlpha2TT CountryAlpha2 = "TT"
+	CountryAlpha2TN CountryAlpha2 = "TN"
+	CountryAlpha2TM CountryAlpha2 = "TM"
+	CountryAlpha2TC CountryAlpha2 = "TC"
+	CountryAlpha2TV CountryAlpha2 = "TV"
+	CountryAlpha2TR CountryAlpha2 = "TR"
+	CountryAlpha2UG CountryAlpha2 = "UG"
+	CountryAlpha2UA CountryAlpha2 = "UA"
+	CountryAlpha2AE CountryAlpha2 = "AE"
+	CountryAlpha2GB CountryAlpha2 = "GB"
+	CountryAlpha2UM CountryAlpha2 = "UM"
+	CountryAlpha2US CountryAlpha2 = "US"
+	CountryAlpha2UY CountryAlpha2 = "UY"
+	CountryAlpha2UZ CountryAlpha2 = "UZ"
+	CountryAlpha2VU CountryAlpha2 = "VU"
+	CountryAlpha2VE CountryAlpha2 = "VE"
+	CountryAlpha2VN CountryAlpha2 = "VN"
+	CountryAlpha2VG CountryAlpha2 = "VG"
+	CountryAlpha2VI CountryAlpha2 = "VI"
+	CountryAlpha2WF CountryAlpha2 = "WF"
+	CountryAlpha2EH CountryAlpha2 = "EH"
+	CountryAlpha2YE CountryAlpha2 = "YE"
+	CountryAlpha2ZM CountryAlpha2 = "ZM"
+	CountryAlpha2ZW CountryAlpha2 = "ZW"
+	CountryAlpha2AX CountryAlpha2 = "AX"
+)
+
+func (c CountryAlpha2) Validate() error {
+	switch c {
+	case CountryAlpha2AF:
+		return nil
+	case CountryAlpha2AL:
+		return nil
+	case CountryAlpha2DZ:
+		return nil
+	case CountryAlpha2AS:
+		return nil
+	case CountryAlpha2AD:
+		return nil
+	case CountryAlpha2AO:
+		return nil
+	case CountryAlpha2AI:
+		return nil
+	case CountryAlpha2AQ:
+		return nil
+	case CountryAlpha2AG:
+		return nil
+	case CountryAlpha2AR:
+		return nil
+	case CountryAlpha2AM:
+		return nil
+	case CountryAlpha2AW:
+		return nil
+	case CountryAlpha2AU:
+		return nil
+	case CountryAlpha2AT:
+		return nil
+	case CountryAlpha2AZ:
+		return nil
+	case CountryAlpha2BS:
+		return nil
+	case CountryAlpha2BH:
+		return nil
+	case CountryAlpha2BD:
+		return nil
+	case CountryAlpha2BB:
+		return nil
+	case CountryAlpha2BY:
+		return nil
+	case CountryAlpha2BE:
+		return nil
+	case CountryAlpha2BZ:
+		return nil
+	case CountryAlpha2BJ:
+		return nil
+	case CountryAlpha2BM:
+		return nil
+	case CountryAlpha2BT:
+		return nil
+	case CountryAlpha2BO:
+		return nil
+	case CountryAlpha2BQ:
+		return nil
+	case CountryAlpha2BA:
+		return nil
+	case CountryAlpha2BW:
+		return nil
+	case CountryAlpha2BV:
+		return nil
+	case CountryAlpha2BR:
+		return nil
+	case CountryAlpha2IO:
+		return nil
+	case CountryAlpha2BN:
+		return nil
+	case CountryAlpha2BG:
+		return nil
+	case CountryAlpha2BF:
+		return nil
+	case CountryAlpha2BI:
+		return nil
+	case CountryAlpha2CV:
+		return nil
+	case CountryAlpha2KH:
+		return nil
+	case CountryAlpha2CM:
+		return nil
+	case CountryAlpha2CA:
+		return nil
+	case CountryAlpha2KY:
+		return nil
+	case CountryAlpha2CF:
+		return nil
+	case CountryAlpha2TD:
+		return nil
+	case CountryAlpha2CL:
+		return nil
+	case CountryAlpha2CN:
+		return nil
+	case CountryAlpha2CX:
+		return nil
+	case CountryAlpha2CC:
+		return nil
+	case CountryAlpha2CO:
+		return nil
+	case CountryAlpha2KM:
+		return nil
+	case CountryAlpha2CD:
+		return nil
+	case CountryAlpha2CG:
+		return nil
+	case CountryAlpha2CK:
+		return nil
+	case CountryAlpha2CR:
+		return nil
+	case CountryAlpha2HR:
+		return nil
+	case CountryAlpha2CU:
+		return nil
+	case CountryAlpha2CW:
+		return nil
+	case CountryAlpha2CY:
+		return nil
+	case CountryAlpha2CZ:
+		return nil
+	case CountryAlpha2CI:
+		return nil
+	case CountryAlpha2DK:
+		return nil
+	case CountryAlpha2DJ:
+		return nil
+	case CountryAlpha2DM:
+		return nil
+	case CountryAlpha2DO:
+		return nil
+	case CountryAlpha2EC:
+		return nil
+	case CountryAlpha2EG:
+		return nil
+	case CountryAlpha2SV:
+		return nil
+	case CountryAlpha2GQ:
+		return nil
+	case CountryAlpha2ER:
+		return nil
+	case CountryAlpha2EE:
+		return nil
+	case CountryAlpha2SZ:
+		return nil
+	case CountryAlpha2ET:
+		return nil
+	case CountryAlpha2FK:
+		return nil
+	case CountryAlpha2FO:
+		return nil
+	case CountryAlpha2FJ:
+		return nil
+	case CountryAlpha2FI:
+		return nil
+	case CountryAlpha2FR:
+		return nil
+	case CountryAlpha2GF:
+		return nil
+	case CountryAlpha2PF:
+		return nil
+	case CountryAlpha2TF:
+		return nil
+	case CountryAlpha2GA:
+		return nil
+	case CountryAlpha2GM:
+		return nil
+	case CountryAlpha2GE:
+		return nil
+	case CountryAlpha2DE:
+		return nil
+	case CountryAlpha2GH:
+		return nil
+	case CountryAlpha2GI:
+		return nil
+	case CountryAlpha2GR:
+		return nil
+	case CountryAlpha2GL:
+		return nil
+	case CountryAlpha2GD:
+		return nil
+	case CountryAlpha2GP:
+		return nil
+	case CountryAlpha2GU:
+		return nil
+	case CountryAlpha2GT:
+		return nil
+	case CountryAlpha2GG:
+		return nil
+	case CountryAlpha2GN:
+		return nil
+	case CountryAlpha2GW:
+		return nil
+	case CountryAlpha2GY:
+		return nil
+	case CountryAlpha2HT:
+		return nil
+	case CountryAlpha2HM:
+		return nil
+	case CountryAlpha2VA:
+		return nil
+	case CountryAlpha2HN:
+		return nil
+	case CountryAlpha2HK:
+		return nil
+	case CountryAlpha2HU:
+		return nil
+	case CountryAlpha2IS:
+		return nil
+	case CountryAlpha2IN:
+		return nil
+	case CountryAlpha2ID:
+		return nil
+	case CountryAlpha2IR:
+		return nil
+	case CountryAlpha2IQ:
+		return nil
+	case CountryAlpha2IE:
+		return nil
+	case CountryAlpha2IM:
+		return nil
+	case CountryAlpha2IL:
+		return nil
+	case CountryAlpha2IT:
+		return nil
+	case CountryAlpha2JM:
+		return nil
+	case CountryAlpha2JP:
+		return nil
+	case CountryAlpha2JE:
+		return nil
+	case CountryAlpha2JO:
+		return nil
+	case CountryAlpha2KZ:
+		return nil
+	case CountryAlpha2KE:
+		return nil
+	case CountryAlpha2KI:
+		return nil
+	case CountryAlpha2KP:
+		return nil
+	case CountryAlpha2KR:
+		return nil
+	case CountryAlpha2KW:
+		return nil
+	case CountryAlpha2KG:
+		return nil
+	case CountryAlpha2LA:
+		return nil
+	case CountryAlpha2LV:
+		return nil
+	case CountryAlpha2LB:
+		return nil
+	case CountryAlpha2LS:
+		return nil
+	case CountryAlpha2LR:
+		return nil
+	case CountryAlpha2LY:
+		return nil
+	case CountryAlpha2LI:
+		return nil
+	case CountryAlpha2LT:
+		return nil
+	case CountryAlpha2LU:
+		return nil
+	case CountryAlpha2MO:
+		return nil
+	case CountryAlpha2MG:
+		return nil
+	case CountryAlpha2MW:
+		return nil
+	case CountryAlpha2MY:
+		return nil
+	case CountryAlpha2MV:
+		return nil
+	case CountryAlpha2ML:
+		return nil
+	case CountryAlpha2MT:
+		return nil
+	case CountryAlpha2MH:
+		return nil
+	case CountryAlpha2MQ:
+		return nil
+	case CountryAlpha2MR:
+		return nil
+	case CountryAlpha2MU:
+		return nil
+	case CountryAlpha2YT:
+		return nil
+	case CountryAlpha2MX:
+		return nil
+	case CountryAlpha2FM:
+		return nil
+	case CountryAlpha2MD:
+		return nil
+	case CountryAlpha2MC:
+		return nil
+	case CountryAlpha2MN:
+		return nil
+	case CountryAlpha2ME:
+		return nil
+	case CountryAlpha2MS:
+		return nil
+	case CountryAlpha2MA:
+		return nil
+	case CountryAlpha2MZ:
+		return nil
+	case CountryAlpha2MM:
+		return nil
+	case CountryAlpha2NA:
+		return nil
+	case CountryAlpha2NR:
+		return nil
+	case CountryAlpha2NP:
+		return nil
+	case CountryAlpha2NL:
+		return nil
+	case CountryAlpha2NC:
+		return nil
+	case CountryAlpha2NZ:
+		return nil
+	case CountryAlpha2NI:
+		return nil
+	case CountryAlpha2NE:
+		return nil
+	case CountryAlpha2NG:
+		return nil
+	case CountryAlpha2NU:
+		return nil
+	case CountryAlpha2NF:
+		return nil
+	case CountryAlpha2MK:
+		return nil
+	case CountryAlpha2MP:
+		return nil
+	case CountryAlpha2NO:
+		return nil
+	case CountryAlpha2OM:
+		return nil
+	case CountryAlpha2PK:
+		return nil
+	case CountryAlpha2PW:
+		return nil
+	case CountryAlpha2PS:
+		return nil
+	case CountryAlpha2PA:
+		return nil
+	case CountryAlpha2PG:
+		return nil
+	case CountryAlpha2PY:
+		return nil
+	case CountryAlpha2PE:
+		return nil
+	case CountryAlpha2PH:
+		return nil
+	case CountryAlpha2PN:
+		return nil
+	case CountryAlpha2PL:
+		return nil
+	case CountryAlpha2PT:
+		return nil
+	case CountryAlpha2PR:
+		return nil
+	case CountryAlpha2QA:
+		return nil
+	case CountryAlpha2RO:
+		return nil
+	case CountryAlpha2RU:
+		return nil
+	case CountryAlpha2RW:
+		return nil
+	case CountryAlpha2RE:
+		return nil
+	case CountryAlpha2BL:
+		return nil
+	case CountryAlpha2SH:
+		return nil
+	case CountryAlpha2KN:
+		return nil
+	case CountryAlpha2LC:
+		return nil
+	case CountryAlpha2MF:
+		return nil
+	case CountryAlpha2PM:
+		return nil
+	case CountryAlpha2VC:
+		return nil
+	case CountryAlpha2WS:
+		return nil
+	case CountryAlpha2SM:
+		return nil
+	case CountryAlpha2ST:
+		return nil
+	case CountryAlpha2SA:
+		return nil
+	case CountryAlpha2SN:
+		return nil
+	case CountryAlpha2RS:
+		return nil
+	case CountryAlpha2SC:
+		return nil
+	case CountryAlpha2SL:
+		return nil
+	case CountryAlpha2SG:
+		return nil
+	case CountryAlpha2SX:
+		return nil
+	case CountryAlpha2SK:
+		return nil
+	case CountryAlpha2SI:
+		return nil
+	case CountryAlpha2SB:
+		return nil
+	case CountryAlpha2SO:
+		return nil
+	case CountryAlpha2ZA:
+		return nil
+	case CountryAlpha2GS:
+		return nil
+	case CountryAlpha2SS:
+		return nil
+	case CountryAlpha2ES:
+		return nil
+	case CountryAlpha2LK:
+		return nil
+	case CountryAlpha2SD:
+		return nil
+	case CountryAlpha2SR:
+		return nil
+	case CountryAlpha2SJ:
+		return nil
+	case CountryAlpha2SE:
+		return nil
+	case CountryAlpha2CH:
+		return nil
+	case CountryAlpha2SY:
+		return nil
+	case CountryAlpha2TW:
+		return nil
+	case CountryAlpha2TJ:
+		return nil
+	case CountryAlpha2TZ:
+		return nil
+	case CountryAlpha2TH:
+		return nil
+	case CountryAlpha2TL:
+		return nil
+	case CountryAlpha2TG:
+		return nil
+	case CountryAlpha2TK:
+		return nil
+	case CountryAlpha2TO:
+		return nil
+	case CountryAlpha2TT:
+		return nil
+	case CountryAlpha2TN:
+		return nil
+	case CountryAlpha2TM:
+		return nil
+	case CountryAlpha2TC:
+		return nil
+	case CountryAlpha2TV:
+		return nil
+	case CountryAlpha2TR:
+		return nil
+	case CountryAlpha2UG:
+		return nil
+	case CountryAlpha2UA:
+		return nil
+	case CountryAlpha2AE:
+		return nil
+	case CountryAlpha2GB:
+		return nil
+	case CountryAlpha2UM:
+		return nil
+	case CountryAlpha2US:
+		return nil
+	case CountryAlpha2UY:
+		return nil
+	case CountryAlpha2UZ:
+		return nil
+	case CountryAlpha2VU:
+		return nil
+	case CountryAlpha2VE:
+		return nil
+	case CountryAlpha2VN:
+		return nil
+	case CountryAlpha2VG:
+		return nil
+	case CountryAlpha2VI:
+		return nil
+	case CountryAlpha2WF:
+		return nil
+	case CountryAlpha2EH:
+		return nil
+	case CountryAlpha2YE:
+		return nil
+	case CountryAlpha2ZM:
+		return nil
+	case CountryAlpha2ZW:
+		return nil
+	case CountryAlpha2AX:
+		return nil
+	default:
+		return fmt.Errorf("invalid %s enum value", c)
+	}
 }
 
 type WithEnum string
 
-var WithEnumOne WithEnum = "one"
-var WithEnumTwo WithEnum = "two"
+const (
+	WithEnumOne WithEnum = "one"
+	WithEnumTwo WithEnum = "two"
+)
 
-func (enum WithEnum) Check() error {
-	switch enum {
-	case WithEnumOne, WithEnumTwo:
-
+func (w WithEnum) Validate() error {
+	switch w {
+	case WithEnumOne:
 		return nil
+	case WithEnumTwo:
+		return nil
+	default:
+		return fmt.Errorf("invalid %s enum value", w)
 	}
-
-	return fmt.Errorf("invalid WithEnum enum value")
 }
 
-func (enum *WithEnum) UnmarshalJSON(data []byte) error {
-	var strValue string
-	if err := json.Unmarshal(data, &strValue); err != nil {
+type CurrencyCode string
 
-		return err
+const (
+	CurrencyCodeAFN CurrencyCode = "AFN"
+	CurrencyCodeEUR CurrencyCode = "EUR"
+	CurrencyCodeALL CurrencyCode = "ALL"
+	CurrencyCodeDZD CurrencyCode = "DZD"
+	CurrencyCodeUSD CurrencyCode = "USD"
+	CurrencyCodeAOA CurrencyCode = "AOA"
+	CurrencyCodeXCD CurrencyCode = "XCD"
+	CurrencyCodeARS CurrencyCode = "ARS"
+	CurrencyCodeAMD CurrencyCode = "AMD"
+	CurrencyCodeAWG CurrencyCode = "AWG"
+	CurrencyCodeAUD CurrencyCode = "AUD"
+	CurrencyCodeAZN CurrencyCode = "AZN"
+	CurrencyCodeBSD CurrencyCode = "BSD"
+	CurrencyCodeBHD CurrencyCode = "BHD"
+	CurrencyCodeBDT CurrencyCode = "BDT"
+	CurrencyCodeBBD CurrencyCode = "BBD"
+	CurrencyCodeBYN CurrencyCode = "BYN"
+	CurrencyCodeBZD CurrencyCode = "BZD"
+	CurrencyCodeXOF CurrencyCode = "XOF"
+	CurrencyCodeBMD CurrencyCode = "BMD"
+	CurrencyCodeINR CurrencyCode = "INR"
+	CurrencyCodeBTN CurrencyCode = "BTN"
+	CurrencyCodeBOB CurrencyCode = "BOB"
+	CurrencyCodeBOV CurrencyCode = "BOV"
+	CurrencyCodeBAM CurrencyCode = "BAM"
+	CurrencyCodeBWP CurrencyCode = "BWP"
+	CurrencyCodeNOK CurrencyCode = "NOK"
+	CurrencyCodeBRL CurrencyCode = "BRL"
+	CurrencyCodeBND CurrencyCode = "BND"
+	CurrencyCodeBGN CurrencyCode = "BGN"
+	CurrencyCodeBIF CurrencyCode = "BIF"
+	CurrencyCodeCVE CurrencyCode = "CVE"
+	CurrencyCodeKHR CurrencyCode = "KHR"
+	CurrencyCodeXAF CurrencyCode = "XAF"
+	CurrencyCodeCAD CurrencyCode = "CAD"
+	CurrencyCodeKYD CurrencyCode = "KYD"
+	CurrencyCodeCLP CurrencyCode = "CLP"
+	CurrencyCodeCLF CurrencyCode = "CLF"
+	CurrencyCodeCNY CurrencyCode = "CNY"
+	CurrencyCodeCOP CurrencyCode = "COP"
+	CurrencyCodeCOU CurrencyCode = "COU"
+	CurrencyCodeKMF CurrencyCode = "KMF"
+	CurrencyCodeCDF CurrencyCode = "CDF"
+	CurrencyCodeNZD CurrencyCode = "NZD"
+	CurrencyCodeCRC CurrencyCode = "CRC"
+	CurrencyCodeHRK CurrencyCode = "HRK"
+	CurrencyCodeCUP CurrencyCode = "CUP"
+	CurrencyCodeCUC CurrencyCode = "CUC"
+	CurrencyCodeANG CurrencyCode = "ANG"
+	CurrencyCodeCZK CurrencyCode = "CZK"
+	CurrencyCodeDKK CurrencyCode = "DKK"
+	CurrencyCodeDJF CurrencyCode = "DJF"
+	CurrencyCodeDOP CurrencyCode = "DOP"
+	CurrencyCodeEGP CurrencyCode = "EGP"
+	CurrencyCodeSVC CurrencyCode = "SVC"
+	CurrencyCodeERN CurrencyCode = "ERN"
+	CurrencyCodeSZL CurrencyCode = "SZL"
+	CurrencyCodeETB CurrencyCode = "ETB"
+	CurrencyCodeFKP CurrencyCode = "FKP"
+	CurrencyCodeFJD CurrencyCode = "FJD"
+	CurrencyCodeXPF CurrencyCode = "XPF"
+	CurrencyCodeGMD CurrencyCode = "GMD"
+	CurrencyCodeGEL CurrencyCode = "GEL"
+	CurrencyCodeGHS CurrencyCode = "GHS"
+	CurrencyCodeGIP CurrencyCode = "GIP"
+	CurrencyCodeGTQ CurrencyCode = "GTQ"
+	CurrencyCodeGBP CurrencyCode = "GBP"
+	CurrencyCodeGNF CurrencyCode = "GNF"
+	CurrencyCodeGYD CurrencyCode = "GYD"
+	CurrencyCodeHTG CurrencyCode = "HTG"
+	CurrencyCodeHNL CurrencyCode = "HNL"
+	CurrencyCodeHKD CurrencyCode = "HKD"
+	CurrencyCodeHUF CurrencyCode = "HUF"
+	CurrencyCodeISK CurrencyCode = "ISK"
+	CurrencyCodeIDR CurrencyCode = "IDR"
+	CurrencyCodeXDR CurrencyCode = "XDR"
+	CurrencyCodeIRR CurrencyCode = "IRR"
+	CurrencyCodeIQD CurrencyCode = "IQD"
+	CurrencyCodeILS CurrencyCode = "ILS"
+	CurrencyCodeJMD CurrencyCode = "JMD"
+	CurrencyCodeJPY CurrencyCode = "JPY"
+	CurrencyCodeJOD CurrencyCode = "JOD"
+	CurrencyCodeKZT CurrencyCode = "KZT"
+	CurrencyCodeKES CurrencyCode = "KES"
+	CurrencyCodeKPW CurrencyCode = "KPW"
+	CurrencyCodeKRW CurrencyCode = "KRW"
+	CurrencyCodeKWD CurrencyCode = "KWD"
+	CurrencyCodeKGS CurrencyCode = "KGS"
+	CurrencyCodeLAK CurrencyCode = "LAK"
+	CurrencyCodeLBP CurrencyCode = "LBP"
+	CurrencyCodeLSL CurrencyCode = "LSL"
+	CurrencyCodeZAR CurrencyCode = "ZAR"
+	CurrencyCodeLRD CurrencyCode = "LRD"
+	CurrencyCodeLYD CurrencyCode = "LYD"
+	CurrencyCodeCHF CurrencyCode = "CHF"
+	CurrencyCodeMOP CurrencyCode = "MOP"
+	CurrencyCodeMKD CurrencyCode = "MKD"
+	CurrencyCodeMGA CurrencyCode = "MGA"
+	CurrencyCodeMWK CurrencyCode = "MWK"
+	CurrencyCodeMYR CurrencyCode = "MYR"
+	CurrencyCodeMVR CurrencyCode = "MVR"
+	CurrencyCodeMRU CurrencyCode = "MRU"
+	CurrencyCodeMUR CurrencyCode = "MUR"
+	CurrencyCodeXUA CurrencyCode = "XUA"
+	CurrencyCodeMXN CurrencyCode = "MXN"
+	CurrencyCodeMXV CurrencyCode = "MXV"
+	CurrencyCodeMDL CurrencyCode = "MDL"
+	CurrencyCodeMNT CurrencyCode = "MNT"
+	CurrencyCodeMAD CurrencyCode = "MAD"
+	CurrencyCodeMZN CurrencyCode = "MZN"
+	CurrencyCodeMMK CurrencyCode = "MMK"
+	CurrencyCodeNAD CurrencyCode = "NAD"
+	CurrencyCodeNPR CurrencyCode = "NPR"
+	CurrencyCodeNIO CurrencyCode = "NIO"
+	CurrencyCodeNGN CurrencyCode = "NGN"
+	CurrencyCodeOMR CurrencyCode = "OMR"
+	CurrencyCodePKR CurrencyCode = "PKR"
+	CurrencyCodePAB CurrencyCode = "PAB"
+	CurrencyCodePGK CurrencyCode = "PGK"
+	CurrencyCodePYG CurrencyCode = "PYG"
+	CurrencyCodePEN CurrencyCode = "PEN"
+	CurrencyCodePHP CurrencyCode = "PHP"
+	CurrencyCodePLN CurrencyCode = "PLN"
+	CurrencyCodeQAR CurrencyCode = "QAR"
+	CurrencyCodeRON CurrencyCode = "RON"
+	CurrencyCodeRUB CurrencyCode = "RUB"
+	CurrencyCodeRWF CurrencyCode = "RWF"
+	CurrencyCodeSHP CurrencyCode = "SHP"
+	CurrencyCodeWST CurrencyCode = "WST"
+	CurrencyCodeSTN CurrencyCode = "STN"
+	CurrencyCodeSAR CurrencyCode = "SAR"
+	CurrencyCodeRSD CurrencyCode = "RSD"
+	CurrencyCodeSCR CurrencyCode = "SCR"
+	CurrencyCodeSLL CurrencyCode = "SLL"
+	CurrencyCodeSLE CurrencyCode = "SLE"
+	CurrencyCodeSGD CurrencyCode = "SGD"
+	CurrencyCodeXSU CurrencyCode = "XSU"
+	CurrencyCodeSBD CurrencyCode = "SBD"
+	CurrencyCodeSOS CurrencyCode = "SOS"
+	CurrencyCodeSSP CurrencyCode = "SSP"
+	CurrencyCodeLKR CurrencyCode = "LKR"
+	CurrencyCodeSDG CurrencyCode = "SDG"
+	CurrencyCodeSRD CurrencyCode = "SRD"
+	CurrencyCodeSEK CurrencyCode = "SEK"
+	CurrencyCodeCHE CurrencyCode = "CHE"
+	CurrencyCodeCHW CurrencyCode = "CHW"
+	CurrencyCodeSYP CurrencyCode = "SYP"
+	CurrencyCodeTWD CurrencyCode = "TWD"
+	CurrencyCodeTJS CurrencyCode = "TJS"
+	CurrencyCodeTZS CurrencyCode = "TZS"
+	CurrencyCodeTHB CurrencyCode = "THB"
+	CurrencyCodeTOP CurrencyCode = "TOP"
+	CurrencyCodeTTD CurrencyCode = "TTD"
+	CurrencyCodeTND CurrencyCode = "TND"
+	CurrencyCodeTRY CurrencyCode = "TRY"
+	CurrencyCodeTMT CurrencyCode = "TMT"
+	CurrencyCodeUGX CurrencyCode = "UGX"
+	CurrencyCodeUAH CurrencyCode = "UAH"
+	CurrencyCodeAED CurrencyCode = "AED"
+	CurrencyCodeUSN CurrencyCode = "USN"
+	CurrencyCodeUYU CurrencyCode = "UYU"
+	CurrencyCodeUYI CurrencyCode = "UYI"
+	CurrencyCodeUYW CurrencyCode = "UYW"
+	CurrencyCodeUZS CurrencyCode = "UZS"
+	CurrencyCodeVUV CurrencyCode = "VUV"
+	CurrencyCodeVES CurrencyCode = "VES"
+	CurrencyCodeVED CurrencyCode = "VED"
+	CurrencyCodeVND CurrencyCode = "VND"
+	CurrencyCodeYER CurrencyCode = "YER"
+	CurrencyCodeZMW CurrencyCode = "ZMW"
+	CurrencyCodeZWL CurrencyCode = "ZWL"
+)
+
+func (c CurrencyCode) Validate() error {
+	switch c {
+	case CurrencyCodeAFN:
+		return nil
+	case CurrencyCodeEUR:
+		return nil
+	case CurrencyCodeALL:
+		return nil
+	case CurrencyCodeDZD:
+		return nil
+	case CurrencyCodeUSD:
+		return nil
+	case CurrencyCodeAOA:
+		return nil
+	case CurrencyCodeXCD:
+		return nil
+	case CurrencyCodeARS:
+		return nil
+	case CurrencyCodeAMD:
+		return nil
+	case CurrencyCodeAWG:
+		return nil
+	case CurrencyCodeAUD:
+		return nil
+	case CurrencyCodeAZN:
+		return nil
+	case CurrencyCodeBSD:
+		return nil
+	case CurrencyCodeBHD:
+		return nil
+	case CurrencyCodeBDT:
+		return nil
+	case CurrencyCodeBBD:
+		return nil
+	case CurrencyCodeBYN:
+		return nil
+	case CurrencyCodeBZD:
+		return nil
+	case CurrencyCodeXOF:
+		return nil
+	case CurrencyCodeBMD:
+		return nil
+	case CurrencyCodeINR:
+		return nil
+	case CurrencyCodeBTN:
+		return nil
+	case CurrencyCodeBOB:
+		return nil
+	case CurrencyCodeBOV:
+		return nil
+	case CurrencyCodeBAM:
+		return nil
+	case CurrencyCodeBWP:
+		return nil
+	case CurrencyCodeNOK:
+		return nil
+	case CurrencyCodeBRL:
+		return nil
+	case CurrencyCodeBND:
+		return nil
+	case CurrencyCodeBGN:
+		return nil
+	case CurrencyCodeBIF:
+		return nil
+	case CurrencyCodeCVE:
+		return nil
+	case CurrencyCodeKHR:
+		return nil
+	case CurrencyCodeXAF:
+		return nil
+	case CurrencyCodeCAD:
+		return nil
+	case CurrencyCodeKYD:
+		return nil
+	case CurrencyCodeCLP:
+		return nil
+	case CurrencyCodeCLF:
+		return nil
+	case CurrencyCodeCNY:
+		return nil
+	case CurrencyCodeCOP:
+		return nil
+	case CurrencyCodeCOU:
+		return nil
+	case CurrencyCodeKMF:
+		return nil
+	case CurrencyCodeCDF:
+		return nil
+	case CurrencyCodeNZD:
+		return nil
+	case CurrencyCodeCRC:
+		return nil
+	case CurrencyCodeHRK:
+		return nil
+	case CurrencyCodeCUP:
+		return nil
+	case CurrencyCodeCUC:
+		return nil
+	case CurrencyCodeANG:
+		return nil
+	case CurrencyCodeCZK:
+		return nil
+	case CurrencyCodeDKK:
+		return nil
+	case CurrencyCodeDJF:
+		return nil
+	case CurrencyCodeDOP:
+		return nil
+	case CurrencyCodeEGP:
+		return nil
+	case CurrencyCodeSVC:
+		return nil
+	case CurrencyCodeERN:
+		return nil
+	case CurrencyCodeSZL:
+		return nil
+	case CurrencyCodeETB:
+		return nil
+	case CurrencyCodeFKP:
+		return nil
+	case CurrencyCodeFJD:
+		return nil
+	case CurrencyCodeXPF:
+		return nil
+	case CurrencyCodeGMD:
+		return nil
+	case CurrencyCodeGEL:
+		return nil
+	case CurrencyCodeGHS:
+		return nil
+	case CurrencyCodeGIP:
+		return nil
+	case CurrencyCodeGTQ:
+		return nil
+	case CurrencyCodeGBP:
+		return nil
+	case CurrencyCodeGNF:
+		return nil
+	case CurrencyCodeGYD:
+		return nil
+	case CurrencyCodeHTG:
+		return nil
+	case CurrencyCodeHNL:
+		return nil
+	case CurrencyCodeHKD:
+		return nil
+	case CurrencyCodeHUF:
+		return nil
+	case CurrencyCodeISK:
+		return nil
+	case CurrencyCodeIDR:
+		return nil
+	case CurrencyCodeXDR:
+		return nil
+	case CurrencyCodeIRR:
+		return nil
+	case CurrencyCodeIQD:
+		return nil
+	case CurrencyCodeILS:
+		return nil
+	case CurrencyCodeJMD:
+		return nil
+	case CurrencyCodeJPY:
+		return nil
+	case CurrencyCodeJOD:
+		return nil
+	case CurrencyCodeKZT:
+		return nil
+	case CurrencyCodeKES:
+		return nil
+	case CurrencyCodeKPW:
+		return nil
+	case CurrencyCodeKRW:
+		return nil
+	case CurrencyCodeKWD:
+		return nil
+	case CurrencyCodeKGS:
+		return nil
+	case CurrencyCodeLAK:
+		return nil
+	case CurrencyCodeLBP:
+		return nil
+	case CurrencyCodeLSL:
+		return nil
+	case CurrencyCodeZAR:
+		return nil
+	case CurrencyCodeLRD:
+		return nil
+	case CurrencyCodeLYD:
+		return nil
+	case CurrencyCodeCHF:
+		return nil
+	case CurrencyCodeMOP:
+		return nil
+	case CurrencyCodeMKD:
+		return nil
+	case CurrencyCodeMGA:
+		return nil
+	case CurrencyCodeMWK:
+		return nil
+	case CurrencyCodeMYR:
+		return nil
+	case CurrencyCodeMVR:
+		return nil
+	case CurrencyCodeMRU:
+		return nil
+	case CurrencyCodeMUR:
+		return nil
+	case CurrencyCodeXUA:
+		return nil
+	case CurrencyCodeMXN:
+		return nil
+	case CurrencyCodeMXV:
+		return nil
+	case CurrencyCodeMDL:
+		return nil
+	case CurrencyCodeMNT:
+		return nil
+	case CurrencyCodeMAD:
+		return nil
+	case CurrencyCodeMZN:
+		return nil
+	case CurrencyCodeMMK:
+		return nil
+	case CurrencyCodeNAD:
+		return nil
+	case CurrencyCodeNPR:
+		return nil
+	case CurrencyCodeNIO:
+		return nil
+	case CurrencyCodeNGN:
+		return nil
+	case CurrencyCodeOMR:
+		return nil
+	case CurrencyCodePKR:
+		return nil
+	case CurrencyCodePAB:
+		return nil
+	case CurrencyCodePGK:
+		return nil
+	case CurrencyCodePYG:
+		return nil
+	case CurrencyCodePEN:
+		return nil
+	case CurrencyCodePHP:
+		return nil
+	case CurrencyCodePLN:
+		return nil
+	case CurrencyCodeQAR:
+		return nil
+	case CurrencyCodeRON:
+		return nil
+	case CurrencyCodeRUB:
+		return nil
+	case CurrencyCodeRWF:
+		return nil
+	case CurrencyCodeSHP:
+		return nil
+	case CurrencyCodeWST:
+		return nil
+	case CurrencyCodeSTN:
+		return nil
+	case CurrencyCodeSAR:
+		return nil
+	case CurrencyCodeRSD:
+		return nil
+	case CurrencyCodeSCR:
+		return nil
+	case CurrencyCodeSLL:
+		return nil
+	case CurrencyCodeSLE:
+		return nil
+	case CurrencyCodeSGD:
+		return nil
+	case CurrencyCodeXSU:
+		return nil
+	case CurrencyCodeSBD:
+		return nil
+	case CurrencyCodeSOS:
+		return nil
+	case CurrencyCodeSSP:
+		return nil
+	case CurrencyCodeLKR:
+		return nil
+	case CurrencyCodeSDG:
+		return nil
+	case CurrencyCodeSRD:
+		return nil
+	case CurrencyCodeSEK:
+		return nil
+	case CurrencyCodeCHE:
+		return nil
+	case CurrencyCodeCHW:
+		return nil
+	case CurrencyCodeSYP:
+		return nil
+	case CurrencyCodeTWD:
+		return nil
+	case CurrencyCodeTJS:
+		return nil
+	case CurrencyCodeTZS:
+		return nil
+	case CurrencyCodeTHB:
+		return nil
+	case CurrencyCodeTOP:
+		return nil
+	case CurrencyCodeTTD:
+		return nil
+	case CurrencyCodeTND:
+		return nil
+	case CurrencyCodeTRY:
+		return nil
+	case CurrencyCodeTMT:
+		return nil
+	case CurrencyCodeUGX:
+		return nil
+	case CurrencyCodeUAH:
+		return nil
+	case CurrencyCodeAED:
+		return nil
+	case CurrencyCodeUSN:
+		return nil
+	case CurrencyCodeUYU:
+		return nil
+	case CurrencyCodeUYI:
+		return nil
+	case CurrencyCodeUYW:
+		return nil
+	case CurrencyCodeUZS:
+		return nil
+	case CurrencyCodeVUV:
+		return nil
+	case CurrencyCodeVES:
+		return nil
+	case CurrencyCodeVED:
+		return nil
+	case CurrencyCodeVND:
+		return nil
+	case CurrencyCodeYER:
+		return nil
+	case CurrencyCodeZMW:
+		return nil
+	case CurrencyCodeZWL:
+		return nil
+	default:
+		return fmt.Errorf("invalid %s enum value", c)
 	}
-	enumValue := WithEnum(strValue)
-	if err := enumValue.Check(); err != nil {
+}
 
-		return err
+type Currency string
+
+const (
+	CurrencyAFN Currency = "AFN"
+	CurrencyEUR Currency = "EUR"
+	CurrencyALL Currency = "ALL"
+	CurrencyDZD Currency = "DZD"
+	CurrencyUSD Currency = "USD"
+	CurrencyAOA Currency = "AOA"
+	CurrencyXCD Currency = "XCD"
+	CurrencyARS Currency = "ARS"
+	CurrencyAMD Currency = "AMD"
+	CurrencyAWG Currency = "AWG"
+	CurrencyAUD Currency = "AUD"
+	CurrencyAZN Currency = "AZN"
+	CurrencyBSD Currency = "BSD"
+	CurrencyBHD Currency = "BHD"
+	CurrencyBDT Currency = "BDT"
+	CurrencyBBD Currency = "BBD"
+	CurrencyBYN Currency = "BYN"
+	CurrencyBZD Currency = "BZD"
+	CurrencyXOF Currency = "XOF"
+	CurrencyBMD Currency = "BMD"
+	CurrencyINR Currency = "INR"
+	CurrencyBTN Currency = "BTN"
+	CurrencyBOB Currency = "BOB"
+	CurrencyBOV Currency = "BOV"
+	CurrencyBAM Currency = "BAM"
+	CurrencyBWP Currency = "BWP"
+	CurrencyNOK Currency = "NOK"
+	CurrencyBRL Currency = "BRL"
+	CurrencyBND Currency = "BND"
+	CurrencyBGN Currency = "BGN"
+	CurrencyBIF Currency = "BIF"
+	CurrencyCVE Currency = "CVE"
+	CurrencyKHR Currency = "KHR"
+	CurrencyXAF Currency = "XAF"
+	CurrencyCAD Currency = "CAD"
+	CurrencyKYD Currency = "KYD"
+	CurrencyCLP Currency = "CLP"
+	CurrencyCLF Currency = "CLF"
+	CurrencyCNY Currency = "CNY"
+	CurrencyCOP Currency = "COP"
+	CurrencyCOU Currency = "COU"
+	CurrencyKMF Currency = "KMF"
+	CurrencyCDF Currency = "CDF"
+	CurrencyNZD Currency = "NZD"
+	CurrencyCRC Currency = "CRC"
+	CurrencyHRK Currency = "HRK"
+	CurrencyCUP Currency = "CUP"
+	CurrencyCUC Currency = "CUC"
+	CurrencyANG Currency = "ANG"
+	CurrencyCZK Currency = "CZK"
+	CurrencyDKK Currency = "DKK"
+	CurrencyDJF Currency = "DJF"
+	CurrencyDOP Currency = "DOP"
+	CurrencyEGP Currency = "EGP"
+	CurrencySVC Currency = "SVC"
+	CurrencyERN Currency = "ERN"
+	CurrencySZL Currency = "SZL"
+	CurrencyETB Currency = "ETB"
+	CurrencyFKP Currency = "FKP"
+	CurrencyFJD Currency = "FJD"
+	CurrencyXPF Currency = "XPF"
+	CurrencyGMD Currency = "GMD"
+	CurrencyGEL Currency = "GEL"
+	CurrencyGHS Currency = "GHS"
+	CurrencyGIP Currency = "GIP"
+	CurrencyGTQ Currency = "GTQ"
+	CurrencyGBP Currency = "GBP"
+	CurrencyGNF Currency = "GNF"
+	CurrencyGYD Currency = "GYD"
+	CurrencyHTG Currency = "HTG"
+	CurrencyHNL Currency = "HNL"
+	CurrencyHKD Currency = "HKD"
+	CurrencyHUF Currency = "HUF"
+	CurrencyISK Currency = "ISK"
+	CurrencyIDR Currency = "IDR"
+	CurrencyXDR Currency = "XDR"
+	CurrencyIRR Currency = "IRR"
+	CurrencyIQD Currency = "IQD"
+	CurrencyILS Currency = "ILS"
+	CurrencyJMD Currency = "JMD"
+	CurrencyJPY Currency = "JPY"
+	CurrencyJOD Currency = "JOD"
+	CurrencyKZT Currency = "KZT"
+	CurrencyKES Currency = "KES"
+	CurrencyKPW Currency = "KPW"
+	CurrencyKRW Currency = "KRW"
+	CurrencyKWD Currency = "KWD"
+	CurrencyKGS Currency = "KGS"
+	CurrencyLAK Currency = "LAK"
+	CurrencyLBP Currency = "LBP"
+	CurrencyLSL Currency = "LSL"
+	CurrencyZAR Currency = "ZAR"
+	CurrencyLRD Currency = "LRD"
+	CurrencyLYD Currency = "LYD"
+	CurrencyCHF Currency = "CHF"
+	CurrencyMOP Currency = "MOP"
+	CurrencyMKD Currency = "MKD"
+	CurrencyMGA Currency = "MGA"
+	CurrencyMWK Currency = "MWK"
+	CurrencyMYR Currency = "MYR"
+	CurrencyMVR Currency = "MVR"
+	CurrencyMRU Currency = "MRU"
+	CurrencyMUR Currency = "MUR"
+	CurrencyXUA Currency = "XUA"
+	CurrencyMXN Currency = "MXN"
+	CurrencyMXV Currency = "MXV"
+	CurrencyMDL Currency = "MDL"
+	CurrencyMNT Currency = "MNT"
+	CurrencyMAD Currency = "MAD"
+	CurrencyMZN Currency = "MZN"
+	CurrencyMMK Currency = "MMK"
+	CurrencyNAD Currency = "NAD"
+	CurrencyNPR Currency = "NPR"
+	CurrencyNIO Currency = "NIO"
+	CurrencyNGN Currency = "NGN"
+	CurrencyOMR Currency = "OMR"
+	CurrencyPKR Currency = "PKR"
+	CurrencyPAB Currency = "PAB"
+	CurrencyPGK Currency = "PGK"
+	CurrencyPYG Currency = "PYG"
+	CurrencyPEN Currency = "PEN"
+	CurrencyPHP Currency = "PHP"
+	CurrencyPLN Currency = "PLN"
+	CurrencyQAR Currency = "QAR"
+	CurrencyRON Currency = "RON"
+	CurrencyRUB Currency = "RUB"
+	CurrencyRWF Currency = "RWF"
+	CurrencySHP Currency = "SHP"
+	CurrencyWST Currency = "WST"
+	CurrencySTN Currency = "STN"
+	CurrencySAR Currency = "SAR"
+	CurrencyRSD Currency = "RSD"
+	CurrencySCR Currency = "SCR"
+	CurrencySLL Currency = "SLL"
+	CurrencySLE Currency = "SLE"
+	CurrencySGD Currency = "SGD"
+	CurrencyXSU Currency = "XSU"
+	CurrencySBD Currency = "SBD"
+	CurrencySOS Currency = "SOS"
+	CurrencySSP Currency = "SSP"
+	CurrencyLKR Currency = "LKR"
+	CurrencySDG Currency = "SDG"
+	CurrencySRD Currency = "SRD"
+	CurrencySEK Currency = "SEK"
+	CurrencyCHE Currency = "CHE"
+	CurrencyCHW Currency = "CHW"
+	CurrencySYP Currency = "SYP"
+	CurrencyTWD Currency = "TWD"
+	CurrencyTJS Currency = "TJS"
+	CurrencyTZS Currency = "TZS"
+	CurrencyTHB Currency = "THB"
+	CurrencyTOP Currency = "TOP"
+	CurrencyTTD Currency = "TTD"
+	CurrencyTND Currency = "TND"
+	CurrencyTRY Currency = "TRY"
+	CurrencyTMT Currency = "TMT"
+	CurrencyUGX Currency = "UGX"
+	CurrencyUAH Currency = "UAH"
+	CurrencyAED Currency = "AED"
+	CurrencyUSN Currency = "USN"
+	CurrencyUYU Currency = "UYU"
+	CurrencyUYI Currency = "UYI"
+	CurrencyUYW Currency = "UYW"
+	CurrencyUZS Currency = "UZS"
+	CurrencyVUV Currency = "VUV"
+	CurrencyVES Currency = "VES"
+	CurrencyVED Currency = "VED"
+	CurrencyVND Currency = "VND"
+	CurrencyYER Currency = "YER"
+	CurrencyZMW Currency = "ZMW"
+	CurrencyZWL Currency = "ZWL"
+)
+
+func (c Currency) Validate() error {
+	switch c {
+	case CurrencyAFN:
+		return nil
+	case CurrencyEUR:
+		return nil
+	case CurrencyALL:
+		return nil
+	case CurrencyDZD:
+		return nil
+	case CurrencyUSD:
+		return nil
+	case CurrencyAOA:
+		return nil
+	case CurrencyXCD:
+		return nil
+	case CurrencyARS:
+		return nil
+	case CurrencyAMD:
+		return nil
+	case CurrencyAWG:
+		return nil
+	case CurrencyAUD:
+		return nil
+	case CurrencyAZN:
+		return nil
+	case CurrencyBSD:
+		return nil
+	case CurrencyBHD:
+		return nil
+	case CurrencyBDT:
+		return nil
+	case CurrencyBBD:
+		return nil
+	case CurrencyBYN:
+		return nil
+	case CurrencyBZD:
+		return nil
+	case CurrencyXOF:
+		return nil
+	case CurrencyBMD:
+		return nil
+	case CurrencyINR:
+		return nil
+	case CurrencyBTN:
+		return nil
+	case CurrencyBOB:
+		return nil
+	case CurrencyBOV:
+		return nil
+	case CurrencyBAM:
+		return nil
+	case CurrencyBWP:
+		return nil
+	case CurrencyNOK:
+		return nil
+	case CurrencyBRL:
+		return nil
+	case CurrencyBND:
+		return nil
+	case CurrencyBGN:
+		return nil
+	case CurrencyBIF:
+		return nil
+	case CurrencyCVE:
+		return nil
+	case CurrencyKHR:
+		return nil
+	case CurrencyXAF:
+		return nil
+	case CurrencyCAD:
+		return nil
+	case CurrencyKYD:
+		return nil
+	case CurrencyCLP:
+		return nil
+	case CurrencyCLF:
+		return nil
+	case CurrencyCNY:
+		return nil
+	case CurrencyCOP:
+		return nil
+	case CurrencyCOU:
+		return nil
+	case CurrencyKMF:
+		return nil
+	case CurrencyCDF:
+		return nil
+	case CurrencyNZD:
+		return nil
+	case CurrencyCRC:
+		return nil
+	case CurrencyHRK:
+		return nil
+	case CurrencyCUP:
+		return nil
+	case CurrencyCUC:
+		return nil
+	case CurrencyANG:
+		return nil
+	case CurrencyCZK:
+		return nil
+	case CurrencyDKK:
+		return nil
+	case CurrencyDJF:
+		return nil
+	case CurrencyDOP:
+		return nil
+	case CurrencyEGP:
+		return nil
+	case CurrencySVC:
+		return nil
+	case CurrencyERN:
+		return nil
+	case CurrencySZL:
+		return nil
+	case CurrencyETB:
+		return nil
+	case CurrencyFKP:
+		return nil
+	case CurrencyFJD:
+		return nil
+	case CurrencyXPF:
+		return nil
+	case CurrencyGMD:
+		return nil
+	case CurrencyGEL:
+		return nil
+	case CurrencyGHS:
+		return nil
+	case CurrencyGIP:
+		return nil
+	case CurrencyGTQ:
+		return nil
+	case CurrencyGBP:
+		return nil
+	case CurrencyGNF:
+		return nil
+	case CurrencyGYD:
+		return nil
+	case CurrencyHTG:
+		return nil
+	case CurrencyHNL:
+		return nil
+	case CurrencyHKD:
+		return nil
+	case CurrencyHUF:
+		return nil
+	case CurrencyISK:
+		return nil
+	case CurrencyIDR:
+		return nil
+	case CurrencyXDR:
+		return nil
+	case CurrencyIRR:
+		return nil
+	case CurrencyIQD:
+		return nil
+	case CurrencyILS:
+		return nil
+	case CurrencyJMD:
+		return nil
+	case CurrencyJPY:
+		return nil
+	case CurrencyJOD:
+		return nil
+	case CurrencyKZT:
+		return nil
+	case CurrencyKES:
+		return nil
+	case CurrencyKPW:
+		return nil
+	case CurrencyKRW:
+		return nil
+	case CurrencyKWD:
+		return nil
+	case CurrencyKGS:
+		return nil
+	case CurrencyLAK:
+		return nil
+	case CurrencyLBP:
+		return nil
+	case CurrencyLSL:
+		return nil
+	case CurrencyZAR:
+		return nil
+	case CurrencyLRD:
+		return nil
+	case CurrencyLYD:
+		return nil
+	case CurrencyCHF:
+		return nil
+	case CurrencyMOP:
+		return nil
+	case CurrencyMKD:
+		return nil
+	case CurrencyMGA:
+		return nil
+	case CurrencyMWK:
+		return nil
+	case CurrencyMYR:
+		return nil
+	case CurrencyMVR:
+		return nil
+	case CurrencyMRU:
+		return nil
+	case CurrencyMUR:
+		return nil
+	case CurrencyXUA:
+		return nil
+	case CurrencyMXN:
+		return nil
+	case CurrencyMXV:
+		return nil
+	case CurrencyMDL:
+		return nil
+	case CurrencyMNT:
+		return nil
+	case CurrencyMAD:
+		return nil
+	case CurrencyMZN:
+		return nil
+	case CurrencyMMK:
+		return nil
+	case CurrencyNAD:
+		return nil
+	case CurrencyNPR:
+		return nil
+	case CurrencyNIO:
+		return nil
+	case CurrencyNGN:
+		return nil
+	case CurrencyOMR:
+		return nil
+	case CurrencyPKR:
+		return nil
+	case CurrencyPAB:
+		return nil
+	case CurrencyPGK:
+		return nil
+	case CurrencyPYG:
+		return nil
+	case CurrencyPEN:
+		return nil
+	case CurrencyPHP:
+		return nil
+	case CurrencyPLN:
+		return nil
+	case CurrencyQAR:
+		return nil
+	case CurrencyRON:
+		return nil
+	case CurrencyRUB:
+		return nil
+	case CurrencyRWF:
+		return nil
+	case CurrencySHP:
+		return nil
+	case CurrencyWST:
+		return nil
+	case CurrencySTN:
+		return nil
+	case CurrencySAR:
+		return nil
+	case CurrencyRSD:
+		return nil
+	case CurrencySCR:
+		return nil
+	case CurrencySLL:
+		return nil
+	case CurrencySLE:
+		return nil
+	case CurrencySGD:
+		return nil
+	case CurrencyXSU:
+		return nil
+	case CurrencySBD:
+		return nil
+	case CurrencySOS:
+		return nil
+	case CurrencySSP:
+		return nil
+	case CurrencyLKR:
+		return nil
+	case CurrencySDG:
+		return nil
+	case CurrencySRD:
+		return nil
+	case CurrencySEK:
+		return nil
+	case CurrencyCHE:
+		return nil
+	case CurrencyCHW:
+		return nil
+	case CurrencySYP:
+		return nil
+	case CurrencyTWD:
+		return nil
+	case CurrencyTJS:
+		return nil
+	case CurrencyTZS:
+		return nil
+	case CurrencyTHB:
+		return nil
+	case CurrencyTOP:
+		return nil
+	case CurrencyTTD:
+		return nil
+	case CurrencyTND:
+		return nil
+	case CurrencyTRY:
+		return nil
+	case CurrencyTMT:
+		return nil
+	case CurrencyUGX:
+		return nil
+	case CurrencyUAH:
+		return nil
+	case CurrencyAED:
+		return nil
+	case CurrencyUSN:
+		return nil
+	case CurrencyUYU:
+		return nil
+	case CurrencyUYI:
+		return nil
+	case CurrencyUYW:
+		return nil
+	case CurrencyUZS:
+		return nil
+	case CurrencyVUV:
+		return nil
+	case CurrencyVES:
+		return nil
+	case CurrencyVED:
+		return nil
+	case CurrencyVND:
+		return nil
+	case CurrencyYER:
+		return nil
+	case CurrencyZMW:
+		return nil
+	case CurrencyZWL:
+		return nil
+	default:
+		return fmt.Errorf("invalid %s enum value", c)
 	}
-	*enum = enumValue
+}
 
-	return nil
+type Country string
+
+const (
+	CountryAF Country = "AF"
+	CountryAL Country = "AL"
+	CountryDZ Country = "DZ"
+	CountryAS Country = "AS"
+	CountryAD Country = "AD"
+	CountryAO Country = "AO"
+	CountryAI Country = "AI"
+	CountryAQ Country = "AQ"
+	CountryAG Country = "AG"
+	CountryAR Country = "AR"
+	CountryAM Country = "AM"
+	CountryAW Country = "AW"
+	CountryAU Country = "AU"
+	CountryAT Country = "AT"
+	CountryAZ Country = "AZ"
+	CountryBS Country = "BS"
+	CountryBH Country = "BH"
+	CountryBD Country = "BD"
+	CountryBB Country = "BB"
+	CountryBY Country = "BY"
+	CountryBE Country = "BE"
+	CountryBZ Country = "BZ"
+	CountryBJ Country = "BJ"
+	CountryBM Country = "BM"
+	CountryBT Country = "BT"
+	CountryBO Country = "BO"
+	CountryBQ Country = "BQ"
+	CountryBA Country = "BA"
+	CountryBW Country = "BW"
+	CountryBV Country = "BV"
+	CountryBR Country = "BR"
+	CountryIO Country = "IO"
+	CountryBN Country = "BN"
+	CountryBG Country = "BG"
+	CountryBF Country = "BF"
+	CountryBI Country = "BI"
+	CountryCV Country = "CV"
+	CountryKH Country = "KH"
+	CountryCM Country = "CM"
+	CountryCA Country = "CA"
+	CountryKY Country = "KY"
+	CountryCF Country = "CF"
+	CountryTD Country = "TD"
+	CountryCL Country = "CL"
+	CountryCN Country = "CN"
+	CountryCX Country = "CX"
+	CountryCC Country = "CC"
+	CountryCO Country = "CO"
+	CountryKM Country = "KM"
+	CountryCD Country = "CD"
+	CountryCG Country = "CG"
+	CountryCK Country = "CK"
+	CountryCR Country = "CR"
+	CountryHR Country = "HR"
+	CountryCU Country = "CU"
+	CountryCW Country = "CW"
+	CountryCY Country = "CY"
+	CountryCZ Country = "CZ"
+	CountryCI Country = "CI"
+	CountryDK Country = "DK"
+	CountryDJ Country = "DJ"
+	CountryDM Country = "DM"
+	CountryDO Country = "DO"
+	CountryEC Country = "EC"
+	CountryEG Country = "EG"
+	CountrySV Country = "SV"
+	CountryGQ Country = "GQ"
+	CountryER Country = "ER"
+	CountryEE Country = "EE"
+	CountrySZ Country = "SZ"
+	CountryET Country = "ET"
+	CountryFK Country = "FK"
+	CountryFO Country = "FO"
+	CountryFJ Country = "FJ"
+	CountryFI Country = "FI"
+	CountryFR Country = "FR"
+	CountryGF Country = "GF"
+	CountryPF Country = "PF"
+	CountryTF Country = "TF"
+	CountryGA Country = "GA"
+	CountryGM Country = "GM"
+	CountryGE Country = "GE"
+	CountryDE Country = "DE"
+	CountryGH Country = "GH"
+	CountryGI Country = "GI"
+	CountryGR Country = "GR"
+	CountryGL Country = "GL"
+	CountryGD Country = "GD"
+	CountryGP Country = "GP"
+	CountryGU Country = "GU"
+	CountryGT Country = "GT"
+	CountryGG Country = "GG"
+	CountryGN Country = "GN"
+	CountryGW Country = "GW"
+	CountryGY Country = "GY"
+	CountryHT Country = "HT"
+	CountryHM Country = "HM"
+	CountryVA Country = "VA"
+	CountryHN Country = "HN"
+	CountryHK Country = "HK"
+	CountryHU Country = "HU"
+	CountryIS Country = "IS"
+	CountryIN Country = "IN"
+	CountryID Country = "ID"
+	CountryIR Country = "IR"
+	CountryIQ Country = "IQ"
+	CountryIE Country = "IE"
+	CountryIM Country = "IM"
+	CountryIL Country = "IL"
+	CountryIT Country = "IT"
+	CountryJM Country = "JM"
+	CountryJP Country = "JP"
+	CountryJE Country = "JE"
+	CountryJO Country = "JO"
+	CountryKZ Country = "KZ"
+	CountryKE Country = "KE"
+	CountryKI Country = "KI"
+	CountryKP Country = "KP"
+	CountryKR Country = "KR"
+	CountryKW Country = "KW"
+	CountryKG Country = "KG"
+	CountryLA Country = "LA"
+	CountryLV Country = "LV"
+	CountryLB Country = "LB"
+	CountryLS Country = "LS"
+	CountryLR Country = "LR"
+	CountryLY Country = "LY"
+	CountryLI Country = "LI"
+	CountryLT Country = "LT"
+	CountryLU Country = "LU"
+	CountryMO Country = "MO"
+	CountryMG Country = "MG"
+	CountryMW Country = "MW"
+	CountryMY Country = "MY"
+	CountryMV Country = "MV"
+	CountryML Country = "ML"
+	CountryMT Country = "MT"
+	CountryMH Country = "MH"
+	CountryMQ Country = "MQ"
+	CountryMR Country = "MR"
+	CountryMU Country = "MU"
+	CountryYT Country = "YT"
+	CountryMX Country = "MX"
+	CountryFM Country = "FM"
+	CountryMD Country = "MD"
+	CountryMC Country = "MC"
+	CountryMN Country = "MN"
+	CountryME Country = "ME"
+	CountryMS Country = "MS"
+	CountryMA Country = "MA"
+	CountryMZ Country = "MZ"
+	CountryMM Country = "MM"
+	CountryNA Country = "NA"
+	CountryNR Country = "NR"
+	CountryNP Country = "NP"
+	CountryNL Country = "NL"
+	CountryNC Country = "NC"
+	CountryNZ Country = "NZ"
+	CountryNI Country = "NI"
+	CountryNE Country = "NE"
+	CountryNG Country = "NG"
+	CountryNU Country = "NU"
+	CountryNF Country = "NF"
+	CountryMK Country = "MK"
+	CountryMP Country = "MP"
+	CountryNO Country = "NO"
+	CountryOM Country = "OM"
+	CountryPK Country = "PK"
+	CountryPW Country = "PW"
+	CountryPS Country = "PS"
+	CountryPA Country = "PA"
+	CountryPG Country = "PG"
+	CountryPY Country = "PY"
+	CountryPE Country = "PE"
+	CountryPH Country = "PH"
+	CountryPN Country = "PN"
+	CountryPL Country = "PL"
+	CountryPT Country = "PT"
+	CountryPR Country = "PR"
+	CountryQA Country = "QA"
+	CountryRO Country = "RO"
+	CountryRU Country = "RU"
+	CountryRW Country = "RW"
+	CountryRE Country = "RE"
+	CountryBL Country = "BL"
+	CountrySH Country = "SH"
+	CountryKN Country = "KN"
+	CountryLC Country = "LC"
+	CountryMF Country = "MF"
+	CountryPM Country = "PM"
+	CountryVC Country = "VC"
+	CountryWS Country = "WS"
+	CountrySM Country = "SM"
+	CountryST Country = "ST"
+	CountrySA Country = "SA"
+	CountrySN Country = "SN"
+	CountryRS Country = "RS"
+	CountrySC Country = "SC"
+	CountrySL Country = "SL"
+	CountrySG Country = "SG"
+	CountrySX Country = "SX"
+	CountrySK Country = "SK"
+	CountrySI Country = "SI"
+	CountrySB Country = "SB"
+	CountrySO Country = "SO"
+	CountryZA Country = "ZA"
+	CountryGS Country = "GS"
+	CountrySS Country = "SS"
+	CountryES Country = "ES"
+	CountryLK Country = "LK"
+	CountrySD Country = "SD"
+	CountrySR Country = "SR"
+	CountrySJ Country = "SJ"
+	CountrySE Country = "SE"
+	CountryCH Country = "CH"
+	CountrySY Country = "SY"
+	CountryTW Country = "TW"
+	CountryTJ Country = "TJ"
+	CountryTZ Country = "TZ"
+	CountryTH Country = "TH"
+	CountryTL Country = "TL"
+	CountryTG Country = "TG"
+	CountryTK Country = "TK"
+	CountryTO Country = "TO"
+	CountryTT Country = "TT"
+	CountryTN Country = "TN"
+	CountryTM Country = "TM"
+	CountryTC Country = "TC"
+	CountryTV Country = "TV"
+	CountryTR Country = "TR"
+	CountryUG Country = "UG"
+	CountryUA Country = "UA"
+	CountryAE Country = "AE"
+	CountryGB Country = "GB"
+	CountryUM Country = "UM"
+	CountryUS Country = "US"
+	CountryUY Country = "UY"
+	CountryUZ Country = "UZ"
+	CountryVU Country = "VU"
+	CountryVE Country = "VE"
+	CountryVN Country = "VN"
+	CountryVG Country = "VG"
+	CountryVI Country = "VI"
+	CountryWF Country = "WF"
+	CountryEH Country = "EH"
+	CountryYE Country = "YE"
+	CountryZM Country = "ZM"
+	CountryZW Country = "ZW"
+	CountryAX Country = "AX"
+)
+
+func (c Country) Validate() error {
+	switch c {
+	case CountryAF:
+		return nil
+	case CountryAL:
+		return nil
+	case CountryDZ:
+		return nil
+	case CountryAS:
+		return nil
+	case CountryAD:
+		return nil
+	case CountryAO:
+		return nil
+	case CountryAI:
+		return nil
+	case CountryAQ:
+		return nil
+	case CountryAG:
+		return nil
+	case CountryAR:
+		return nil
+	case CountryAM:
+		return nil
+	case CountryAW:
+		return nil
+	case CountryAU:
+		return nil
+	case CountryAT:
+		return nil
+	case CountryAZ:
+		return nil
+	case CountryBS:
+		return nil
+	case CountryBH:
+		return nil
+	case CountryBD:
+		return nil
+	case CountryBB:
+		return nil
+	case CountryBY:
+		return nil
+	case CountryBE:
+		return nil
+	case CountryBZ:
+		return nil
+	case CountryBJ:
+		return nil
+	case CountryBM:
+		return nil
+	case CountryBT:
+		return nil
+	case CountryBO:
+		return nil
+	case CountryBQ:
+		return nil
+	case CountryBA:
+		return nil
+	case CountryBW:
+		return nil
+	case CountryBV:
+		return nil
+	case CountryBR:
+		return nil
+	case CountryIO:
+		return nil
+	case CountryBN:
+		return nil
+	case CountryBG:
+		return nil
+	case CountryBF:
+		return nil
+	case CountryBI:
+		return nil
+	case CountryCV:
+		return nil
+	case CountryKH:
+		return nil
+	case CountryCM:
+		return nil
+	case CountryCA:
+		return nil
+	case CountryKY:
+		return nil
+	case CountryCF:
+		return nil
+	case CountryTD:
+		return nil
+	case CountryCL:
+		return nil
+	case CountryCN:
+		return nil
+	case CountryCX:
+		return nil
+	case CountryCC:
+		return nil
+	case CountryCO:
+		return nil
+	case CountryKM:
+		return nil
+	case CountryCD:
+		return nil
+	case CountryCG:
+		return nil
+	case CountryCK:
+		return nil
+	case CountryCR:
+		return nil
+	case CountryHR:
+		return nil
+	case CountryCU:
+		return nil
+	case CountryCW:
+		return nil
+	case CountryCY:
+		return nil
+	case CountryCZ:
+		return nil
+	case CountryCI:
+		return nil
+	case CountryDK:
+		return nil
+	case CountryDJ:
+		return nil
+	case CountryDM:
+		return nil
+	case CountryDO:
+		return nil
+	case CountryEC:
+		return nil
+	case CountryEG:
+		return nil
+	case CountrySV:
+		return nil
+	case CountryGQ:
+		return nil
+	case CountryER:
+		return nil
+	case CountryEE:
+		return nil
+	case CountrySZ:
+		return nil
+	case CountryET:
+		return nil
+	case CountryFK:
+		return nil
+	case CountryFO:
+		return nil
+	case CountryFJ:
+		return nil
+	case CountryFI:
+		return nil
+	case CountryFR:
+		return nil
+	case CountryGF:
+		return nil
+	case CountryPF:
+		return nil
+	case CountryTF:
+		return nil
+	case CountryGA:
+		return nil
+	case CountryGM:
+		return nil
+	case CountryGE:
+		return nil
+	case CountryDE:
+		return nil
+	case CountryGH:
+		return nil
+	case CountryGI:
+		return nil
+	case CountryGR:
+		return nil
+	case CountryGL:
+		return nil
+	case CountryGD:
+		return nil
+	case CountryGP:
+		return nil
+	case CountryGU:
+		return nil
+	case CountryGT:
+		return nil
+	case CountryGG:
+		return nil
+	case CountryGN:
+		return nil
+	case CountryGW:
+		return nil
+	case CountryGY:
+		return nil
+	case CountryHT:
+		return nil
+	case CountryHM:
+		return nil
+	case CountryVA:
+		return nil
+	case CountryHN:
+		return nil
+	case CountryHK:
+		return nil
+	case CountryHU:
+		return nil
+	case CountryIS:
+		return nil
+	case CountryIN:
+		return nil
+	case CountryID:
+		return nil
+	case CountryIR:
+		return nil
+	case CountryIQ:
+		return nil
+	case CountryIE:
+		return nil
+	case CountryIM:
+		return nil
+	case CountryIL:
+		return nil
+	case CountryIT:
+		return nil
+	case CountryJM:
+		return nil
+	case CountryJP:
+		return nil
+	case CountryJE:
+		return nil
+	case CountryJO:
+		return nil
+	case CountryKZ:
+		return nil
+	case CountryKE:
+		return nil
+	case CountryKI:
+		return nil
+	case CountryKP:
+		return nil
+	case CountryKR:
+		return nil
+	case CountryKW:
+		return nil
+	case CountryKG:
+		return nil
+	case CountryLA:
+		return nil
+	case CountryLV:
+		return nil
+	case CountryLB:
+		return nil
+	case CountryLS:
+		return nil
+	case CountryLR:
+		return nil
+	case CountryLY:
+		return nil
+	case CountryLI:
+		return nil
+	case CountryLT:
+		return nil
+	case CountryLU:
+		return nil
+	case CountryMO:
+		return nil
+	case CountryMG:
+		return nil
+	case CountryMW:
+		return nil
+	case CountryMY:
+		return nil
+	case CountryMV:
+		return nil
+	case CountryML:
+		return nil
+	case CountryMT:
+		return nil
+	case CountryMH:
+		return nil
+	case CountryMQ:
+		return nil
+	case CountryMR:
+		return nil
+	case CountryMU:
+		return nil
+	case CountryYT:
+		return nil
+	case CountryMX:
+		return nil
+	case CountryFM:
+		return nil
+	case CountryMD:
+		return nil
+	case CountryMC:
+		return nil
+	case CountryMN:
+		return nil
+	case CountryME:
+		return nil
+	case CountryMS:
+		return nil
+	case CountryMA:
+		return nil
+	case CountryMZ:
+		return nil
+	case CountryMM:
+		return nil
+	case CountryNA:
+		return nil
+	case CountryNR:
+		return nil
+	case CountryNP:
+		return nil
+	case CountryNL:
+		return nil
+	case CountryNC:
+		return nil
+	case CountryNZ:
+		return nil
+	case CountryNI:
+		return nil
+	case CountryNE:
+		return nil
+	case CountryNG:
+		return nil
+	case CountryNU:
+		return nil
+	case CountryNF:
+		return nil
+	case CountryMK:
+		return nil
+	case CountryMP:
+		return nil
+	case CountryNO:
+		return nil
+	case CountryOM:
+		return nil
+	case CountryPK:
+		return nil
+	case CountryPW:
+		return nil
+	case CountryPS:
+		return nil
+	case CountryPA:
+		return nil
+	case CountryPG:
+		return nil
+	case CountryPY:
+		return nil
+	case CountryPE:
+		return nil
+	case CountryPH:
+		return nil
+	case CountryPN:
+		return nil
+	case CountryPL:
+		return nil
+	case CountryPT:
+		return nil
+	case CountryPR:
+		return nil
+	case CountryQA:
+		return nil
+	case CountryRO:
+		return nil
+	case CountryRU:
+		return nil
+	case CountryRW:
+		return nil
+	case CountryRE:
+		return nil
+	case CountryBL:
+		return nil
+	case CountrySH:
+		return nil
+	case CountryKN:
+		return nil
+	case CountryLC:
+		return nil
+	case CountryMF:
+		return nil
+	case CountryPM:
+		return nil
+	case CountryVC:
+		return nil
+	case CountryWS:
+		return nil
+	case CountrySM:
+		return nil
+	case CountryST:
+		return nil
+	case CountrySA:
+		return nil
+	case CountrySN:
+		return nil
+	case CountryRS:
+		return nil
+	case CountrySC:
+		return nil
+	case CountrySL:
+		return nil
+	case CountrySG:
+		return nil
+	case CountrySX:
+		return nil
+	case CountrySK:
+		return nil
+	case CountrySI:
+		return nil
+	case CountrySB:
+		return nil
+	case CountrySO:
+		return nil
+	case CountryZA:
+		return nil
+	case CountryGS:
+		return nil
+	case CountrySS:
+		return nil
+	case CountryES:
+		return nil
+	case CountryLK:
+		return nil
+	case CountrySD:
+		return nil
+	case CountrySR:
+		return nil
+	case CountrySJ:
+		return nil
+	case CountrySE:
+		return nil
+	case CountryCH:
+		return nil
+	case CountrySY:
+		return nil
+	case CountryTW:
+		return nil
+	case CountryTJ:
+		return nil
+	case CountryTZ:
+		return nil
+	case CountryTH:
+		return nil
+	case CountryTL:
+		return nil
+	case CountryTG:
+		return nil
+	case CountryTK:
+		return nil
+	case CountryTO:
+		return nil
+	case CountryTT:
+		return nil
+	case CountryTN:
+		return nil
+	case CountryTM:
+		return nil
+	case CountryTC:
+		return nil
+	case CountryTV:
+		return nil
+	case CountryTR:
+		return nil
+	case CountryUG:
+		return nil
+	case CountryUA:
+		return nil
+	case CountryAE:
+		return nil
+	case CountryGB:
+		return nil
+	case CountryUM:
+		return nil
+	case CountryUS:
+		return nil
+	case CountryUY:
+		return nil
+	case CountryUZ:
+		return nil
+	case CountryVU:
+		return nil
+	case CountryVE:
+		return nil
+	case CountryVN:
+		return nil
+	case CountryVG:
+		return nil
+	case CountryVI:
+		return nil
+	case CountryWF:
+		return nil
+	case CountryEH:
+		return nil
+	case CountryYE:
+		return nil
+	case CountryZM:
+		return nil
+	case CountryZW:
+		return nil
+	case CountryAX:
+		return nil
+	default:
+		return fmt.Errorf("invalid %s enum value", c)
+	}
+}
+
+type Result string
+
+const (
+	ResultSuccess Result = "success"
+	ResultFailed  Result = "failed"
+)
+
+func (r Result) Validate() error {
+	switch r {
+	case ResultSuccess:
+		return nil
+	case ResultFailed:
+		return nil
+	default:
+		return fmt.Errorf("invalid %s enum value", r)
+	}
 }
