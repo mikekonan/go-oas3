@@ -182,6 +182,66 @@ paths:
         description: Callback data
         required: true
       summary: Callback
+  /secure-endpoint:
+    get:
+      tags:
+        - auth
+      summary: Secure endpoint with normal security check
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '401':
+          description: Unauthorized
+  /semi-secure-endpoint:
+    get:
+      tags:
+        - auth
+      summary: Endpoint that parses but skips security validation
+      x-go-skip-security-check: true
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  apiKey:
+                    type: string
+        '400':
+          description: Bad Request
+  /bearer-endpoint:
+    post:
+      tags:
+        - auth
+      summary: Endpoint with Bearer token
+      security:
+        - Bearer: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '401':
+          description: Unauthorized
 components:
   securitySchemes:
     Bearer:
@@ -189,6 +249,10 @@ components:
       scheme: bearer
       name: Authorization
       in: header
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
     Cookie:
       type: apiKey
       in: cookie
