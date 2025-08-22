@@ -52,14 +52,20 @@ func (generator *Generator) variableForRegex(name string, schema *openapi3.Schem
 		Qual(PackageRegexp, MethodMustCompile).Call(jen.Lit(regexValue))
 }
 
-// getXGoRegex extracts regex pattern from schema extensions
+// getXGoRegex extracts regex pattern from schema extensions or Pattern field
 func (generator *Generator) getXGoRegex(schema *openapi3.SchemaRef) string {
 	if schema == nil || schema.Value == nil {
 		return ""
 	}
 
+	// Check x-go-regex extension first
 	if len(schema.Value.Extensions) > 0 && schema.Value.Extensions[ExtGoRegex] != nil {
 		return cast.ToString(schema.Value.Extensions[ExtGoRegex])
+	}
+
+	// Fall back to standard Pattern field
+	if schema.Value.Pattern != "" {
+		return schema.Value.Pattern
 	}
 
 	return ""
@@ -84,7 +90,8 @@ func (generator *Generator) additionalConstants(swagger *openapi3.T) (jen.Code, 
 	var parametersAdditionalConstants []jen.Code
 
 	// Process schemas for regex patterns
-	linq.From(swagger.Components.Schemas).
+	if swagger.Components != nil && swagger.Components.Schemas != nil {
+		linq.From(swagger.Components.Schemas).
 		SelectT(func(kv linq.KeyValue) jen.Code {
 			name := generator.normalizer.normalize(cast.ToString(kv.Key))
 			schemaRef := kv.Value.(*openapi3.SchemaRef)
@@ -94,6 +101,7 @@ func (generator *Generator) additionalConstants(swagger *openapi3.T) (jen.Code, 
 			return code != jen.Null()
 		}).
 		ToSlice(&componentsAdditionalConstants)
+	}
 
 	// Process paths for additional constants
 	linq.From(swagger.Paths.Map()).
@@ -141,13 +149,13 @@ func (generator *Generator) additionalConstants(swagger *openapi3.T) (jen.Code, 
 	return componentsCode, parametersAdditionalConstants
 }
 
-// wrapRequired wraps code with pointer type if required
+// wrapRequired wraps code with validation if required
 func (generator *Generator) wrapRequired(name string, isRequired bool, code jen.Code) jen.Code {
 	if isRequired {
 		return jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "Field").Call(
 			jen.Op("&").Id(name),
 			jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "Required"),
-		).Add(code)
+		)
 	}
 	return code
 }

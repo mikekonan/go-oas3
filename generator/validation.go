@@ -25,6 +25,11 @@ func (generator *Generator) validationFuncFromRules(receiverName string, name st
 // fieldValidationRuleFromSchema generates field validation rules from OpenAPI schema
 func (generator *Generator) fieldValidationRuleFromSchema(receiverName string, propertyName string, schema *openapi3.SchemaRef, required bool) jen.Code {
 	var fieldRule jen.Code
+	
+	if schema == nil || schema.Value == nil {
+		return fieldRule
+	}
+	
 	v := schema.Value
 
 	if generator.typee.getXGoSkipValidation(v) {

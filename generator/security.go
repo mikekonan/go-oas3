@@ -82,7 +82,7 @@ func (generator *Generator) wrapperSecurity(name string, operation *openapi3.Ope
 
 // securitySchemas generates security scheme types and processors
 func (generator *Generator) securitySchemas(swagger *openapi3.T) jen.Code {
-	if len(swagger.Components.SecuritySchemes) == 0 {
+	if swagger.Components == nil || len(swagger.Components.SecuritySchemes) == 0 {
 		return jen.Null()
 	}
 

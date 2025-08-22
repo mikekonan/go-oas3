@@ -13,6 +13,11 @@ import (
 func (generator *Generator) components(swagger *openapi3.T) jen.Code {
 	var componentsResult []jen.Code
 
+	// Check if components exist
+	if swagger.Components == nil || swagger.Components.Schemas == nil {
+		return jen.Empty()
+	}
+
 	// Generate regular components (non-enum schemas)
 	linq.From(swagger.Components.Schemas).
 		WhereT(func(kv linq.KeyValue) bool { return len(kv.Value.(*openapi3.SchemaRef).Value.Enum) == 0 }). //filter enums

@@ -22,7 +22,11 @@ func (generator *Generator) requestParameters(paths map[string]*openapi3.PathIte
 			linq.From(kv.Value.(*openapi3.PathItem).Operations()).
 				GroupByT(
 					func(kv linq.KeyValue) string {
-						return generator.normalizer.normalize(kv.Value.(*openapi3.Operation).Tags[0])
+						operation := kv.Value.(*openapi3.Operation)
+						if len(operation.Tags) == 0 {
+							return "default"
+						}
+						return generator.normalizer.normalize(operation.Tags[0])
 					},
 					func(kv linq.KeyValue) (result []jen.Code) {
 						name := generator.normalizer.normalizeOperationName(path, cast.ToString(kv.Key))
@@ -51,12 +55,17 @@ func (generator *Generator) requestParameters(paths map[string]*openapi3.PathIte
 
 						return
 					}).
-				ForEachT(func(kv linq.KeyValue) {
-					if _, ok := operationsCodeTags[cast.ToString(kv.Key)]; !ok {
-						operationsCodeTags[cast.ToString(kv.Key)] = []jen.Code{}
+				ForEachT(func(group linq.Group) {
+					if _, ok := operationsCodeTags[cast.ToString(group.Key)]; !ok {
+						operationsCodeTags[cast.ToString(group.Key)] = []jen.Code{}
 					}
 
-					operationsCodeTags[cast.ToString(kv.Key)] = append(operationsCodeTags[cast.ToString(kv.Key)], kv.Value.([]jen.Code)...)
+					// Extract the grouped jen.Code values
+					linq.From(group.Group).ForEachT(func(item interface{}) {
+						if codes, ok := item.([]jen.Code); ok {
+							operationsCodeTags[cast.ToString(group.Key)] = append(operationsCodeTags[cast.ToString(group.Key)], codes...)
+						}
+					})
 				})
 
 			return linq.From(operationsCodeTags).SelectT(func(kv linq.KeyValue) jen.Code {
@@ -83,7 +92,7 @@ func (generator *Generator) requestParameterStruct(name string, contentType stri
 	var additionalParameters []parameter
 
 	// Handle request body
-	if contentType != "" {
+	if contentType != "" && operation.RequestBody != nil && operation.RequestBody.Value != nil {
 		if appendContentTypeToName {
 			name += generator.normalizer.contentType(contentType)
 		}

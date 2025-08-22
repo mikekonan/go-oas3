@@ -82,7 +82,7 @@ func (generator *Generator) wrappers(swagger *openapi3.T) jen.Code {
 
 			wrappers = generator.normalizer.doubleLineAfterEachElement(wrappers...)
 
-			hasSecuritySchemas := len(swagger.Components.SecuritySchemes) > 0
+			hasSecuritySchemas := swagger.Components != nil && len(swagger.Components.SecuritySchemes) > 0
 			return jen.Add(
 				generator.handler(tag, tag+"Service", tag+"Router", hasSecuritySchemas, groupedOperations.operations),
 				jen.Line(), jen.Line(),
@@ -197,37 +197,35 @@ func (generator *Generator) handler(name string, serviceName string, routerName 
 	var methods []jen.Code
 
 	linq.From(operations).
-		SelectT(func(operation operationWithPath) jen.Code {
+		ForEachT(func(operation operationWithPath) {
 			methodName := generator.normalizer.normalizeOperationName(operation.path, cast.ToString(operation.method))
 
-			if operation.operation.RequestBody == nil || len(operation.operation.RequestBody.Value.Content) <= 1 {
+			if operation.operation.RequestBody == nil || (operation.operation.RequestBody.Value != nil && len(operation.operation.RequestBody.Value.Content) <= 1) {
 				requestName := methodName + SuffixRequest
 				responseName := methodName + SuffixResponse
-				return jen.Id(methodName).Params(
-					jen.Id("ctx").Qual("context", "Context"),
-					jen.Id("request").Op("*").Qual(generator.config.Package, requestName),
-				).Params(jen.Id("response").Op("*").Qual(generator.config.Package, responseName))
+				methods = append(methods, jen.Id(methodName).Params(
+					jen.Id("ctx").Qual("context", "Context"), jen.Id("request").Op("*").Qual(generator.config.Package, requestName),
+				).Params(
+					jen.Id("response").Op("*").Qual(generator.config.Package, responseName),
+				))
+				return
 			}
 
 			// Handle multiple content types
-			var contentTypeMethods []jen.Code
 			linq.From(operation.operation.RequestBody.Value.Content).
-				SelectT(func(kv linq.KeyValue) jen.Code {
+				ForEachT(func(kv linq.KeyValue) {
 					contentType := cast.ToString(kv.Key)
 					contentMethodName := methodName + generator.normalizer.contentType(contentType)
 					requestName := contentMethodName + SuffixRequest
 					responseName := methodName + SuffixResponse
 
-					return jen.Id(contentMethodName).Params(
-						jen.Id("ctx").Qual("context", "Context"),
-						jen.Id("request").Op("*").Qual(generator.config.Package, requestName),
-					).Params(jen.Id("response").Op("*").Qual(generator.config.Package, responseName))
-				}).
-				ToSlice(&contentTypeMethods)
-
-			return jen.Add(contentTypeMethods...)
-		}).
-		ToSlice(&methods)
+					methods = append(methods, jen.Id(contentMethodName).Params(
+						jen.Id("ctx").Qual("context", "Context"), jen.Id("request").Op("*").Qual(generator.config.Package, requestName),
+					).Params(
+						jen.Id("response").Op("*").Qual(generator.config.Package, responseName),
+					))
+				})
+		})
 
 	return jen.Type().Id(serviceName).Interface(methods...)
 }
