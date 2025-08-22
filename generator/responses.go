@@ -31,6 +31,7 @@ func (generator *Generator) requestResponseBuilders(swagger *openapi3.T) jen.Cod
 	result := []jen.Code{
 		generator.responseStruct(),
 		generator.handlersTypes(swagger),
+		generator.operationResponseTypes(swagger),
 		generator.builders(swagger),
 		generator.handlersInterfaces(swagger),
 		generator.requestParameters(swagger.Paths.Map()),
@@ -140,15 +141,37 @@ func (generator *Generator) handlersInterfaces(swagger *openapi3.T) jen.Code {
 	return jen.Add(interfaceTypes...)
 }
 
+// operationResponseTypes generates specific response types for each operation
+func (generator *Generator) operationResponseTypes(swagger *openapi3.T) jen.Code {
+	var responseTypes []jen.Code
+
+	linq.From(generator.groupedOperations(swagger)).
+		SelectManyT(func(groupedOperations groupedOperations) linq.Query {
+			return linq.From(groupedOperations.operations).
+				SelectT(func(operation operationWithPath) jen.Code {
+					name := generator.normalizer.normalizeOperationName(operation.path, cast.ToString(operation.method))
+					return generator.operationResponseType(name)
+				})
+		}).
+		ToSlice(&responseTypes)
+
+	if len(responseTypes) == 0 {
+		return jen.Null()
+	}
+
+	responseTypes = generator.normalizer.doubleLineAfterEachElement(responseTypes...)
+	return jen.Add(responseTypes...)
+}
+
 // responseStruct generates the base Response struct
 func (generator *Generator) responseStruct() jen.Code {
-	return jen.Type().Id("Response").Struct(
+	return jen.Type().Id("response").Struct(
 		jen.Id("body").Interface(),
 		jen.Id("contentType").String(),
 		jen.Id("statusCode").Int(),
 		jen.Id("headers").Map(jen.String()).String(),
 	).Line().Line().
-		Func().Params(jen.Id("r").Op("*").Id("Response")).Id("WriteTo").Params(
+		Func().Params(jen.Id("r").Op("*").Id("response")).Id("WriteTo").Params(
 			jen.Id("w").Qual(PackageNetHTTP, "ResponseWriter")).Block(
 		jen.For(jen.List(jen.Id("key"), jen.Id("value")).Op(":=").Range().Id("r").Dot("headers")).Block(
 			jen.Id("w").Dot("Header").Call().Dot("Set").Call(jen.Id("key"), jen.Id("value"))),
@@ -181,9 +204,29 @@ func (generator *Generator) responseInterface(name string) jen.Code {
 // responseType generates response type definitions
 func (generator *Generator) responseType(name string) jen.Code {
 	typeName := name + SuffixResponse
-	return jen.Type().Id(typeName).Interface(
-		jen.Id("WriteTo").Params(jen.Qual(PackageNetHTTP, "ResponseWriter")),
-	)
+	return jen.Type().Id(typeName).Struct(
+		jen.Op("*").Id("response"),
+	).Line().Line().
+		Func().Params(jen.Id("r").Op("*").Id(typeName)).Id("WriteTo").Params(
+			jen.Id("w").Qual(PackageNetHTTP, "ResponseWriter")).Block(
+			jen.If(jen.Id("r").Dot("response").Op("!=").Nil()).Block(
+				jen.Id("r").Dot("response").Dot("WriteTo").Call(jen.Id("w")),
+			),
+		)
+}
+
+// operationResponseType generates a specific response type for an operation
+func (generator *Generator) operationResponseType(name string) jen.Code {
+	typeName := name + SuffixResponse
+	return jen.Type().Id(typeName).Struct(
+		jen.Op("*").Id("response"),
+	).Line().Line().
+		Func().Params(jen.Id("r").Op("*").Id(typeName)).Id("WriteTo").Params(
+			jen.Id("w").Qual(PackageNetHTTP, "ResponseWriter")).Block(
+			jen.If(jen.Id("r").Dot("response").Op("!=").Nil()).Block(
+				jen.Id("r").Dot("response").Dot("WriteTo").Call(jen.Id("w")),
+			),
+		)
 }
 
 // responseBuilders generates response builder methods for an operation
@@ -200,6 +243,10 @@ func (generator *Generator) responseBuilders(operationStruct operationStruct) je
 		statusBuilder := generator.responseStatusCodeBuilder(response, statusBuilderName, nextBuilderName)
 		builders = append(builders, statusBuilder...)
 
+		// Generate generic content type builder
+		genericContentTypeBuilder := generator.genericContentTypeBuilder(nextBuilderName, response.ContentTypeBodyNameMap)
+		builders = append(builders, genericContentTypeBuilder...)
+
 		// Generate content type builders
 		for contentType, bodyBuilderName := range response.ContentTypeBodyNameMap {
 			contentTypeName := generator.contentTypeFuncName(contentType)
@@ -209,6 +256,11 @@ func (generator *Generator) responseBuilders(operationStruct operationStruct) je
 			
 			contentTypeBuilder := generator.responseContentTypeBuilder(contentTypeName, contentType, contentTypeBuilderName, bodyBuilderName, headerBuilderName, response.Headers)
 			builders = append(builders, contentTypeBuilder...)
+			
+			// Always generate header builders (even if empty)
+			headersStructName := operationStruct.Name + statusCode + contentTypeName + "Headers"
+			headerBuilder := generator.responseHeadersBuilder(response.Headers, headersStructName, headerBuilderName, operationStruct.ResponseName)
+			builders = append(builders, headerBuilder...)
 		}
 	}
 
@@ -222,11 +274,11 @@ func (generator *Generator) responseBuilders(operationStruct operationStruct) je
 
 // responseContentTypeBuilder generates content type specific builders
 func (generator *Generator) responseContentTypeBuilder(contentTypeName string, contentType string, contentTypeBuilderName string, bodyBuilderName string, nextBuilderName string, headers map[string]*openapi3.HeaderRef) (results []jen.Code) {
-	// Generate content type builder struct
+	// Generate the specific content type builder struct with response field
 	results = append(results, jen.Type().Id(contentTypeBuilderName).Struct(
-		jen.Id("response").Op("*").Id("Response"),
+		jen.Id("response").Op("*").Id("response"),
 	))
-
+	
 	// Generate body builder method
 	results = append(results, jen.Func().Params(jen.Id("b").Op("*").Id(contentTypeBuilderName)).Id(bodyBuilderName).Params(
 		jen.Id("body").Interface()).Op("*").Id(nextBuilderName).Block(
@@ -244,7 +296,7 @@ func (generator *Generator) responseStatusCodeBuilder(resp operationResponse, bu
 
 	// Generate status code builder struct
 	results = append(results, jen.Type().Id(builderName).Struct(
-		jen.Id("response").Op("*").Id("Response"),
+		jen.Id("response").Op("*").Id("response"),
 	))
 
 	// Generate status code setter method
@@ -258,29 +310,64 @@ func (generator *Generator) responseStatusCodeBuilder(resp operationResponse, bu
 
 // responseHeadersBuilder generates header builders
 func (generator *Generator) responseHeadersBuilder(headers map[string]*openapi3.HeaderRef, headersStructName string, headersBuilderName string, nextBuilderName string) (results []jen.Code) {
-	if len(headers) == 0 {
-		return nil
-	}
-
-	// Generate headers struct
+	// Generate headers struct (even if empty)
 	var headerFields []jen.Code
-	for headerName, headerRef := range headers {
-		fieldName := generator.normalizer.normalize(headerName)
-		field := jen.Id(fieldName)
-		
-		generator.typee.fillGoType(field, "", fieldName, headerRef.Value.Schema, false, false)
-		generator.typee.fillJsonTag(field, headerRef.Value.Schema, headerName)
-		
-		headerFields = append(headerFields, field)
+	if len(headers) > 0 {
+		for headerName, headerRef := range headers {
+			fieldName := generator.normalizer.normalize(headerName)
+			field := jen.Id(fieldName)
+			
+			generator.typee.fillGoType(field, "", fieldName, headerRef.Value.Schema, false, false)
+			generator.typee.fillJsonTag(field, headerRef.Value.Schema, headerName)
+			
+			headerFields = append(headerFields, field)
+		}
+		results = append(results, jen.Type().Id(headersStructName).Struct(headerFields...))
+	} else {
+		// Generate empty headers struct for consistency
+		results = append(results, jen.Type().Id(headersStructName).Struct())
 	}
 
-	results = append(results, jen.Type().Id(headersStructName).Struct(headerFields...))
+	// Always generate headers builder type
+	results = append(results, jen.Type().Id(headersBuilderName).Struct(
+		jen.Id("response").Op("*").Id("response"),
+	))
 
 	// Generate headers builder method
-	results = append(results, jen.Func().Params(jen.Id("b").Op("*").Id(headersBuilderName)).Id("Headers").Params(
-		jen.Id("headers").Id(headersStructName)).Op("*").Id(nextBuilderName).Block(
-		jen.Return().Op("&").Id(nextBuilderName).Values(jen.Id("response").Op(":").Id("b").Dot("response")),
-	))
+	if len(headers) > 0 {
+		// Generate specific code for each header field
+		var headerStatements []jen.Code
+		headerStatements = append(headerStatements, jen.Comment("// Set headers in response"))
+		
+		// Initialize headers map if needed
+		headerStatements = append(headerStatements, jen.If(jen.Id("b").Dot("response").Dot("headers").Op("==").Nil()).Block(
+			jen.Id("b").Dot("response").Dot("headers").Op("=").Make(jen.Map(jen.String()).String()),
+		))
+		
+		// Generate code for each header field
+		for headerName := range headers {
+			fieldName := generator.normalizer.normalize(headerName)
+			
+			// Use the original header name as the key
+			headerStatements = append(headerStatements, 
+				jen.If(jen.Id("headers").Dot(fieldName).Op("!=").Lit("")).Block(
+					jen.Id("b").Dot("response").Dot("headers").Index(jen.Lit(headerName)).Op("=").Id("headers").Dot(fieldName),
+				),
+			)
+		}
+		
+		headerStatements = append(headerStatements, jen.Return().Op("&").Id(nextBuilderName).Values(jen.Id("response").Op(":").Id("b").Dot("response")))
+		
+		results = append(results, jen.Func().Params(jen.Id("b").Op("*").Id(headersBuilderName)).Id("Headers").Params(
+			jen.Id("headers").Id(headersStructName)).Op("*").Id(nextBuilderName).Block(headerStatements...),
+		)
+	} else {
+		// Generate empty headers method that returns next builder directly
+		results = append(results, jen.Func().Params(jen.Id("b").Op("*").Id(headersBuilderName)).Id("Headers").Params().Op("*").Id(nextBuilderName).Block(
+			jen.Comment("// No headers to set"),
+			jen.Return().Op("&").Id(nextBuilderName).Values(jen.Id("response").Op(":").Id("b").Dot("response")),
+		))
+	}
 
 	return results
 }
@@ -336,6 +423,44 @@ func (generator *Generator) responseImplementationFunc(name string) jen.Code {
 	interfaceName := name + "ResponseInterface"
 	
 	return jen.Func().Id(implFuncName).Params().Id(interfaceName).Block(
-		jen.Return().Op("&").Id("Response").Values(),
+		jen.Return().Op("&").Id("response").Values(),
 	)
+}
+
+// contentTypeBuilderName generates content type builder name
+func (generator *Generator) contentTypeBuilderName(baseName string) string {
+	return baseName + "ContentTypeBuilder"
+}
+
+// contentTypeFuncName normalizes content type for function names
+func (generator *Generator) contentTypeFuncName(contentType string) string {
+	return generator.normalizer.contentType(contentType)
+}
+
+// bodyGeneratorName generates body generator method name
+func (generator *Generator) bodyGeneratorName(baseName, contentType string) string {
+	return baseName + generator.normalizer.contentType(contentType) + "BodyBuilder"
+}
+
+// genericContentTypeBuilder generates the main content type builder for an operation status
+func (generator *Generator) genericContentTypeBuilder(builderName string, contentTypeBodyNameMap map[string]string) []jen.Code {
+	var results []jen.Code
+	
+	// Generate the content type builder struct
+	results = append(results, jen.Type().Id(builderName).Struct(
+		jen.Id("response").Op("*").Id("response"),
+	))
+	
+	// Generate methods for each content type
+	for contentType := range contentTypeBodyNameMap {
+		contentTypeName := generator.contentTypeFuncName(contentType)
+		specificBuilderName := builderName[:len(builderName)-len("ContentTypeBuilder")] + contentTypeName + "ContentTypeBuilder"
+		
+		// Method to select specific content type
+		results = append(results, jen.Func().Params(jen.Id("b").Op("*").Id(builderName)).Id(contentTypeName).Params().Op("*").Id(specificBuilderName).Block(
+			jen.Return().Op("&").Id(specificBuilderName).Values(jen.Id("response").Op(":").Id("b").Dot("response")),
+		))
+	}
+	
+	return results
 }

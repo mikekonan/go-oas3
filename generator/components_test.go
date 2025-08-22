@@ -209,6 +209,10 @@ func TestGenerator_enums(t *testing.T) {
 
 	file := jen.NewFile("test").Add(result)
 	codeStr := file.GoString()
+	
+	// Debug: Print the actual generated code
+	t.Logf("Generated code: %q", codeStr)
+	
 	assert.Contains(t, codeStr, "type Status string")
 	assert.Contains(t, codeStr, "type Priority int")
 	assert.Contains(t, codeStr, `StatusActive   Status = "active"`)

@@ -57,14 +57,14 @@ func (generator *Generator) wrappers(swagger *openapi3.T) jen.Code {
 					name := generator.normalizer.normalizeOperationName(operation.path, cast.ToString(operation.method))
 
 					if operation.operation.RequestBody == nil {
-						return linq.From([]jen.Code{generator.wrapper(name, name+SuffixRequest, tag, cast.ToString(operation.method), operation.path, operation.operation, nil, "")})
+						return linq.From([]jen.Code{generator.wrapper(name, name+SuffixRequest, tag+"Router", cast.ToString(operation.method), operation.path, operation.operation, nil, "")})
 					}
 
 					if len(operation.operation.RequestBody.Value.Content) == 1 {
 						contentType := cast.ToString(linq.From(operation.operation.RequestBody.Value.Content).SelectT(func(kv linq.KeyValue) string { return cast.ToString(kv.Key) }).First())
 						mediaType := linq.From(operation.operation.RequestBody.Value.Content).SelectT(func(kv linq.KeyValue) *openapi3.MediaType { return kv.Value.(*openapi3.MediaType) }).First().(*openapi3.MediaType)
 
-						return linq.From([]jen.Code{generator.wrapper(name, name+SuffixRequest, tag, cast.ToString(operation.method), operation.path, operation.operation, mediaType.Schema, contentType)})
+						return linq.From([]jen.Code{generator.wrapper(name, name+SuffixRequest, tag+"Router", cast.ToString(operation.method), operation.path, operation.operation, mediaType.Schema, contentType)})
 					}
 
 					var result []jen.Code
@@ -74,7 +74,7 @@ func (generator *Generator) wrappers(swagger *openapi3.T) jen.Code {
 							name := generator.normalizer.normalizeOperationName(operation.path, cast.ToString(operation.method)) + generator.normalizer.contentType(contentType)
 							mediaType := kv.Value.(*openapi3.MediaType)
 
-							return generator.wrapper(name, name+SuffixRequest, tag, cast.ToString(operation.method), operation.path, operation.operation, mediaType.Schema, contentType)
+							return generator.wrapper(name, name+SuffixRequest, tag+"Router", cast.ToString(operation.method), operation.path, operation.operation, mediaType.Schema, contentType)
 						}).ToSlice(&result)
 
 					return linq.From(result)
@@ -92,19 +92,27 @@ func (generator *Generator) wrappers(swagger *openapi3.T) jen.Code {
 		}).ToSlice(&results)
 
 	results = generator.normalizer.doubleLineAfterEachElement(results...)
-	return jen.Add(results...)
+	
+	// Add common types once at the end
+	commonTypes := jen.Add(
+		generator.hooksStruct(),
+		jen.Line(), jen.Line(),
+		generator.requestProcessingResultType(),
+		jen.Line(), jen.Line(),
+	)
+	
+	return jen.Add(results...).Add(commonTypes)
 }
 
 // wrapper generates a wrapper function for a specific operation
 func (generator *Generator) wrapper(name string, requestName string, routerName, method string, path string, operation *openapi3.Operation, requestBody *openapi3.SchemaRef, contentType string) jen.Code {
 	wrapperName := generator.normalizer.decapitalize(name)
 
-	hookStruct := generator.hooksStruct()
-	processingResultType := generator.requestProcessingResultType()
+	// Common types are now generated at router level, not per wrapper
 
 	parsers := generator.wrapperRequestParsers(wrapperName, operation)
 	bodyParser := generator.wrapperBody(method, path, contentType, wrapperName, operation, requestBody)
-	securityParser := generator.wrapperSecurity(name, operation)
+	// securityParser := generator.wrapperSecurity(name, operation)
 	requestParser := generator.wrapperRequestParser(name, requestName, routerName, method, path, operation, requestBody, contentType)
 
 	wrapperBody := []jen.Code{
@@ -125,14 +133,15 @@ func (generator *Generator) wrapper(name string, requestName string, routerName,
 	}
 
 	// Add security parser
-	if securityParser != jen.Null() {
-		wrapperBody = append(wrapperBody, securityParser)
-		wrapperBody = append(wrapperBody, jen.Line())
-	}
+	// Temporarily disabled to isolate issue
+	// if securityParser != jen.Null() {
+	//	wrapperBody = append(wrapperBody, securityParser)
+	//	wrapperBody = append(wrapperBody, jen.Line())
+	// }
 
-	// Add request parser
+	// Add request parser call 
 	if requestParser != jen.Null() {
-		wrapperBody = append(wrapperBody, requestParser)
+		wrapperBody = append(wrapperBody, jen.Id("request").Op("=").Id("router").Dot("parse" + name + "Request").Call(jen.Id("r")))
 		wrapperBody = append(wrapperBody, jen.Line())
 	}
 
@@ -143,14 +152,12 @@ func (generator *Generator) wrapper(name string, requestName string, routerName,
 	)
 
 	return jen.Add(
-		hookStruct,
-		jen.Line(), jen.Line(),
-		processingResultType,
-		jen.Line(), jen.Line(),
 		jen.Func().Params(jen.Id("router").Op("*").Id(routerName)).Id(wrapperName).Params(
 			jen.Id("w").Qual(PackageNetHTTP, "ResponseWriter"),
 			jen.Id("r").Op("*").Qual(PackageNetHTTP, "Request"),
 		).Block(wrapperBody...),
+		jen.Line(), jen.Line(),
+		requestParser,
 	)
 }
 
@@ -204,9 +211,10 @@ func (generator *Generator) handler(name string, serviceName string, routerName 
 				requestName := methodName + SuffixRequest
 				responseName := methodName + SuffixResponse
 				methods = append(methods, jen.Id(methodName).Params(
-					jen.Id("ctx").Qual("context", "Context"), jen.Id("request").Op("*").Qual(generator.config.Package, requestName),
+					jen.Id("ctx").Qual("context", "Context"),
+					jen.Id("request").Op("*").Qual(generator.config.Package, requestName),
 				).Params(
-					jen.Id("response").Op("*").Qual(generator.config.Package, responseName),
+					jen.Op("*").Qual(generator.config.Package, responseName),
 				))
 				return
 			}
@@ -220,9 +228,10 @@ func (generator *Generator) handler(name string, serviceName string, routerName 
 					responseName := methodName + SuffixResponse
 
 					methods = append(methods, jen.Id(contentMethodName).Params(
-						jen.Id("ctx").Qual("context", "Context"), jen.Id("request").Op("*").Qual(generator.config.Package, requestName),
+						jen.Id("ctx").Qual("context", "Context"),
+						jen.Id("request").Op("*").Qual(generator.config.Package, requestName),
 					).Params(
-						jen.Id("response").Op("*").Qual(generator.config.Package, responseName),
+						jen.Op("*").Qual(generator.config.Package, responseName),
 					))
 				})
 		})
@@ -401,7 +410,10 @@ func (generator *Generator) wrapperRequestParser(name string, requestName string
 		jen.Id("request").Dot(FieldProcessingResult).Op("=").Id("RequestProcessingResult").Values(jen.Id("typee").Op(":").Id("ParseSucceed")).Line(),
 	}
 
-	funcCode = append(funcCode, generator.wrapperSecurity(name, operation))
+	if securityCode := generator.wrapperSecurity(name, operation); securityCode != jen.Null() {
+		funcCode = append(funcCode, jen.Line())
+		funcCode = append(funcCode, securityCode)
+	}
 	funcCode = append(funcCode, generator.wrapperRequestParsers(name, operation)...)
 	funcCode = append(funcCode, generator.wrapperBody(method, path, contentType, name, operation, requestBody))
 	funcCode = append(funcCode, jen.Line().If(jen.Id("router").Dot("hooks").Dot("RequestParseCompleted").Op("!=").Id("nil")).Block(

@@ -30,42 +30,40 @@ func (generator *Generator) wrapperSecurity(name string, operation *openapi3.Ope
 
 		for schemeName := range securityRequirement {
 			
-			securityBlock := jen.Add(
-				jen.For(jen.List(jen.Id("_"), jen.Id("processor")).Op(":=").Range().Id("router").Dot("processors")).Block(
-					jen.If(jen.Id("processor").Dot("scheme").Op("==").Id("SecurityScheme"+strings.Title(schemeName))).Block(
-						jen.List(jen.Id("name"), jen.Id("value"), jen.Id("found")).Op(":=").Id("processor").Dot("extract").Call(jen.Id("r")),
-						jen.If(jen.Op("!").Id("found")).Block(
-							jen.Id("request").Dot(FieldProcessingResult).Op("=").Id("RequestProcessingResult").Values(
-								jen.Id("error").Op(":").Qual(PackageFmt, MethodErrorf).Call(jen.Lit("security scheme %s not found"), jen.Id("processor").Dot("scheme")),
-								jen.Id("typee").Op(":").Id("SecurityParseFailed")),
-							jen.If(jen.Id("router").Dot("hooks").Dot("RequestSecurityParseFailed").Op("!=").Id("nil")).Block(
-								jen.Id("router").Dot("hooks").Dot("RequestSecurityParseFailed").Call(
-									jen.Id("r"),
-									jen.Lit(name),
-									jen.Id("request").Dot(FieldProcessingResult))),
-							jen.Return(),
-						),
-						jen.Line(),
-						jen.If(jen.Id("err").Op(":=").Id("processor").Dot("handle").Call(jen.Id("r"), jen.Id("processor").Dot("scheme"), jen.Id("name"), jen.Id("value")), jen.Id("err").Op("!=").Id("nil")).Block(
-							jen.Id("request").Dot(FieldProcessingResult).Op("=").Id("RequestProcessingResult").Values(
-								jen.Id("error").Op(":").Id("err"),
-								jen.Id("typee").Op(":").Id("SecurityCheckFailed")),
-							jen.If(jen.Id("router").Dot("hooks").Dot("RequestSecurityCheckFailed").Op("!=").Id("nil")).Block(
-								jen.Id("router").Dot("hooks").Dot("RequestSecurityCheckFailed").Call(
-									jen.Id("r"),
-									jen.Lit(name),
-									jen.Id("processor").Dot("scheme").Dot("String").Call(),
-									jen.Id("request").Dot(FieldProcessingResult))),
-							jen.Return(),
-						),
-						jen.Line(),
-						jen.If(jen.Id("router").Dot("hooks").Dot("RequestSecurityCheckCompleted").Op("!=").Id("nil")).Block(
-							jen.Id("router").Dot("hooks").Dot("RequestSecurityCheckCompleted").Call(
+			securityBlock := jen.Line().For(jen.List(jen.Id("_"), jen.Id("processor")).Op(":=").Range().Id("router").Dot("processors")).Block(
+				jen.If(jen.Id("processor").Dot("scheme").Op("==").Id("SecurityScheme"+strings.Title(schemeName))).Block(
+					jen.List(jen.Id("name"), jen.Id("value"), jen.Id("found")).Op(":=").Id("processor").Dot("extract").Call(jen.Id("r")),
+					jen.If(jen.Op("!").Id("found")).Block(
+						jen.Id("request").Dot(FieldProcessingResult).Op("=").Id("RequestProcessingResult").Values(
+							jen.Id("error").Op(":").Qual(PackageFmt, MethodErrorf).Call(jen.Lit("security scheme not found")),
+							jen.Id("typee").Op(":").Id("SecurityParseFailed")),
+						jen.If(jen.Id("router").Dot("hooks").Dot("RequestSecurityParseFailed").Op("!=").Id("nil")).Block(
+							jen.Id("router").Dot("hooks").Dot("RequestSecurityParseFailed").Call(
 								jen.Id("r"),
 								jen.Lit(name),
-								jen.Id("processor").Dot("scheme").Dot("String").Call())),
-						jen.Break(),
+								jen.Id("request").Dot(FieldProcessingResult))),
+						jen.Return(),
 					),
+					jen.Line(),
+					jen.If(jen.Id("err").Op(":=").Id("processor").Dot("handle").Call(jen.Id("r"), jen.Id("processor").Dot("scheme"), jen.Id("name"), jen.Id("value")), jen.Id("err").Op("!=").Id("nil")).Block(
+						jen.Id("request").Dot(FieldProcessingResult).Op("=").Id("RequestProcessingResult").Values(
+							jen.Id("error").Op(":").Id("err"),
+							jen.Id("typee").Op(":").Id("SecurityCheckFailed")),
+						jen.If(jen.Id("router").Dot("hooks").Dot("RequestSecurityCheckFailed").Op("!=").Id("nil")).Block(
+							jen.Id("router").Dot("hooks").Dot("RequestSecurityCheckFailed").Call(
+								jen.Id("r"),
+								jen.Lit(name),
+								jen.String().Call(jen.Id("processor").Dot("scheme")),
+								jen.Id("request").Dot(FieldProcessingResult))),
+						jen.Return(),
+					),
+					jen.Line(),
+					jen.If(jen.Id("router").Dot("hooks").Dot("RequestSecurityCheckCompleted").Op("!=").Id("nil")).Block(
+						jen.Id("router").Dot("hooks").Dot("RequestSecurityCheckCompleted").Call(
+							jen.Id("r"),
+							jen.Lit(name),
+							jen.String().Call(jen.Id("processor").Dot("scheme")))),
+					jen.Break(),
 				),
 			)
 
@@ -77,7 +75,10 @@ func (generator *Generator) wrapperSecurity(name string, operation *openapi3.Ope
 		return jen.Null()
 	}
 
-	return jen.Add(securityBlocks...).Line()
+	if len(securityBlocks) == 1 {
+		return securityBlocks[0]
+	}
+	return jen.Add(securityBlocks...)
 }
 
 // securitySchemas generates security scheme types and processors
@@ -166,18 +167,12 @@ func (generator *Generator) securitySchemas(swagger *openapi3.T) jen.Code {
 		WhereT(func(code jen.Code) bool { return code != jen.Null() }).
 		ToSlice(&extractorsHeadersFuncs)
 
-	// Generate security scheme map
-	var securitySchemeDictItems []jen.Code
-	linq.From(swagger.Components.SecuritySchemes).
-		SelectT(func(kv linq.KeyValue) jen.Code {
-			name := generator.normalizer.normalize(cast.ToString(kv.Key))
-			return jen.Id("SecurityScheme"+strings.Title(name)).Op(":").Id("SecurityScheme"+strings.Title(name))
-		}).
-		ToSlice(&securitySchemeDictItems)
-
-	code = code.Line().Line().Var().Id("SecuritySchemeExtractors").Op("=").Map(jen.Id("SecurityScheme")).Func().Params(
-		jen.Id("r").Op("*").Qual(PackageNetHTTP, "Request")).Params(jen.Id("string"), jen.Id("string"), jen.Id("bool")).
-		Values(securitySchemeDictItems...).Add(extractorsHeadersFuncs...)
+	// Generate the extractor map with inline functions
+	if len(extractorsHeadersFuncs) > 0 {
+		code = code.Line().Line().Var().Id("SecuritySchemeExtractors").Op("=").Map(jen.Id("SecurityScheme")).Func().Params(
+			jen.Id("r").Op("*").Qual(PackageNetHTTP, "Request")).Params(jen.Id("string"), jen.Id("string"), jen.Id("bool")).
+			Values(extractorsHeadersFuncs...)
+	}
 
 	return code
 }

@@ -32,6 +32,7 @@ func (generator *Generator) requestParameters(paths map[string]*openapi3.PathIte
 						name := generator.normalizer.normalizeOperationName(path, cast.ToString(kv.Key))
 						operation := kv.Value.(*openapi3.Operation)
 						
+						// Always generate a request struct, even if empty
 						if operation.RequestBody == nil {
 							result = append(result, generator.requestParameterStruct(name, "", false, operation))
 							return
@@ -146,11 +147,18 @@ func (generator *Generator) requestParameterStruct(name string, contentType stri
 		parameterStructs = append(parameterStructs, param.Code)
 	}
 
+	requestName := name + SuffixRequest
+	
+	// If no parameters, create empty struct with ProcessingResult
 	if len(parameterStructs) == 0 {
-		return jen.Null()
+		return jen.Type().Id(requestName).Struct(
+			jen.Id("ProcessingResult").Qual(generator.config.ComponentsPackage, "RequestProcessingResult"),
+		)
 	}
 
-	requestName := name + SuffixRequest
+	// Add ProcessingResult to all request structs
+	parameterStructs = append(parameterStructs, jen.Id("ProcessingResult").Qual(generator.config.ComponentsPackage, "RequestProcessingResult"))
+	
 	return jen.Type().Id(requestName).Struct(parameterStructs...)
 }
 
@@ -192,7 +200,7 @@ func (generator *Generator) wrapperRequestParsers(wrapperName string, operation 
 func (generator *Generator) generateParameterParser(in string, parameter *openapi3.ParameterRef, wrapperName string) jen.Code {
 	param := parameter.Value
 	propertyName := generator.normalizer.normalize(param.Name)
-	paramName := param.Name
+	paramName := generator.normalizer.normalize(param.Name)
 
 	switch in {
 	case InPath:
@@ -322,7 +330,13 @@ func (generator *Generator) wrapperCustomType(in string, name string, paramName 
 			Add(jen.Line()).
 			Add(jen.If(jen.Id("err").Op("!=").Id("nil")).Block(parseFailed...)).
 			Add(jen.Line(), jen.Line()).
-			Add(jen.Id("request").Dot(strings.Title(in)).Dot(name).Op("=").Id(paramName))
+			Add(func() jen.Code {
+				if parameter.Value.Required {
+					return jen.Id("request").Dot(in).Dot(name).Op("=").Id(paramName)
+				} else {
+					return jen.Id("request").Dot(in).Dot(name).Op("=").Op("&").Id(paramName)
+				}
+			}())
 
 		result.Add(generator.wrapRequired(paramName+"Str", parameter.Value.Required, parameterCode))
 	} else {
@@ -338,7 +352,13 @@ func (generator *Generator) wrapperCustomType(in string, name string, paramName 
 				Add(jen.Line()).
 				Add(jen.If(jen.Id("err").Op("!=").Id("nil")).Block(parseFailed...)).
 				Add(jen.Line(), jen.Line()).
-				Add(jen.Id("request").Dot(strings.Title(in)).Dot(name).Op("=").Id(paramName))
+				Add(func() jen.Code {
+					if parameter.Value.Required {
+						return jen.Id("request").Dot(in).Dot(name).Op("=").Id(paramName)
+					} else {
+						return jen.Id("request").Dot(in).Dot(name).Op("=").Op("&").Id(paramName)
+					}
+				}())
 
 			result.Add(generator.wrapRequired(paramName+"Str", parameter.Value.Required, parameterCode))
 		case FormatISO4217CurrencyCode:
@@ -347,7 +367,7 @@ func (generator *Generator) wrapperCustomType(in string, name string, paramName 
 				Add(jen.Line()).
 				Add(jen.If(jen.Id("err").Op("!=").Id("nil")).Block(parseFailed...)).
 				Add(jen.Line(), jen.Line()).
-				Add(jen.Id("request").Dot(strings.Title(in)).Dot(name).Op("=").Id(paramName).Dot("Code").Call())
+				Add(jen.Id("request").Dot(in).Dot(name).Op("=").Id(paramName).Dot("Code").Call())
 
 			result.Add(generator.wrapRequired(paramName+"Str", parameter.Value.Required, parameterCode))
 		case FormatISO3166Alpha2:
@@ -356,7 +376,7 @@ func (generator *Generator) wrapperCustomType(in string, name string, paramName 
 				Add(jen.Line()).
 				Add(jen.If(jen.Id("err").Op("!=").Id("nil")).Block(parseFailed...)).
 				Add(jen.Line(), jen.Line()).
-				Add(jen.Id("request").Dot(strings.Title(in)).Dot(name).Op("=").Id(paramName).Dot("Alpha2Code").Call())
+				Add(jen.Id("request").Dot(in).Dot(name).Op("=").Id(paramName).Dot("Alpha2Code").Call())
 
 			result.Add(generator.wrapRequired(paramName+"Str", parameter.Value.Required, parameterCode))
 		}
@@ -394,7 +414,7 @@ func (generator *Generator) wrapperEnum(in string, enumType string, name string,
 					jen.Id("request").Dot(FieldProcessingResult))),
 			jen.Line().Return())).
 		Add(jen.Line()).
-		Add(jen.Id("request").Dot(strings.Title(in)).Dot(name).Op("=").Id(paramName)).
+		Add(jen.Id("request").Dot(in).Dot(name).Op("=").Id(paramName)).
 		Add(jen.Line())
 
 	return result
@@ -435,7 +455,14 @@ func (generator *Generator) wrapperStr(in string, name string, paramName string,
 	// Handle regex validation
 	regex := generator.getXGoRegex(parameter.Value.Schema)
 	if regex != "" {
+		// Ensure regex variable is generated and get its name
 		regexVarName := generator.useRegex[regex]
+		if regexVarName == "" {
+			// Generate the regex variable if it doesn't exist
+			parameterName := generator.normalizer.normalize(parameter.Value.Name)
+			generator.variableForRegex(parameterName, parameter.Value.Schema)
+			regexVarName = generator.useRegex[regex]
+		}
 
 		result = result.Line().If(jen.Op("!").Id(regexVarName).Dot(MethodMatchString).Call(jen.Id(paramName))).Block(
 			jen.Id("err").Op(":=").Qual(PackageFmt, MethodErrorf).Call(jen.Lit(fmt.Sprintf(ErrorRegexNotMatched, parameter.Value.Name, regex))),
@@ -452,10 +479,20 @@ func (generator *Generator) wrapperStr(in string, name string, paramName string,
 			Line()
 	}
 
-	result = result.
-		Line().
-		Add(jen.Id("request").Dot(strings.Title(parameter.Value.In)).Dot(name).Op("=").Id(paramName)).
-		Line()
+	// For optional parameters, assign address of value to pointer field
+	if parameter.Value.Required {
+		result = result.
+			Line().
+			Add(jen.Id("request").Dot(parameter.Value.In).Dot(name).Op("=").Id(paramName)).
+			Line()
+	} else {
+		// Optional parameter - assign pointer to string
+		result = result.
+			Line().
+			Add(jen.If(jen.Id(paramName).Op("!=").Lit("")).Block(
+				jen.Id("request").Dot(parameter.Value.In).Dot(name).Op("=").Op("&").Id(paramName))).
+			Line()
+	}
 
 	return result
 }
@@ -492,10 +529,24 @@ func (generator *Generator) wrapperInteger(in string, name string, paramName str
 			Add(jen.Line())
 	}
 
-	return result.
-		Add(jen.Line()).
-		Add(jen.Id("request").Dot(strings.Title(parameter.Value.In)).Dot(name).Op("=").Qual("github.com/spf13/cast", "ToInt").Call(jen.Id(paramName))).
-		Add(jen.Line())
+	// For optional parameters, assign address of value to pointer field
+	if parameter.Value.Required {
+		result = result.
+			Add(jen.Line()).
+			Add(jen.Id("request").Dot(parameter.Value.In).Dot(name).Op("=").Qual("github.com/spf13/cast", "ToInt").Call(jen.Id(paramName))).
+			Add(jen.Line())
+	} else {
+		// Optional parameter - assign pointer to value
+		result = result.
+			Add(jen.Line()).
+			Add(jen.If(jen.Id(paramName).Op("!=").Lit("")).Block(
+				jen.List(jen.Id("intVal"), jen.Id("err")).Op(":=").Qual("github.com/spf13/cast", "ToIntE").Call(jen.Id(paramName)),
+				jen.If(jen.Id("err").Op("==").Id("nil")).Block(
+					jen.Id("request").Dot(parameter.Value.In).Dot(name).Op("=").Op("&").Id("intVal")))).
+			Add(jen.Line())
+	}
+
+	return result
 }
 
 // wrapperBody generates wrapper code for request body parsing
@@ -553,7 +604,6 @@ func (generator *Generator) wrapperBody(method string, path string, contentType 
 				jen.Id("router").Dot("hooks").Dot("RequestBodyUnmarshalFailed").Call(
 					jen.Id("r"),
 					jen.Lit(wrapperName),
-					jen.Lit(contentType),
 					jen.Id("request").Dot(FieldProcessingResult))),
 			jen.Line().Return())).
 		Add(jen.Line()).

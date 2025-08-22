@@ -216,7 +216,8 @@ func TestGenerator_fieldValidationRuleFromSchema(t *testing.T) {
 			}
 			
 			require.NotNil(t, result)
-			file := jen.NewFile("test").Add(result)
+			require.Greater(t, len(result), 0, "Expected at least one validation rule")
+			file := jen.NewFile("test").Add(result...)
 	codeStr := file.GoString()
 			
 			for _, expected := range tt.expectedInCode {
@@ -306,8 +307,9 @@ func TestGenerator_validation_EdgeCases(t *testing.T) {
 					assert.Nil(t, result)
 				} else {
 					assert.NotNil(t, result)
-					// Verify the code can be generated without panic
-					file := jen.NewFile("test").Add(result)
+					// Verify the code can be generated without panic by wrapping in validation function
+					validationFunc := generator.validationFuncFromRules("test", "Validate", result, tt.schema.Value)
+					file := jen.NewFile("test").Add(validationFunc)
 	codeStr := file.GoString()
 					assert.NotEmpty(t, codeStr)
 				}
@@ -396,7 +398,7 @@ func TestGenerator_validationRules_MultipleTypes(t *testing.T) {
 				assert.Nil(t, result)
 			} else {
 				require.NotNil(t, result)
-				file := jen.NewFile("test").Add(result)
+				file := jen.NewFile("test").Add(result...)
 	codeStr := file.GoString()
 				
 				for _, expected := range tt.expectedInCode {
@@ -454,13 +456,13 @@ func TestGenerator_validationWithCustomFormats(t *testing.T) {
 			
 			if len(tt.expectedInCode) == 0 {
 				// Format validation might not be implemented or might return null
-				if result == jen.Null() {
+				if len(result) == 0 {
 					return // This is acceptable
 				}
 			}
 			
-			if result != jen.Null() {
-				file := jen.NewFile("test").Add(result)
+			if len(result) > 0 {
+				file := jen.NewFile("test").Add(result...)
 	codeStr := file.GoString()
 				for _, expected := range tt.expectedInCode {
 					assert.Contains(t, codeStr, expected, "Expected %q in validation code", expected)

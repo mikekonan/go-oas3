@@ -45,8 +45,8 @@ func (generator *Generator) variableForRegex(name string, schema *openapi3.Schem
 		generator.useRegex = make(map[string]string)
 	}
 
-	constantName := name + SuffixRegex
-	generator.useRegex[constantName] = regexValue
+	constantName := generator.normalizer.decapitalize(name + SuffixRegex)
+	generator.useRegex[regexValue] = constantName
 
 	return jen.Var().Id(constantName).Op("=").
 		Qual(PackageRegexp, MethodMustCompile).Call(jen.Lit(regexValue))
@@ -101,6 +101,36 @@ func (generator *Generator) additionalConstants(swagger *openapi3.T) (jen.Code, 
 			return code != jen.Null()
 		}).
 		ToSlice(&componentsAdditionalConstants)
+
+		// Process nested properties for regex patterns
+		var nestedSchemaConstants []jen.Code
+		for _, schemaRef := range swagger.Components.Schemas {
+			if schemaRef.Value != nil && schemaRef.Value.Properties != nil {
+				for propName, propSchemaRef := range schemaRef.Value.Properties {
+					propRegexName := generator.normalizer.normalize(propName)
+					regexCode := generator.variableForRegex(propRegexName, propSchemaRef)
+					if regexCode != jen.Null() {
+						nestedSchemaConstants = append(nestedSchemaConstants, regexCode)
+					}
+				}
+			}
+		}
+		componentsAdditionalConstants = append(componentsAdditionalConstants, nestedSchemaConstants...)
+	}
+
+	// Process global parameters for regex patterns
+	if swagger.Components != nil && swagger.Components.Parameters != nil {
+		var globalParamConstants []jen.Code
+		for name, paramRef := range swagger.Components.Parameters {
+			paramName := generator.normalizer.normalize(name)
+			if paramRef.Value != nil && paramRef.Value.Schema != nil {
+				regexCode := generator.variableForRegex(paramName, paramRef.Value.Schema)
+				if regexCode != jen.Null() {
+					globalParamConstants = append(globalParamConstants, regexCode)
+				}
+			}
+		}
+		componentsAdditionalConstants = append(componentsAdditionalConstants, globalParamConstants...)
 	}
 
 	// Process paths for additional constants
@@ -175,17 +205,6 @@ func (generator *Generator) extractRefFromAllOf(schema *openapi3.SchemaRef) stri
 }
 
 // Builder name generation utilities
-func (generator *Generator) contentTypeBuilderName(name string) string {
-	return name + "ContentTypeBuilder"
-}
-
-func (generator *Generator) contentTypeFuncName(contentType string) string {
-	return generator.normalizer.contentType(contentType)
-}
-
-func (generator *Generator) bodyGeneratorName(name string, contentType string) string {
-	return name + generator.normalizer.contentType(contentType) + "BodyBuilder"
-}
 
 func (*Generator) assemblerName(name string) string {
 	return name + "ResponseBuilder"

@@ -102,7 +102,7 @@ func TestGenerator_variableForRegex(t *testing.T) {
 				},
 			},
 			expectedInCode: []string{
-				"var EmailPatternRegex = regexp.MustCompile",
+				"var emailPatternRegex = regexp.MustCompile",
 				"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\\\.[a-zA-Z]{2,}$",
 			},
 		},
@@ -118,7 +118,7 @@ func TestGenerator_variableForRegex(t *testing.T) {
 				},
 			},
 			expectedInCode: []string{
-				"var PhonePatternRegex = regexp.MustCompile",
+				"var phonePatternRegex = regexp.MustCompile",
 				"^\\\\+?[1-9]\\\\d{1,14}$",
 			},
 		},

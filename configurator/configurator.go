@@ -54,6 +54,10 @@ type Configurator struct {
 }
 
 func (configurator *Configurator) concatPaths(filePath string) (string, error) {
+	if filePath == "" {
+		return filePath, nil
+	}
+	
 	if filePath[0] == '.' {
 		wd, err := os.Getwd()
 		if err != nil {
@@ -75,7 +79,7 @@ func (configurator *Configurator) PostConstruct() (err error) {
 		return err
 	}
 
-	if configurator.config.Package, err = configurator.concatPaths(configurator.config.Path); err != nil {
+	if configurator.config.ComponentsPath, err = configurator.concatPaths(configurator.config.ComponentsPath); err != nil {
 		return err
 	}
 

@@ -13,7 +13,8 @@ func (generator *Generator) validationFuncFromRules(receiverName string, name st
 
 	block := jen.Return().Id("nil")
 	if len(rules) > 0 {
-		params := append([]jen.Code{jen.Op("&").Id(receiverName)}, rules...)
+		params := []jen.Code{jen.Op("&").Id(receiverName)}
+		params = append(params, rules...)
 		block = jen.Return().Qual("github.com/go-ozzo/ozzo-validation/v4", "ValidateStruct").Call(params...)
 	}
 
@@ -23,17 +24,17 @@ func (generator *Generator) validationFuncFromRules(receiverName string, name st
 }
 
 // fieldValidationRuleFromSchema generates field validation rules from OpenAPI schema
-func (generator *Generator) fieldValidationRuleFromSchema(receiverName string, propertyName string, schema *openapi3.SchemaRef, required bool) jen.Code {
-	var fieldRule jen.Code
+func (generator *Generator) fieldValidationRuleFromSchema(receiverName string, propertyName string, schema *openapi3.SchemaRef, required bool) []jen.Code {
+	var fieldRules []jen.Code
 	
 	if schema == nil || schema.Value == nil {
-		return fieldRule
+		return fieldRules
 	}
 	
 	v := schema.Value
 
 	if generator.typee.getXGoSkipValidation(v) {
-		return fieldRule
+		return fieldRules
 	}
 
 	if v.Type != nil && v.Type.Is(TypeString) {
@@ -53,7 +54,8 @@ func (generator *Generator) fieldValidationRuleFromSchema(receiverName string, p
 			
 			params = append(params, jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "RuneLength").Call(
 				jen.Lit(int(v.MinLength)), jen.Lit(int(maxLength))))
-			fieldRule = jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "Field").Call(params...)
+			lengthRule := jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "Field").Call(params...)
+			fieldRules = append(fieldRules, lengthRule)
 		}
 		
 		// Handle regex validation
@@ -64,15 +66,11 @@ func (generator *Generator) fieldValidationRuleFromSchema(receiverName string, p
 				params = append(params, jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "Required"))
 			}
 			
-			regexVarName := generator.normalizer.normalize(propertyName) + SuffixRegex
+			regexVarName := generator.normalizer.decapitalize(generator.normalizer.normalize(propertyName) + SuffixRegex)
 			params = append(params, jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "Match").Call(jen.Id(regexVarName)))
 			
 			regexRule := jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "Field").Call(params...)
-			if fieldRule != nil {
-				fieldRule = jen.Add(fieldRule, jen.Line(), regexRule)
-			} else {
-				fieldRule = regexRule
-			}
+			fieldRules = append(fieldRules, regexRule)
 		}
 		
 		// Handle string trimming validation
@@ -91,11 +89,7 @@ func (generator *Generator) fieldValidationRuleFromSchema(receiverName string, p
 			))
 			
 			trimRule := jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "Field").Call(params...)
-			if fieldRule != nil {
-				fieldRule = jen.Add(fieldRule, jen.Line(), trimRule)
-			} else {
-				fieldRule = trimRule
-			}
+			fieldRules = append(fieldRules, trimRule)
 		}
 		
 	} else if v.Type != nil && (v.Type.Is(TypeInteger) || v.Type.Is(TypeNumber)) {
@@ -131,9 +125,10 @@ func (generator *Generator) fieldValidationRuleFromSchema(receiverName string, p
 				params = append(params, jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "Required"))
 			}
 			params = append(params, rules...)
-			fieldRule = jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "Field").Call(params...)
+			numericRule := jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "Field").Call(params...)
+			fieldRules = append(fieldRules, numericRule)
 		}
 	}
 
-	return fieldRule
+	return fieldRules
 }

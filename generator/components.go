@@ -101,8 +101,8 @@ func (generator *Generator) componentFromSchema(name string, parentSchema *opena
 		return generator.enumFromSchema(name, parentSchema)
 	}
 
-	// Handle object types
-	if schema.Type != nil && schema.Type.Is(TypeObject) {
+	// Handle object types (explicit or implicit with properties)
+	if (schema.Type != nil && schema.Type.Is(TypeObject)) || (len(schema.Properties) > 0) {
 		structType := jen.Type().Id(name).Struct(generator.typeProperties(name, schema, false)...)
 
 		// Generate validation function if needed
@@ -117,9 +117,9 @@ func (generator *Generator) componentFromSchema(name string, parentSchema *opena
 				}
 			}
 
-			rule := generator.fieldValidationRuleFromSchema(name[0:1], fieldName, propertySchema, isRequired)
-			if rule != nil {
-				validationRules = append(validationRules, rule)
+			rules := generator.fieldValidationRuleFromSchema(name[0:1], fieldName, propertySchema, isRequired)
+			if len(rules) > 0 {
+				validationRules = append(validationRules, rules...)
 			}
 		}
 
@@ -182,15 +182,45 @@ func (generator *Generator) typeProperties(typeName string, schema *openapi3.Sch
 func (generator *Generator) enums(swagger *openapi3.T) jen.Code {
 	var enumsResult []jen.Code
 
-	// Generate enums from components
+	// Check if components exist
+	if swagger.Components == nil || swagger.Components.Schemas == nil {
+		return jen.Null()
+	}
+
+	// Generate enums from root-level components
+	for name, schemaRef := range swagger.Components.Schemas {
+		if len(schemaRef.Value.Enum) > 0 {
+			result := generator.enumFromSchema(name, schemaRef)
+			if result != jen.Null() {
+				enumsResult = append(enumsResult, result)
+			}
+		}
+	}
+
+	// Generate enums from nested properties in schemas
+	var nestedEnumsResult []jen.Code
 	linq.From(swagger.Components.Schemas).
-		WhereT(func(kv linq.KeyValue) bool { return len(kv.Value.(*openapi3.SchemaRef).Value.Enum) > 0 }).
-		SelectT(func(kv linq.KeyValue) jen.Code {
-			name := cast.ToString(kv.Key)
-			schemaRef := kv.Value.(*openapi3.SchemaRef)
-			return generator.enumFromSchema(name, schemaRef)
+		WhereT(func(kv linq.KeyValue) bool { 
+			schema := kv.Value.(*openapi3.SchemaRef).Value
+			return len(schema.Enum) == 0 && len(schema.Properties) > 0 // Only object types, not root enums
 		}).
-		ToSlice(&enumsResult)
+		SelectManyT(func(kv linq.KeyValue) linq.Query {
+			schema := kv.Value.(*openapi3.SchemaRef).Value
+			var nestedEnums []jen.Code
+			
+			for propName, propSchema := range schema.Properties {
+				if propSchema.Value != nil && len(propSchema.Value.Enum) > 0 {
+					enumName := generator.normalizer.normalize(propName)
+					nestedEnums = append(nestedEnums, generator.enumFromSchema(enumName, propSchema))
+				}
+			}
+			
+			return linq.From(nestedEnums)
+		}).
+		ToSlice(&nestedEnumsResult)
+	
+	// Combine root-level and nested enums
+	enumsResult = append(enumsResult, nestedEnumsResult...)
 
 	if len(enumsResult) == 0 {
 		return jen.Null()
