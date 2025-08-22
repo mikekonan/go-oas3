@@ -45,14 +45,14 @@ func (normalizer *Normalizer) normalize(str string) string {
 	}
 
 	if len(n) > 3 {
-		if strings.ToLower(n[len(n)-4:]) == "uuid" {
-			n = n[:len(n)-4] + "UUID"
+		if strings.ToLower(n[len(n)-4:]) == NormUUIDSuffix {
+			n = n[:len(n)-4] + NormUUID
 		}
 	}
 
 	if len(n) > 1 {
-		if strings.ToLower(n[len(n)-2:]) == "id" {
-			n = n[:len(n)-2] + "ID"
+		if strings.ToLower(n[len(n)-2:]) == NormIDSuffix {
+			n = n[:len(n)-2] + NormID
 		}
 	}
 

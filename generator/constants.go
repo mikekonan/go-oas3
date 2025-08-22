@@ -107,4 +107,137 @@ const (
 	ContextExpectedTypes  = "expected_types"
 	ContextOperation      = "operation"
 	ContextReason         = "reason"
+	ContextIssue          = "issue"
+	ContextErrorMessage   = "error_message"
+	ContextSchemaPrefix   = "schema_"
+)
+
+// Request Processing Constants
+const (
+	RequestProcessingResult         = "RequestProcessingResult"
+	RequestBodyUnmarshalFailed      = "RequestBodyUnmarshalFailed"
+	RequestHeaderParseFailed        = "RequestHeaderParseFailed"
+	RequestQueryParseFailed         = "RequestQueryParseFailed"
+	RequestPathParseFailed          = "RequestPathParseFailed"
+	BodyUnmarshalFailed            = "BodyUnmarshalFailed"
+	HeaderParseFailed              = "HeaderParseFailed"
+	QueryParseFailed               = "QueryParseFailed"
+	PathParseFailed                = "PathParseFailed"
+)
+
+// HTTP Constants
+const (
+	HTTPHeader = "Header"
+	HTTPGet    = "Get"
+	HTTPURL    = "URL"
+	HTTPQuery  = "Query"
+	HTTPBody   = "Body"
+)
+
+// Parameter Processing Constants
+const (
+	ParamStr      = "Str"
+	ParamDefault  = "default"
+	ParamRequired = "required"
+	ParamError    = "error"
+	ParamTypee    = "typee"
+	ParamNil      = "nil"
+	ParamIntVal   = "intVal"
+	ParamDecodeErr = "decodeErr"
+	ParamReadErr   = "readErr"
+	ParamOk        = "ok"
+	ParamBuf       = "buf"
+)
+
+// Field and Variable Names
+const (
+	VarRequest       = "request"
+	VarRouter        = "router"
+	VarResponse      = "response"
+	VarHeaders       = "headers"
+	VarBody          = "body"
+	VarErr           = "err"
+	VarR             = "r"
+	VarHooks         = "hooks"
+	VarChi           = "chi"
+	VarUUID          = "uuid"
+	VarUser          = "user"
+	VarName          = "Name"
+	VarID            = "ID"
+	VarUUIDSuffix    = "uuid"
+	VarIDSuffix      = "id"
+)
+
+// Normalization Constants
+const (
+	NormUUIDSuffix = "uuid"
+	NormUUID       = "UUID"
+	NormIDSuffix   = "id"
+	NormID         = "ID"
+)
+
+// Special Values
+const (
+	ValueUnknown      = "unknown"
+	ValueTest         = "test"
+	ValueComponents   = "components"
+	ValueAPI          = "api"
+	ValueString       = "string"
+	ValueInteger      = "integer"
+	ValueNumber       = "number"
+	ValueArray        = "array"
+	ValueActive       = "active"
+	ValueInactive     = "inactive"
+	ValuePending      = "pending"
+	ValueTrue         = "true"
+)
+
+// URL and Network Constants
+const (
+	URLParam      = "URLParam"
+	URLQueryGet   = "Query().Get"
+	HeaderGet     = "Header.Get"
+	BodyIsNotByte = "body is not []byte"
+)
+
+// Package Imports (for generated code)
+const (
+	PackageIO         = "io/ioutil"
+	PackageErrors     = "errors"
+	PackageXML        = "encoding/xml"
+	PackageUUID       = "github.com/google/uuid"
+	PackageCast       = "github.com/spf13/cast"
+	PackageCurrency   = "github.com/mikekonan/go-types/v2/currency"
+	PackageCountry    = "github.com/mikekonan/go-types/v2/country"
+	PackageOzzo       = "github.com/go-ozzo/ozzo-validation/v4"
+)
+
+// Method Names (for generated code)
+const (
+	MethodParse          = "Parse"
+	MethodByCodeStrErr   = "ByCodeStrErr"
+	MethodByAlpha2CodeStrErr = "ByAlpha2CodeStrErr"
+	MethodCode           = "Code"
+	MethodAlpha2Code     = "Alpha2Code"
+	MethodToInt          = "ToInt"
+	MethodToIntE         = "ToIntE"
+	MethodReadAll        = "ReadAll"
+	MethodNewDecoder     = "NewDecoder"
+	MethodDecode         = "Decode"
+	MethodNew            = "New"
+	MethodAssert         = "Assert"
+	MethodCall           = "Call"
+	MethodDot            = "Dot"
+)
+
+// Validation Constants
+const (
+	ValidationField      = "Field"
+	ValidationRequired   = "Required"
+	ValidationRuneLength = "RuneLength"
+	ValidationMin        = "Min"
+	ValidationMax        = "Max"
+	ValidationMatch      = "Match"
+	ValidationExclusive  = "Exclusive"
+	ValidationValidateStruct = "ValidateStruct"
 )

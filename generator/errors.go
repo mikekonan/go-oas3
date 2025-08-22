@@ -11,7 +11,7 @@ import (
 func PanicWithContext(operation string, details map[string]interface{}, baseErr error) {
 	// Get caller information
 	_, file, line, ok := runtime.Caller(1)
-	callerInfo := "unknown"
+	callerInfo := ValueUnknown
 	if ok {
 		callerInfo = fmt.Sprintf("%s:%d", file, line)
 	}
@@ -54,7 +54,7 @@ func PanicUnexpectedExtensionType(extensionName string, receivedType interface{}
 	
 	// Add schema context if provided
 	for key, value := range schemaContext {
-		details["schema_"+key] = value
+		details[ContextSchemaPrefix+key] = value
 	}
 	
 	baseErr := errors.Newf("unexpected type %T for extension %s", receivedType, extensionName)
@@ -86,12 +86,12 @@ func PanicSchemaValidation(schemaType string, fieldName string, issue string, sc
 	details := map[string]interface{}{
 		ContextSchemaType: schemaType,
 		ContextFieldName:  fieldName,
-		"issue":           issue,
+		ContextIssue: issue,
 	}
 	
 	// Add schema details
 	for key, value := range schemaDetails {
-		details["schema_"+key] = value
+		details[ContextSchemaPrefix+key] = value
 	}
 	
 	baseErr := errors.Newf("schema validation failed for %s.%s", schemaType, fieldName)
@@ -106,7 +106,7 @@ func PanicSchemaValidation(schemaType string, fieldName string, issue string, sc
 func PanicOperationError(operation string, err error, operationContext map[string]interface{}) {
 	details := map[string]interface{}{
 		ContextOperation: operation,
-		"error_message": err.Error(),
+		ContextErrorMessage: err.Error(),
 	}
 	
 	// Add operation context
