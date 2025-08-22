@@ -45,4 +45,3 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-exclude github.com/ugorji/go v1.1.4
