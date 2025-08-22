@@ -58,8 +58,6 @@ func PanicUnexpectedExtensionType(extensionName string, receivedType interface{}
 	}
 	
 	baseErr := errors.Newf("unexpected type %T for extension %s", receivedType, extensionName)
-	baseErr = errors.WithHintf(baseErr, "🔧 Extension %s should be one of: string, json.RawMessage, or bool", extensionName)
-	baseErr = errors.WithHintf(baseErr, "📖 Check OpenAPI extension documentation: https://spec.openapis.org/oas/v3.0.3#specification-extensions")
 	
 	PanicWithContext("Extension Type Validation", details, baseErr)
 }

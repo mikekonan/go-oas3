@@ -47,6 +47,11 @@ func (typ *Type) fillAdditionalProperties(into *jen.Statement, schema *openapi3.
 }
 
 func (typ *Type) fillGoType(into *jen.Statement, parentTypeName string, typeName string, schemaRef *openapi3.SchemaRef, asPointer bool, needAliasing bool) {
+	if schemaRef == nil || schemaRef.Value == nil {
+		into.Interface()
+		return
+	}
+	
 	if asPointer || typ.getXGoPointer(schemaRef.Value) {
 		into.Op("*")
 	}
@@ -264,7 +269,7 @@ func (typ *Type) hasXGoPointer(schema *openapi3.Schema) bool {
 }
 
 func (typ *Type) hasXGoTypeStringParse(schema *openapi3.Schema) bool {
-	if typ.hasXGoType(schema) && schema.Extensions[goTypeStringParse] != nil {
+	if len(schema.Extensions) > 0 && schema.Extensions[goTypeStringParse] != nil {
 		return true
 	}
 
