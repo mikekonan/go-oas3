@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/ahmetb/go-linq"
 	"github.com/dave/jennifer/jen"
@@ -14,15 +15,29 @@ type Normalizer struct{}
 
 // titleCase replaces deprecated strings.Title with proper case conversion
 // It capitalizes the first letter but preserves the camelCase structure
+// Unicode-safe implementation using utf8.DecodeRuneInString
 func (normalizer *Normalizer) titleCase(str string) string {
 	if str == "" {
 		return str
 	}
-	return strings.ToUpper(str[:1]) + str[1:]
+	r, size := utf8.DecodeRuneInString(str)
+	if r == utf8.RuneError && size == 0 {
+		return str
+	}
+	return string(unicode.ToUpper(r)) + str[size:]
 }
 
+// decapitalize converts the first character to lowercase
+// Unicode-safe implementation using utf8.DecodeRuneInString
 func (normalizer *Normalizer) decapitalize(str string) string {
-	return strings.ToLower(str[:1]) + str[1:]
+	if str == "" {
+		return str
+	}
+	r, size := utf8.DecodeRuneInString(str)
+	if r == utf8.RuneError && size == 0 {
+		return str
+	}
+	return string(unicode.ToLower(r)) + str[size:]
 }
 
 func (normalizer *Normalizer) normalize(str string) string {
