@@ -29,7 +29,8 @@ const (
 	InHeader = "header"
 	InPath   = "path"
 	InQuery  = "query"
-	InBody   = "Body"
+	InBody   = "body"  // Aligned with OAS3 terminology
+	InCookie = "cookie" // Added for completeness
 )
 
 // Suffix Constants
@@ -140,7 +141,7 @@ const (
 	ParamDefault  = "default"
 	ParamRequired = "required"
 	ParamError    = "error"
-	ParamTypee    = "typee"
+	ParamType     = "typee"  // "type" is reserved keyword, use typee
 	ParamNil      = "nil"
 	ParamIntVal   = "intVal"
 	ParamDecodeErr = "decodeErr"

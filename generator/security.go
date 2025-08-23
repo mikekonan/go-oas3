@@ -162,7 +162,7 @@ func (generator *Generator) securitySchemas(swagger *openapi3.T) jen.Code {
 
 			return jen.Null()
 		}).
-		WhereT(func(code jen.Code) bool { return code != jen.Null() }).
+		WhereT(func(code jen.Code) bool { return code != nil }).
 		ToSlice(&extractorsHeadersFuncs)
 
 	// Generate the extractor map with inline functions

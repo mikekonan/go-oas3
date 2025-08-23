@@ -103,8 +103,8 @@ func (typ *Type) fillGoType(into *jen.Statement, parentTypeName string, typeName
 				for _, s := range inlineSchemas {
 					if err := mergo.Merge(mergedInline, s.Value, mergo.WithOverride); err != nil {
 						PanicOperationError("Schema Merge", err, map[string]interface{}{
-							"operation": "merging inline schemas",
-							"context": "allOf schema processing",
+							ContextOperation: "merging inline schemas",
+							ContextIssue:     "allOf schema processing",
 						})
 					}
 				}
@@ -122,8 +122,8 @@ func (typ *Type) fillGoType(into *jen.Statement, parentTypeName string, typeName
 
 			if err := mergo.Merge(mergedSchema, s.Value, mergo.WithOverride); err != nil {
 				PanicOperationError("Schema Merge", err, map[string]interface{}{
-					"operation": "merging allOf schemas",
-					"context": "schema combination",
+					ContextOperation: "merging allOf schemas",
+					ContextIssue:     "schema combination",
 				})
 			}
 		}

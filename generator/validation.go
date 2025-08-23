@@ -8,7 +8,7 @@ import (
 // validationFuncFromRules generates validation functions from validation rules
 func (generator *Generator) validationFuncFromRules(receiverName string, name string, rules []jen.Code, schema *openapi3.Schema) jen.Code {
 	if schema != nil && generator.typee.getXGoSkipValidation(schema) {
-		return nil
+		return jen.Null()
 	}
 
 	block := jen.Return().Id("nil")

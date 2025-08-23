@@ -314,8 +314,8 @@ func (generator *Generator) wrapperCustomType(in string, name string, paramName 
 	result = result.Add(jen.Line())
 
 	parseFailed := []jen.Code{
-		jen.Id(VarRequest).Dot(FieldProcessingResult).Op("=").Id(RequestProcessingResult).Values(jen.Id(ParamError).Op(":").Id(VarErr),
-			jen.Id(ParamTypee).Op(":").Id(generator.normalizer.titleCase(in)+"ParseFailed")),
+		jen.Id(VarRequest).Dot(FieldProcessingResult).Op("=").Qual(generator.config.ComponentsPackage, RequestProcessingResult).Values(jen.Id(ParamError).Op(":").Id(VarErr),
+			jen.Id(ParamType).Op(":").Id(generator.normalizer.titleCase(in)+"ParseFailed")),
 		jen.If(jen.Id(VarRouter).Dot(VarHooks).Dot("Request" + generator.normalizer.titleCase(in) + "ParseFailed").Op("!=").Id(ParamNil)).Block(
 			jen.Id(VarRouter).Dot(VarHooks).Dot("Request"+generator.normalizer.titleCase(in)+"ParseFailed").Call(
 				jen.Id(VarR),
@@ -407,8 +407,8 @@ func (generator *Generator) wrapperEnum(in string, enumType string, name string,
 		Add(jen.Line()).
 		Add(jen.If(jen.Id(VarErr).Op(":=").Id(paramName).Dot(MethodCheck).Call(),
 			jen.Id(VarErr).Op("!=").Id(ParamNil)).Block(
-			jen.Id(VarRequest).Dot(FieldProcessingResult).Op("=").Id(RequestProcessingResult).Values(jen.Id(ParamError).Op(":").Id(VarErr),
-				jen.Id(ParamTypee).Op(":").Id(generator.normalizer.titleCase(in)+"ParseFailed")),
+			jen.Id(VarRequest).Dot(FieldProcessingResult).Op("=").Qual(generator.config.ComponentsPackage, RequestProcessingResult).Values(jen.Id(ParamError).Op(":").Id(VarErr),
+				jen.Id(ParamType).Op(":").Id(generator.normalizer.titleCase(in)+"ParseFailed")),
 			jen.If(jen.Id(VarRouter).Dot(VarHooks).Dot("Request"+generator.normalizer.titleCase(in)+"ParseFailed").Op("!=").Id(ParamNil)).Block(
 				jen.Id(VarRouter).Dot(VarHooks).Dot("Request"+generator.normalizer.titleCase(in)+"ParseFailed").Call(
 					jen.Id(VarR),
@@ -443,8 +443,8 @@ func (generator *Generator) wrapperStr(in string, name string, paramName string,
 			Add(jen.Line()).
 			Add(jen.If(jen.Id(paramName).Op("==").Lit("")).Block(
 				jen.Id(VarErr).Op(":=").Qual(PackageFmt, MethodErrorf).Call(jen.Lit(fmt.Sprintf(ErrorFieldRequired, parameter.Value.Name))).Line(),
-				jen.Id(VarRequest).Dot(FieldProcessingResult).Op("=").Id(RequestProcessingResult).Values(jen.Id(ParamError).Op(":").Id(VarErr),
-					jen.Id(ParamTypee).Op(":").Id(generator.normalizer.titleCase(in)+"ParseFailed")),
+				jen.Id(VarRequest).Dot(FieldProcessingResult).Op("=").Qual(generator.config.ComponentsPackage, RequestProcessingResult).Values(jen.Id(ParamError).Op(":").Id(VarErr),
+					jen.Id(ParamType).Op(":").Id(generator.normalizer.titleCase(in)+"ParseFailed")),
 				jen.If(jen.Id(VarRouter).Dot(VarHooks).Dot("Request"+generator.normalizer.titleCase(in)+"ParseFailed").Op("!=").Id(ParamNil)).Block(
 					jen.Id(VarRouter).Dot(VarHooks).Dot("Request"+generator.normalizer.titleCase(in)+"ParseFailed").Call(
 						jen.Id(VarR),
@@ -470,8 +470,8 @@ func (generator *Generator) wrapperStr(in string, name string, paramName string,
 		result = result.Line().If(jen.Op("!").Id(regexVarName).Dot(MethodMatchString).Call(jen.Id(paramName))).Block(
 			jen.Id(VarErr).Op(":=").Qual(PackageFmt, MethodErrorf).Call(jen.Lit(fmt.Sprintf(ErrorRegexNotMatched, parameter.Value.Name, regex))),
 			jen.Line(),
-			jen.Id(VarRequest).Dot(FieldProcessingResult).Op("=").Id(RequestProcessingResult).Values(jen.Id(ParamError).Op(":").Id(VarErr),
-				jen.Id("typee").Op(":").Id(fmt.Sprintf("%sParseFailed", generator.normalizer.titleCase(in)))),
+			jen.Id(VarRequest).Dot(FieldProcessingResult).Op("=").Qual(generator.config.ComponentsPackage, RequestProcessingResult).Values(jen.Id(ParamError).Op(":").Id(VarErr),
+				jen.Id(ParamType).Op(":").Id(fmt.Sprintf("%sParseFailed", generator.normalizer.titleCase(in)))),
 			jen.If(jen.Id(VarRouter).Dot(VarHooks).Dot("Request"+generator.normalizer.titleCase(in)+"ParseFailed").Op("!=").Id(ParamNil)).Block(
 				jen.Id(VarRouter).Dot(VarHooks).Dot("Request"+generator.normalizer.titleCase(in)+"ParseFailed").Call(jen.Id(VarR),
 					jen.Lit(wrapperName),
@@ -520,8 +520,8 @@ func (generator *Generator) wrapperInteger(in string, name string, paramName str
 			Add(jen.Line()).
 			Add(jen.If(jen.Id(paramName).Op("==").Lit("")).Block(
 				jen.Id(VarErr).Op(":=").Qual(PackageFmt, MethodErrorf).Call(jen.Lit(fmt.Sprintf(ErrorFieldRequired, parameter.Value.Name))).Line(),
-				jen.Id(VarRequest).Dot(FieldProcessingResult).Op("=").Id(RequestProcessingResult).Values(jen.Id(ParamError).Op(":").Id(VarErr),
-					jen.Id(ParamTypee).Op(":").Id(generator.normalizer.titleCase(in)+"ParseFailed")),
+				jen.Id(VarRequest).Dot(FieldProcessingResult).Op("=").Qual(generator.config.ComponentsPackage, RequestProcessingResult).Values(jen.Id(ParamError).Op(":").Id(VarErr),
+					jen.Id(ParamType).Op(":").Id(generator.normalizer.titleCase(in)+"ParseFailed")),
 				jen.If(jen.Id(VarRouter).Dot(VarHooks).Dot("Request"+generator.normalizer.titleCase(in)+"ParseFailed").Op("!=").Id(ParamNil)).Block(
 					jen.Id(VarRouter).Dot(VarHooks).Dot("Request"+generator.normalizer.titleCase(in)+"ParseFailed").Call(
 						jen.Id(VarR),
@@ -585,7 +585,7 @@ func (generator *Generator) wrapperBody(method string, path string, contentType 
 				),
 					jen.Line(),
 					jen.If(
-						jen.List(jen.Id(ParamBuf), jen.Id(ParamReadErr)).Op("=").Qual("io/ioutil", "ReadAll").Call(jen.Id(VarR).Dot("Body")),
+						jen.List(jen.Id(ParamBuf), jen.Id(ParamReadErr)).Op("=").Qual("io", "ReadAll").Call(jen.Id(VarR).Dot("Body")),
 						jen.Id(ParamReadErr).Op("==").Nil(),
 					).Block(
 						jen.If(
@@ -601,8 +601,8 @@ func (generator *Generator) wrapperBody(method string, path string, contentType 
 		}()).
 		Add(jen.Line()).
 		Add(jen.If(jen.Id(ParamDecodeErr).Op("!=").Id(ParamNil)).Block(
-			jen.Id(VarRequest).Dot(FieldProcessingResult).Op("=").Id("RequestProcessingResult").Values(jen.Id(ParamError).Op(":").Id(ParamDecodeErr),
-				jen.Id("typee").Op(":").Id("BodyUnmarshalFailed")),
+			jen.Id(VarRequest).Dot(FieldProcessingResult).Op("=").Qual(generator.config.ComponentsPackage, "RequestProcessingResult").Values(jen.Id(ParamError).Op(":").Id(ParamDecodeErr),
+				jen.Id(ParamType).Op(":").Id("BodyUnmarshalFailed")),
 			jen.If(jen.Id(VarRouter).Dot(VarHooks).Dot("RequestBodyUnmarshalFailed").Op("!=").Id(ParamNil)).Block(
 				jen.Id(VarRouter).Dot(VarHooks).Dot("RequestBodyUnmarshalFailed").Call(
 					jen.Id(VarR),
