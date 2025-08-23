@@ -43,30 +43,25 @@ func (generator *Generator) components(swagger *openapi3.T) jen.Code {
 				}).
 				SelectManyT(
 					func(kv linq.KeyValue) linq.Query {
-						result := map[string]jen.Code{}
 						name := generator.normalizer.normalizeOperationName(path, cast.ToString(kv.Key))
 						operation := kv.Value.(*openapi3.Operation)
 
-						linq.From(operation.RequestBody.Value.Content).
+						return linq.From(operation.RequestBody.Value.Content).
 							WhereT(func(kv linq.KeyValue) bool {
 								return kv.Value.(*openapi3.MediaType).Schema.Ref == ""
 							}).
-							SelectT(func(kv linq.KeyValue) jen.Code {
+							SelectT(func(kv linq.KeyValue) linq.KeyValue {
 								contentType := cast.ToString(kv.Key)
 								requestBodyName := name + generator.normalizer.contentType(contentType) + SuffixRequestBody
 								mediaType := kv.Value.(*openapi3.MediaType)
-								return generator.componentFromSchema(requestBodyName, mediaType.Schema)
-							}).
-							ForEachT(func(code jen.Code) {
-								result[name] = code
+								return linq.KeyValue{
+									Key:   requestBodyName,
+									Value: generator.componentFromSchema(requestBodyName, mediaType.Schema),
+								}
 							})
-
-						return linq.From(result).SelectT(func(kv linq.KeyValue) jen.Code {
-							return kv.Value.(jen.Code)
-						})
 					}).
-				ForEachT(func(code jen.Code) {
-					componentsByName[cast.ToString(code)] = code
+				ForEachT(func(componentKv linq.KeyValue) {
+					componentsByName[cast.ToString(componentKv.Key)] = componentKv.Value.(jen.Code)
 				})
 
 			return linq.From(componentsByName).SelectT(func(kv linq.KeyValue) jen.Code {
