@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"time"
 
-	"example"
+	"../../example"
 )
 
 func main() {

@@ -2,7 +2,6 @@ package generator
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/ahmetb/go-linq"
 	"github.com/dave/jennifer/jen"
@@ -314,9 +313,9 @@ func (generator *Generator) wrapperCustomType(in string, name string, paramName 
 
 	parseFailed := []jen.Code{
 		jen.Id(VarRequest).Dot(FieldProcessingResult).Op("=").Id(RequestProcessingResult).Values(jen.Id(ParamError).Op(":").Id(VarErr),
-			jen.Id(ParamTypee).Op(":").Id(strings.Title(in)+"ParseFailed")),
-		jen.If(jen.Id(VarRouter).Dot(VarHooks).Dot("Request" + strings.Title(in) + "ParseFailed").Op("!=").Id(ParamNil)).Block(
-			jen.Id(VarRouter).Dot(VarHooks).Dot("Request"+strings.Title(in)+"ParseFailed").Call(
+			jen.Id(ParamTypee).Op(":").Id(generator.normalizer.titleCase(in)+"ParseFailed")),
+		jen.If(jen.Id(VarRouter).Dot(VarHooks).Dot("Request" + generator.normalizer.titleCase(in) + "ParseFailed").Op("!=").Id(ParamNil)).Block(
+			jen.Id(VarRouter).Dot(VarHooks).Dot("Request"+generator.normalizer.titleCase(in)+"ParseFailed").Call(
 				jen.Id(VarR),
 				jen.Lit(wrapperName),
 				jen.Lit(parameter.Value.Name),
@@ -405,9 +404,9 @@ func (generator *Generator) wrapperEnum(in string, enumType string, name string,
 		Add(jen.If(jen.Id(VarErr).Op(":=").Id(paramName).Dot(MethodCheck).Call(),
 			jen.Id(VarErr).Op("!=").Id(ParamNil)).Block(
 			jen.Id(VarRequest).Dot(FieldProcessingResult).Op("=").Id(RequestProcessingResult).Values(jen.Id(ParamError).Op(":").Id(VarErr),
-				jen.Id(ParamTypee).Op(":").Id(strings.Title(in)+"ParseFailed")),
-			jen.If(jen.Id(VarRouter).Dot(VarHooks).Dot("Request"+strings.Title(in)+"ParseFailed").Op("!=").Id(ParamNil)).Block(
-				jen.Id(VarRouter).Dot(VarHooks).Dot("Request"+strings.Title(in)+"ParseFailed").Call(
+				jen.Id(ParamTypee).Op(":").Id(generator.normalizer.titleCase(in)+"ParseFailed")),
+			jen.If(jen.Id(VarRouter).Dot(VarHooks).Dot("Request"+generator.normalizer.titleCase(in)+"ParseFailed").Op("!=").Id(ParamNil)).Block(
+				jen.Id(VarRouter).Dot(VarHooks).Dot("Request"+generator.normalizer.titleCase(in)+"ParseFailed").Call(
 					jen.Id(VarR),
 					jen.Lit(wrapperName),
 					jen.Lit(parameter.Value.Name),
@@ -441,9 +440,9 @@ func (generator *Generator) wrapperStr(in string, name string, paramName string,
 			Add(jen.If(jen.Id(paramName).Op("==").Lit("")).Block(
 				jen.Id(VarErr).Op(":=").Qual(PackageFmt, MethodErrorf).Call(jen.Lit(fmt.Sprintf(ErrorFieldRequired, parameter.Value.Name))).Line(),
 				jen.Id(VarRequest).Dot(FieldProcessingResult).Op("=").Id(RequestProcessingResult).Values(jen.Id(ParamError).Op(":").Id(VarErr),
-					jen.Id(ParamTypee).Op(":").Id(strings.Title(in)+"ParseFailed")),
-				jen.If(jen.Id(VarRouter).Dot(VarHooks).Dot("Request"+strings.Title(in)+"ParseFailed").Op("!=").Id(ParamNil)).Block(
-					jen.Id(VarRouter).Dot(VarHooks).Dot("Request"+strings.Title(in)+"ParseFailed").Call(
+					jen.Id(ParamTypee).Op(":").Id(generator.normalizer.titleCase(in)+"ParseFailed")),
+				jen.If(jen.Id(VarRouter).Dot(VarHooks).Dot("Request"+generator.normalizer.titleCase(in)+"ParseFailed").Op("!=").Id(ParamNil)).Block(
+					jen.Id(VarRouter).Dot(VarHooks).Dot("Request"+generator.normalizer.titleCase(in)+"ParseFailed").Call(
 						jen.Id(VarR),
 						jen.Lit(wrapperName),
 						jen.Lit(parameter.Value.Name),
@@ -468,9 +467,9 @@ func (generator *Generator) wrapperStr(in string, name string, paramName string,
 			jen.Id(VarErr).Op(":=").Qual(PackageFmt, MethodErrorf).Call(jen.Lit(fmt.Sprintf(ErrorRegexNotMatched, parameter.Value.Name, regex))),
 			jen.Line(),
 			jen.Id(VarRequest).Dot(FieldProcessingResult).Op("=").Id(RequestProcessingResult).Values(jen.Id(ParamError).Op(":").Id(VarErr),
-				jen.Id("typee").Op(":").Id(fmt.Sprintf("%sParseFailed", strings.Title(in)))),
-			jen.If(jen.Id(VarRouter).Dot(VarHooks).Dot("Request"+strings.Title(in)+"ParseFailed").Op("!=").Id(ParamNil)).Block(
-				jen.Id(VarRouter).Dot(VarHooks).Dot("Request"+strings.Title(in)+"ParseFailed").Call(jen.Id(VarR),
+				jen.Id("typee").Op(":").Id(fmt.Sprintf("%sParseFailed", generator.normalizer.titleCase(in)))),
+			jen.If(jen.Id(VarRouter).Dot(VarHooks).Dot("Request"+generator.normalizer.titleCase(in)+"ParseFailed").Op("!=").Id(ParamNil)).Block(
+				jen.Id(VarRouter).Dot(VarHooks).Dot("Request"+generator.normalizer.titleCase(in)+"ParseFailed").Call(jen.Id(VarR),
 					jen.Lit(wrapperName),
 					jen.Lit(parameter.Value.Name),
 					jen.Id(VarRequest).Dot(FieldProcessingResult))),
@@ -518,9 +517,9 @@ func (generator *Generator) wrapperInteger(in string, name string, paramName str
 			Add(jen.If(jen.Id(paramName).Op("==").Lit("")).Block(
 				jen.Id(VarErr).Op(":=").Qual(PackageFmt, MethodErrorf).Call(jen.Lit(fmt.Sprintf(ErrorFieldRequired, parameter.Value.Name))).Line(),
 				jen.Id(VarRequest).Dot(FieldProcessingResult).Op("=").Id(RequestProcessingResult).Values(jen.Id(ParamError).Op(":").Id(VarErr),
-					jen.Id(ParamTypee).Op(":").Id(strings.Title(in)+"ParseFailed")),
-				jen.If(jen.Id(VarRouter).Dot(VarHooks).Dot("Request"+strings.Title(in)+"ParseFailed").Op("!=").Id(ParamNil)).Block(
-					jen.Id(VarRouter).Dot(VarHooks).Dot("Request"+strings.Title(in)+"ParseFailed").Call(
+					jen.Id(ParamTypee).Op(":").Id(generator.normalizer.titleCase(in)+"ParseFailed")),
+				jen.If(jen.Id(VarRouter).Dot(VarHooks).Dot("Request"+generator.normalizer.titleCase(in)+"ParseFailed").Op("!=").Id(ParamNil)).Block(
+					jen.Id(VarRouter).Dot(VarHooks).Dot("Request"+generator.normalizer.titleCase(in)+"ParseFailed").Call(
 						jen.Id(VarR),
 						jen.Lit(wrapperName),
 						jen.Lit(parameter.Value.Name),

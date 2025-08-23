@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/heetch/confita"
@@ -58,13 +58,13 @@ func (configurator *Configurator) concatPaths(filePath string) (string, error) {
 		return filePath, nil
 	}
 	
-	if filePath[0] == '.' {
+	if !filepath.IsAbs(filePath) {
 		wd, err := os.Getwd()
 		if err != nil {
 			return "", err
 		}
 
-		return path.Join(wd, filePath), nil
+		return filepath.Join(wd, filePath), nil
 	}
 
 	return filePath, nil

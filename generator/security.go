@@ -1,8 +1,6 @@
 package generator
 
 import (
-	"strings"
-
 	"github.com/ahmetb/go-linq"
 	"github.com/dave/jennifer/jen"
 	"github.com/getkin/kin-openapi/openapi3"
@@ -31,7 +29,7 @@ func (generator *Generator) wrapperSecurity(name string, operation *openapi3.Ope
 		for schemeName := range securityRequirement {
 			
 			securityBlock := jen.Line().For(jen.List(jen.Id("_"), jen.Id("processor")).Op(":=").Range().Id("router").Dot("processors")).Block(
-				jen.If(jen.Id("processor").Dot("scheme").Op("==").Id("SecurityScheme"+strings.Title(schemeName))).Block(
+				jen.If(jen.Id("processor").Dot("scheme").Op("==").Id("SecurityScheme"+generator.normalizer.titleCase(schemeName))).Block(
 					jen.List(jen.Id("name"), jen.Id("value"), jen.Id("found")).Op(":=").Id("processor").Dot("extract").Call(jen.Id("r")),
 					jen.If(jen.Op("!").Id("found")).Block(
 						jen.Id("request").Dot(FieldProcessingResult).Op("=").Id("RequestProcessingResult").Values(
@@ -93,7 +91,7 @@ func (generator *Generator) securitySchemas(swagger *openapi3.T) jen.Code {
 	var consts []jen.Code
 	linq.From(swagger.Components.SecuritySchemes).
 		SelectT(func(kv linq.KeyValue) jen.Code {
-			name := strings.Title(cast.ToString(kv.Key))
+			name := generator.normalizer.titleCase(cast.ToString(kv.Key))
 			return jen.Id("SecurityScheme" + name).Id("SecurityScheme").Op("=").Lit(name)
 		}).
 		ToSlice(&consts)
@@ -129,7 +127,7 @@ func (generator *Generator) securitySchemas(swagger *openapi3.T) jen.Code {
 					assignment = assignment.Id("value").Op("=").Id("value").Index(jen.Lit(6), jen.Empty())
 				}
 
-				return jen.Line().Id("SecurityScheme"+strings.Title(name)).Op(":").Func().Params(
+				return jen.Line().Id("SecurityScheme"+generator.normalizer.titleCase(name)).Op(":").Func().Params(
 					jen.Id("r").Op("*").Qual(PackageNetHTTP, "Request")).Params(jen.Id("string"), jen.Id("string"),
 					jen.Id("bool")).Block(
 					jen.Id("value").Op(":=").Id("r").Dot("Header").Dot("Get").Call(jen.Lit("Authorization")).Line(),
@@ -141,19 +139,19 @@ func (generator *Generator) securitySchemas(swagger *openapi3.T) jen.Code {
 			if schema.Value.Type == "apiKey" {
 				switch schema.Value.In {
 				case "header":
-					return jen.Line().Id("SecurityScheme"+strings.Title(name)).Op(":").Func().Params(
+					return jen.Line().Id("SecurityScheme"+generator.normalizer.titleCase(name)).Op(":").Func().Params(
 						jen.Id("r").Op("*").Qual(PackageNetHTTP, "Request")).Params(jen.Id("string"), jen.Id("string"),
 						jen.Id("bool")).Block(
 						jen.Id("value").Op(":=").Id("r").Dot("Header").Dot("Get").Call(jen.Lit(schema.Value.Name)),
 						jen.Return().List(jen.Lit(schema.Value.Name), jen.Id("value"), jen.Id("value").Op("!=").Lit("")))
 				case "query":
-					return jen.Line().Id("SecurityScheme"+strings.Title(name)).Op(":").Func().Params(
+					return jen.Line().Id("SecurityScheme"+generator.normalizer.titleCase(name)).Op(":").Func().Params(
 						jen.Id("r").Op("*").Qual(PackageNetHTTP, "Request")).Params(jen.Id("string"), jen.Id("string"),
 						jen.Id("bool")).Block(
 						jen.Id("value").Op(":=").Id("r").Dot("URL").Dot("Query").Call().Dot("Get").Call(jen.Lit(schema.Value.Name)),
 						jen.Return().List(jen.Lit(schema.Value.Name), jen.Id("value"), jen.Id("value").Op("!=").Lit("")))
 				case "cookie":
-					return jen.Line().Id("SecurityScheme"+strings.Title(name)).Op(":").Func().Params(
+					return jen.Line().Id("SecurityScheme"+generator.normalizer.titleCase(name)).Op(":").Func().Params(
 						jen.Id("r").Op("*").Qual(PackageNetHTTP, "Request")).Params(jen.Id("string"), jen.Id("string"),
 						jen.Id("bool")).Block(
 						jen.List(jen.Id("cookie"), jen.Id("err")).Op(":=").Id("r").Dot("Cookie").Call(jen.Lit(schema.Value.Name)),

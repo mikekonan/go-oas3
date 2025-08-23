@@ -12,6 +12,15 @@ import (
 
 type Normalizer struct{}
 
+// titleCase replaces deprecated strings.Title with proper case conversion
+// It capitalizes the first letter but preserves the camelCase structure
+func (normalizer *Normalizer) titleCase(str string) string {
+	if str == "" {
+		return str
+	}
+	return strings.ToUpper(str[:1]) + str[1:]
+}
+
 func (normalizer *Normalizer) decapitalize(str string) string {
 	return strings.ToLower(str[:1]) + str[1:]
 }
@@ -105,5 +114,5 @@ func (normalizer *Normalizer) contentType(str string) string {
 	}
 
 	return cast.ToString(linq.From(strings.FieldsFunc(str, split)).
-		AggregateWithSeedT("", func(accumulator, str string) string { return accumulator + strings.Title(str) }))
+		AggregateWithSeedT("", func(accumulator, str string) string { return accumulator + normalizer.titleCase(str) }))
 }

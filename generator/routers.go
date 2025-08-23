@@ -33,7 +33,7 @@ func (generator *Generator) wrappers(swagger *openapi3.T) jen.Code {
 			var routes []jen.Code
 			linq.From(groupedOperations.operations).
 				SelectT(func(operation operationWithPath) jen.Code {
-					method := generator.normalizer.normalize(strings.Title(strings.ToLower(cast.ToString(operation.method))))
+					method := generator.normalizer.normalize(generator.normalizer.titleCase(strings.ToLower(cast.ToString(operation.method))))
 
 					if operation.operation.RequestBody == nil || len(operation.operation.RequestBody.Value.Content) == 1 {
 						name := generator.normalizer.normalizeOperationName(operation.path, cast.ToString(operation.method))
