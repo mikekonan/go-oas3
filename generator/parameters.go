@@ -37,18 +37,20 @@ func (generator *Generator) requestParameters(paths map[string]*openapi3.PathIte
 							return
 						}
 
-						if operation.RequestBody != nil && len(operation.RequestBody.Value.Content) == 1 {
+						if operation.RequestBody != nil && operation.RequestBody.Value != nil && len(operation.RequestBody.Value.Content) == 1 {
 							contentType := cast.ToString(linq.From(operation.RequestBody.Value.Content).SelectT(func(kv linq.KeyValue) string { return cast.ToString(kv.Key) }).First())
 							result = append(result, generator.requestParameterStruct(name, contentType, false, operation))
 							return
 						}
 
 						var contentTypeResult []jen.Code
-						linq.From(operation.RequestBody.Value.Content).
+						if operation.RequestBody != nil && operation.RequestBody.Value != nil {
+							linq.From(operation.RequestBody.Value.Content).
 							SelectT(func(kv linq.KeyValue) jen.Code {
 								return generator.requestParameterStruct(name, cast.ToString(kv.Key), true, operation)
 							}).
 							ToSlice(&contentTypeResult)
+						}
 
 						result = append(result, contentTypeResult...)
 						result = generator.normalizer.doubleLineAfterEachElement(result...)
@@ -217,7 +219,7 @@ func (generator *Generator) generateParameterParser(in string, parameter *openap
 func (generator *Generator) generatePathParameterParser(propertyName, paramName, wrapperName string, parameter *openapi3.ParameterRef) jen.Code {
 	param := parameter.Value
 
-	if param.Schema.Value.Type.Is(TypeString) {
+	if param.Schema != nil && param.Schema.Value != nil && param.Schema.Value.Type.Is(TypeString) {
 		if generator.typee.isCustomType(param.Schema.Value) {
 			return generator.wrapperCustomType(InPath, propertyName, paramName, wrapperName, parameter)
 		}
@@ -233,7 +235,7 @@ func (generator *Generator) generatePathParameterParser(propertyName, paramName,
 		return generator.wrapperStr(InPath, propertyName, paramName, wrapperName, parameter)
 	}
 
-	if param.Schema.Value.Type.Is(TypeInteger) {
+	if param.Schema != nil && param.Schema.Value != nil && param.Schema.Value.Type.Is(TypeInteger) {
 		return generator.wrapperInteger(InPath, propertyName, paramName, wrapperName, parameter)
 	}
 
@@ -244,7 +246,7 @@ func (generator *Generator) generatePathParameterParser(propertyName, paramName,
 func (generator *Generator) generateQueryParameterParser(propertyName, paramName, wrapperName string, parameter *openapi3.ParameterRef) jen.Code {
 	param := parameter.Value
 
-	if param.Schema.Value.Type.Is(TypeString) {
+	if param.Schema != nil && param.Schema.Value != nil && param.Schema.Value.Type.Is(TypeString) {
 		if generator.typee.isCustomType(param.Schema.Value) {
 			return generator.wrapperCustomType(InQuery, propertyName, paramName, wrapperName, parameter)
 		}
@@ -260,7 +262,7 @@ func (generator *Generator) generateQueryParameterParser(propertyName, paramName
 		return generator.wrapperStr(InQuery, propertyName, paramName, wrapperName, parameter)
 	}
 
-	if param.Schema.Value.Type.Is(TypeInteger) {
+	if param.Schema != nil && param.Schema.Value != nil && param.Schema.Value.Type.Is(TypeInteger) {
 		return generator.wrapperInteger(InQuery, propertyName, paramName, wrapperName, parameter)
 	}
 
@@ -271,7 +273,7 @@ func (generator *Generator) generateQueryParameterParser(propertyName, paramName
 func (generator *Generator) generateHeaderParameterParser(propertyName, paramName, wrapperName string, parameter *openapi3.ParameterRef) jen.Code {
 	param := parameter.Value
 
-	if param.Schema.Value.Type.Is(TypeString) {
+	if param.Schema != nil && param.Schema.Value != nil && param.Schema.Value.Type.Is(TypeString) {
 		if generator.typee.isCustomType(param.Schema.Value) {
 			return generator.wrapperCustomType(InHeader, propertyName, paramName, wrapperName, parameter)
 		}
@@ -287,7 +289,7 @@ func (generator *Generator) generateHeaderParameterParser(propertyName, paramNam
 		return generator.wrapperStr(InHeader, propertyName, paramName, wrapperName, parameter)
 	}
 
-	if param.Schema.Value.Type.Is(TypeInteger) {
+	if param.Schema != nil && param.Schema.Value != nil && param.Schema.Value.Type.Is(TypeInteger) {
 		return generator.wrapperInteger(InHeader, propertyName, paramName, wrapperName, parameter)
 	}
 
@@ -344,7 +346,8 @@ func (generator *Generator) wrapperCustomType(in string, name string, paramName 
 			parameter.Value.Schema.Ref = ref
 		}
 
-		switch parameter.Value.Schema.Value.Format {
+		if parameter.Value.Schema != nil && parameter.Value.Schema.Value != nil {
+			switch parameter.Value.Schema.Value.Format {
 		case FormatUUID:
 			parameterCode := jen.Null().
 				Add(jen.List(jen.Id(paramName), jen.Id(VarErr)).Op(":=").Id("uuid").Dot("Parse").Call(jen.Id(paramName+"Str"))).
@@ -378,6 +381,7 @@ func (generator *Generator) wrapperCustomType(in string, name string, paramName 
 				Add(jen.Id(VarRequest).Dot(in).Dot(name).Op("=").Id(paramName).Dot("Alpha2Code").Call())
 
 			result.Add(generator.wrapRequired(paramName+"Str", parameter.Value.Required, parameterCode))
+		}
 		}
 	}
 

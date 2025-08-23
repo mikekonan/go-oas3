@@ -296,7 +296,9 @@ func (typ *Type) getXGoTypeStringParse(schema *openapi3.Schema) (string, string,
 		}
 
 		index := strings.LastIndex(customType, ".")
-
+		if index == -1 {
+			return "", customType, true
+		}
 		return customType[:index], customType[index+1:], true
 	}
 

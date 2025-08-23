@@ -276,7 +276,10 @@ func (generator *Generator) generateEnumValidation(name string, schema *openapi3
 		return jen.Null()
 	}
 
-	receiverName := strings.ToLower(name[:1])
+	receiverName := "c"
+	if name != "" {
+		receiverName = strings.ToLower(name[:1])
+	}
 	
 	// Create validation cases
 	var cases []jen.Code
