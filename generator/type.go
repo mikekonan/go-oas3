@@ -47,6 +47,11 @@ func (typ *Type) fillAdditionalProperties(into *jen.Statement, schema *openapi3.
 }
 
 func (typ *Type) fillGoType(into *jen.Statement, parentTypeName string, typeName string, schemaRef *openapi3.SchemaRef, asPointer bool, needAliasing bool) {
+	if schemaRef == nil || schemaRef.Value == nil {
+		into.Interface()
+		return
+	}
+	
 	if asPointer || typ.getXGoPointer(schemaRef.Value) {
 		into.Op("*")
 	}
@@ -98,8 +103,8 @@ func (typ *Type) fillGoType(into *jen.Statement, parentTypeName string, typeName
 				for _, s := range inlineSchemas {
 					if err := mergo.Merge(mergedInline, s.Value, mergo.WithOverride); err != nil {
 						PanicOperationError("Schema Merge", err, map[string]interface{}{
-							"operation": "merging inline schemas",
-							"context": "allOf schema processing",
+							ContextOperation: "merging inline schemas",
+							ContextIssue:     "allOf schema processing",
 						})
 					}
 				}
@@ -117,8 +122,8 @@ func (typ *Type) fillGoType(into *jen.Statement, parentTypeName string, typeName
 
 			if err := mergo.Merge(mergedSchema, s.Value, mergo.WithOverride); err != nil {
 				PanicOperationError("Schema Merge", err, map[string]interface{}{
-					"operation": "merging allOf schemas",
-					"context": "schema combination",
+					ContextOperation: "merging allOf schemas",
+					ContextIssue:     "schema combination",
 				})
 			}
 		}
@@ -264,7 +269,7 @@ func (typ *Type) hasXGoPointer(schema *openapi3.Schema) bool {
 }
 
 func (typ *Type) hasXGoTypeStringParse(schema *openapi3.Schema) bool {
-	if typ.hasXGoType(schema) && schema.Extensions[goTypeStringParse] != nil {
+	if len(schema.Extensions) > 0 && schema.Extensions[goTypeStringParse] != nil {
 		return true
 	}
 
@@ -291,7 +296,9 @@ func (typ *Type) getXGoTypeStringParse(schema *openapi3.Schema) (string, string,
 		}
 
 		index := strings.LastIndex(customType, ".")
-
+		if index == -1 {
+			return "", customType, true
+		}
 		return customType[:index], customType[index+1:], true
 	}
 
