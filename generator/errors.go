@@ -7,7 +7,9 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// PanicWithContext creates a detailed panic with stack trace and context information
+// PanicWithContext panics with a formatted, flattened error that includes the operation name, caller location, supplied contextual key/value pairs, and helpful hints.
+// If baseErr is nil a default error "generator panic in <operation>" is used. Caller location is formatted as "file:line" when available or ValueUnknown when not.
+// The entries in details are rendered as individual lines in the panic message to aid debugging.
 func PanicWithContext(operation string, details map[string]interface{}, baseErr error) {
 	// Get caller information
 	_, file, line, ok := runtime.Caller(1)
@@ -43,7 +45,9 @@ func PanicWithContext(operation string, details map[string]interface{}, baseErr 
 	panic(panicMsg)
 }
 
-// PanicUnexpectedExtensionType creates a panic for unexpected extension types with detailed context
+// PanicUnexpectedExtensionType panics with a richly detailed error when an OpenAPI extension value has an unexpected Go type.
+// The produced error includes the extension name, the received value and its Go type, the allowed types ("string, json.RawMessage, or bool"),
+// and any provided schemaContext entries (each added to the details map with the ContextSchemaPrefix).
 func PanicUnexpectedExtensionType(extensionName string, receivedType interface{}, schemaContext map[string]interface{}) {
 	details := map[string]interface{}{
 		ContextExtensionName: extensionName,
@@ -81,7 +85,19 @@ func PanicInvalidOperation(operation string, reason string, context map[string]i
 	PanicWithContext("Operation Validation", details, baseErr)
 }
 
-// PanicSchemaValidation creates a panic for schema validation errors
+// PanicSchemaValidation records schema-related context and panics with a detailed error.
+//
+// PanicSchemaValidation builds a details map containing ContextSchemaType, ContextFieldName,
+// and ContextIssue, merges each entry from schemaDetails using keys prefixed with
+// ContextSchemaPrefix (i.e. ContextSchemaPrefix+key), and constructs a base error
+// "schema validation failed for <schemaType>.<fieldName>" with the issue as a detail and
+// two hints about checking the OpenAPI schema and schema type. It then delegates to
+// PanicWithContext with operation "Schema Validation" and panics with the flattened message.
+//
+// Parameters are self-descriptive: schemaType is the schema/object name, fieldName is the
+// field with the validation problem, issue is a short description of the problem, and
+// schemaDetails contains additional schema-specific context that will be namespaced with
+// ContextSchemaPrefix in the emitted error.
 func PanicSchemaValidation(schemaType string, fieldName string, issue string, schemaDetails map[string]interface{}) {
 	details := map[string]interface{}{
 		ContextSchemaType: schemaType,
@@ -102,7 +118,19 @@ func PanicSchemaValidation(schemaType string, fieldName string, issue string, sc
 	PanicWithContext("Schema Validation", details, baseErr)
 }
 
-// PanicOperationError creates a panic for operation errors (like JSON unmarshaling, merging, etc.)
+// PanicOperationError wraps an operation-level error with contextual details and panics.
+//
+// PanicOperationError should be called when an operation (for example JSON unmarshaling,
+// merging, or other data-processing steps) fails and you want to produce a rich, contextual
+// panic message for debugging.
+//
+// Parameters:
+//   - operation: a short identifier for the failing operation.
+//   - err: the original error (must be non-nil); its message is recorded and the error is wrapped.
+//   - operationContext: additional key/value pairs that will be merged into the panic's context.
+//
+// The resulting panic contains a wrapped error with hints and a details map that includes the
+// operation name, the original error message, and any provided operationContext entries.
 func PanicOperationError(operation string, err error, operationContext map[string]interface{}) {
 	details := map[string]interface{}{
 		ContextOperation: operation,

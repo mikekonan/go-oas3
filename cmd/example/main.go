@@ -11,6 +11,8 @@ import (
 	"example"
 )
 
+// main starts the example HTTP server, runs it in a goroutine, waits for SIGINT/SIGTERM,
+// and performs a graceful shutdown allowing up to 30 seconds for outstanding requests to complete.
 func main() {
 	log.Println("Starting go-oas3 example server...")
 

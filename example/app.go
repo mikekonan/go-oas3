@@ -161,6 +161,10 @@ func (c callbacksService) PostCallbacksCallbackType(ctx context.Context, request
 	}
 }
 
+// NewApp constructs and returns an *http.Server configured with the application's HTTP routes and handlers.
+// It instantiates concrete services (transactions, auth, callbacks), wires them into their respective routers,
+// registers endpoints on a chi router (transaction CRUD, auth endpoints, callbacks, and a /health check),
+// and returns a server configured to listen on ":8080" with that router as its Handler.
 func NewApp() *http.Server {
 	// Create services
 	transactionsService := &transactionsService{}
