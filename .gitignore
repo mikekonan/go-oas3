@@ -1,6 +1,9 @@
 .DS_Store
 .idea
 
+# Binary files
+go-oas3
+
 /example/tojen/
 
 # Claude and Claude Flow generated files

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/heetch/confita"
@@ -54,13 +54,17 @@ type Configurator struct {
 }
 
 func (configurator *Configurator) concatPaths(filePath string) (string, error) {
-	if filePath[0] == '.' {
+	if filePath == "" {
+		return filePath, nil
+	}
+	
+	if !filepath.IsAbs(filePath) {
 		wd, err := os.Getwd()
 		if err != nil {
 			return "", err
 		}
 
-		return path.Join(wd, filePath), nil
+		return filepath.Join(wd, filePath), nil
 	}
 
 	return filePath, nil
@@ -75,7 +79,7 @@ func (configurator *Configurator) PostConstruct() (err error) {
 		return err
 	}
 
-	if configurator.config.Package, err = configurator.concatPaths(configurator.config.Path); err != nil {
+	if configurator.config.ComponentsPath, err = configurator.concatPaths(configurator.config.ComponentsPath); err != nil {
 		return err
 	}
 

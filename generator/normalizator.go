@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/ahmetb/go-linq"
 	"github.com/dave/jennifer/jen"
@@ -12,8 +13,31 @@ import (
 
 type Normalizer struct{}
 
+// titleCase replaces deprecated strings.Title with proper case conversion
+// It capitalizes the first letter but preserves the camelCase structure
+// Unicode-safe implementation using utf8.DecodeRuneInString
+func (normalizer *Normalizer) titleCase(str string) string {
+	if str == "" {
+		return str
+	}
+	r, size := utf8.DecodeRuneInString(str)
+	if r == utf8.RuneError && size == 0 {
+		return str
+	}
+	return string(unicode.ToUpper(r)) + str[size:]
+}
+
+// decapitalize converts the first character to lowercase
+// Unicode-safe implementation using utf8.DecodeRuneInString
 func (normalizer *Normalizer) decapitalize(str string) string {
-	return strings.ToLower(str[:1]) + str[1:]
+	if str == "" {
+		return str
+	}
+	r, size := utf8.DecodeRuneInString(str)
+	if r == utf8.RuneError && size == 0 {
+		return str
+	}
+	return string(unicode.ToLower(r)) + str[size:]
 }
 
 func (normalizer *Normalizer) normalize(str string) string {
@@ -44,15 +68,17 @@ func (normalizer *Normalizer) normalize(str string) string {
 		}
 	}
 
-	if len(n) > 3 {
-		if strings.ToLower(n[len(n)-4:]) == "uuid" {
-			n = n[:len(n)-4] + "UUID"
+	if len(n) >= len(NormUUIDSuffix) {
+		lower := strings.ToLower(n)
+		if strings.HasSuffix(lower, NormUUIDSuffix) {
+			n = n[:len(n)-len(NormUUIDSuffix)] + NormUUID
 		}
 	}
 
-	if len(n) > 1 {
-		if strings.ToLower(n[len(n)-2:]) == "id" {
-			n = n[:len(n)-2] + "ID"
+	if len(n) >= len(NormIDSuffix) {
+		lower := strings.ToLower(n)
+		if strings.HasSuffix(lower, NormIDSuffix) {
+			n = n[:len(n)-len(NormIDSuffix)] + NormID
 		}
 	}
 
@@ -105,5 +131,5 @@ func (normalizer *Normalizer) contentType(str string) string {
 	}
 
 	return cast.ToString(linq.From(strings.FieldsFunc(str, split)).
-		AggregateWithSeedT("", func(accumulator, str string) string { return accumulator + strings.Title(str) }))
+		AggregateWithSeedT("", func(accumulator, str string) string { return accumulator + normalizer.titleCase(str) }))
 }
