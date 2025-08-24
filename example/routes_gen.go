@@ -17,9 +17,9 @@ import (
 )
 
 type TransactionsService interface {
+	DeleteTransactionsUUID(ctx context.Context, request *DeleteTransactionsUUIDRequest) *DeleteTransactionsUUIDResponse
 	PostTransaction(ctx context.Context, request *PostTransactionRequest) *PostTransactionResponse
 	PutTransaction(ctx context.Context, request *PutTransactionRequest) *PutTransactionResponse
-	DeleteTransactionsUUID(ctx context.Context, request *DeleteTransactionsUUIDRequest) *DeleteTransactionsUUIDResponse
 }
 
 type TransactionsRouter struct {
@@ -33,6 +33,235 @@ func NewTransactionsRouter(service TransactionsService, processors ...securityPr
 	router := chi.NewMux()
 	instance := &TransactionsRouter{service: service, router: router, hooks: &Hooks{}, processors: processors}
 	return instance
+}
+
+func (router *TransactionsRouter) deleteTransactionsUUID(w http.ResponseWriter, r *http.Request) {
+	var request DeleteTransactionsUUIDRequest
+
+	XSignature := r.Header.Get("x-signature")
+	if XSignature != "" {
+		request.header.XSignature = &XSignature
+	}
+	XFingerprint := r.Header.Get("x-fingerprint")
+	if XFingerprint == "" {
+		err := fmt.Errorf("x-fingerprint is required")
+
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderParseFailed}
+		if router.hooks.RequestHeaderParseFailed != nil {
+			router.hooks.RequestHeaderParseFailed(r, "deleteTransactionsUUID", "x-fingerprint", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	if !fingerprintRegex.MatchString(XFingerprint) {
+		err := fmt.Errorf("x-fingerprint not matched by the '[0-9a-fA-F]+' regex")
+
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderParseFailed}
+		if router.hooks.RequestHeaderParseFailed != nil {
+			router.hooks.RequestHeaderParseFailed(r, "deleteTransactionsUUID", "x-fingerprint", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	request.header.XFingerprint = XFingerprint
+
+	UUID := chi.URLParam(r, "uuid")
+	if UUID == "" {
+		err := fmt.Errorf("uuid is required")
+
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathParseFailed}
+		if router.hooks.RequestPathParseFailed != nil {
+			router.hooks.RequestPathParseFailed(r, "deleteTransactionsUUID", "uuid", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	request.path.UUID = UUID
+	RegexParam := chi.URLParam(r, "regexParam")
+	if RegexParam == "" {
+		err := fmt.Errorf("regexParam is required")
+
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathParseFailed}
+		if router.hooks.RequestPathParseFailed != nil {
+			router.hooks.RequestPathParseFailed(r, "deleteTransactionsUUID", "regexParam", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	if !regexParamRegex.MatchString(RegexParam) {
+		err := fmt.Errorf("regexParam not matched by the '^[.?\\d]+$' regex")
+
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathParseFailed}
+		if router.hooks.RequestPathParseFailed != nil {
+			router.hooks.RequestPathParseFailed(r, "deleteTransactionsUUID", "regexParam", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	request.path.RegexParam = RegexParam
+
+	TimeParamStr := r.URL.Query().Get("timeParam")
+	TimeParam, err := cast.ToTimeE(TimeParamStr)
+	if err != nil {
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: QueryParseFailed}
+		if router.hooks.RequestQueryParseFailed != nil {
+			router.hooks.RequestQueryParseFailed(r, "deleteTransactionsUUID", "timeParam", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	request.query.TimeParam = &TimeParam
+
+	request = router.parseDeleteTransactionsUUIDRequest(r)
+
+	response := router.service.DeleteTransactionsUUID(r.Context(), &request)
+	response.WriteTo(w)
+}
+
+func (router *TransactionsRouter) parseDeleteTransactionsUUIDRequest(r *http.Request) (request DeleteTransactionsUUIDRequest) {
+	request.ProcessingResult = RequestProcessingResult{typee: ParseSucceed}
+
+	for _, processor := range router.processors {
+		if processor.scheme == SecuritySchemeBearer {
+			name, value, found := processor.extract(r)
+			if !found {
+				request.ProcessingResult = RequestProcessingResult{error: fmt.Errorf("security scheme not found"), typee: SecurityParseFailed}
+				if router.hooks.RequestSecurityParseFailed != nil {
+					router.hooks.RequestSecurityParseFailed(r, "DeleteTransactionsUUID", request.ProcessingResult)
+				}
+				return
+			}
+
+			if err := processor.handle(r, processor.scheme, name, value); err != nil {
+				request.ProcessingResult = RequestProcessingResult{error: err, typee: SecurityCheckFailed}
+				if router.hooks.RequestSecurityCheckFailed != nil {
+					router.hooks.RequestSecurityCheckFailed(r, "DeleteTransactionsUUID", string(processor.scheme), request.ProcessingResult)
+				}
+				return
+			}
+
+			if router.hooks.RequestSecurityCheckCompleted != nil {
+				router.hooks.RequestSecurityCheckCompleted(r, "DeleteTransactionsUUID", string(processor.scheme))
+			}
+			break
+		}
+	}
+	for _, processor := range router.processors {
+		if processor.scheme == SecuritySchemeCookie {
+			name, value, found := processor.extract(r)
+			if !found {
+				request.ProcessingResult = RequestProcessingResult{error: fmt.Errorf("security scheme not found"), typee: SecurityParseFailed}
+				if router.hooks.RequestSecurityParseFailed != nil {
+					router.hooks.RequestSecurityParseFailed(r, "DeleteTransactionsUUID", request.ProcessingResult)
+				}
+				return
+			}
+
+			if err := processor.handle(r, processor.scheme, name, value); err != nil {
+				request.ProcessingResult = RequestProcessingResult{error: err, typee: SecurityCheckFailed}
+				if router.hooks.RequestSecurityCheckFailed != nil {
+					router.hooks.RequestSecurityCheckFailed(r, "DeleteTransactionsUUID", string(processor.scheme), request.ProcessingResult)
+				}
+				return
+			}
+
+			if router.hooks.RequestSecurityCheckCompleted != nil {
+				router.hooks.RequestSecurityCheckCompleted(r, "DeleteTransactionsUUID", string(processor.scheme))
+			}
+			break
+		}
+	}
+	XSignature := r.Header.Get("x-signature")
+	if XSignature != "" {
+		request.header.XSignature = &XSignature
+	}
+	XFingerprint := r.Header.Get("x-fingerprint")
+	if XFingerprint == "" {
+		err := fmt.Errorf("x-fingerprint is required")
+
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderParseFailed}
+		if router.hooks.RequestHeaderParseFailed != nil {
+			router.hooks.RequestHeaderParseFailed(r, "DeleteTransactionsUUID", "x-fingerprint", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	if !fingerprintRegex.MatchString(XFingerprint) {
+		err := fmt.Errorf("x-fingerprint not matched by the '[0-9a-fA-F]+' regex")
+
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderParseFailed}
+		if router.hooks.RequestHeaderParseFailed != nil {
+			router.hooks.RequestHeaderParseFailed(r, "DeleteTransactionsUUID", "x-fingerprint", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	request.header.XFingerprint = XFingerprint
+
+	UUID := chi.URLParam(r, "uuid")
+	if UUID == "" {
+		err := fmt.Errorf("uuid is required")
+
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathParseFailed}
+		if router.hooks.RequestPathParseFailed != nil {
+			router.hooks.RequestPathParseFailed(r, "DeleteTransactionsUUID", "uuid", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	request.path.UUID = UUID
+	RegexParam := chi.URLParam(r, "regexParam")
+	if RegexParam == "" {
+		err := fmt.Errorf("regexParam is required")
+
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathParseFailed}
+		if router.hooks.RequestPathParseFailed != nil {
+			router.hooks.RequestPathParseFailed(r, "DeleteTransactionsUUID", "regexParam", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	if !regexParamRegex.MatchString(RegexParam) {
+		err := fmt.Errorf("regexParam not matched by the '^[.?\\d]+$' regex")
+
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathParseFailed}
+		if router.hooks.RequestPathParseFailed != nil {
+			router.hooks.RequestPathParseFailed(r, "DeleteTransactionsUUID", "regexParam", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	request.path.RegexParam = RegexParam
+
+	TimeParamStr := r.URL.Query().Get("timeParam")
+	TimeParam, err := cast.ToTimeE(TimeParamStr)
+	if err != nil {
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: QueryParseFailed}
+		if router.hooks.RequestQueryParseFailed != nil {
+			router.hooks.RequestQueryParseFailed(r, "DeleteTransactionsUUID", "timeParam", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	request.query.TimeParam = &TimeParam
+
+	if router.hooks.RequestParseCompleted != nil {
+		router.hooks.RequestParseCompleted(r, "DeleteTransactionsUUID")
+	}
+
+	return
 }
 
 func (router *TransactionsRouter) postTransaction(w http.ResponseWriter, r *http.Request) {
@@ -244,235 +473,6 @@ func (router *TransactionsRouter) parsePutTransactionRequest(r *http.Request) (r
 
 	if router.hooks.RequestParseCompleted != nil {
 		router.hooks.RequestParseCompleted(r, "PutTransaction")
-	}
-
-	return
-}
-
-func (router *TransactionsRouter) deleteTransactionsUUID(w http.ResponseWriter, r *http.Request) {
-	var request DeleteTransactionsUUIDRequest
-
-	UUID := chi.URLParam(r, "uuid")
-	if UUID == "" {
-		err := fmt.Errorf("uuid is required")
-
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathParseFailed}
-		if router.hooks.RequestPathParseFailed != nil {
-			router.hooks.RequestPathParseFailed(r, "deleteTransactionsUUID", "uuid", request.ProcessingResult)
-		}
-
-		return
-	}
-
-	request.path.UUID = UUID
-	RegexParam := chi.URLParam(r, "regexParam")
-	if RegexParam == "" {
-		err := fmt.Errorf("regexParam is required")
-
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathParseFailed}
-		if router.hooks.RequestPathParseFailed != nil {
-			router.hooks.RequestPathParseFailed(r, "deleteTransactionsUUID", "regexParam", request.ProcessingResult)
-		}
-
-		return
-	}
-
-	if !regexParamRegex.MatchString(RegexParam) {
-		err := fmt.Errorf("regexParam not matched by the '^[.?\\d]+$' regex")
-
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathParseFailed}
-		if router.hooks.RequestPathParseFailed != nil {
-			router.hooks.RequestPathParseFailed(r, "deleteTransactionsUUID", "regexParam", request.ProcessingResult)
-		}
-
-		return
-	}
-
-	request.path.RegexParam = RegexParam
-
-	TimeParamStr := r.URL.Query().Get("timeParam")
-	TimeParam, err := cast.ToTimeE(TimeParamStr)
-	if err != nil {
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: QueryParseFailed}
-		if router.hooks.RequestQueryParseFailed != nil {
-			router.hooks.RequestQueryParseFailed(r, "deleteTransactionsUUID", "timeParam", request.ProcessingResult)
-		}
-
-		return
-	}
-
-	request.query.TimeParam = &TimeParam
-
-	XSignature := r.Header.Get("x-signature")
-	if XSignature != "" {
-		request.header.XSignature = &XSignature
-	}
-	XFingerprint := r.Header.Get("x-fingerprint")
-	if XFingerprint == "" {
-		err := fmt.Errorf("x-fingerprint is required")
-
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderParseFailed}
-		if router.hooks.RequestHeaderParseFailed != nil {
-			router.hooks.RequestHeaderParseFailed(r, "deleteTransactionsUUID", "x-fingerprint", request.ProcessingResult)
-		}
-
-		return
-	}
-
-	if !fingerprintRegex.MatchString(XFingerprint) {
-		err := fmt.Errorf("x-fingerprint not matched by the '[0-9a-fA-F]+' regex")
-
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderParseFailed}
-		if router.hooks.RequestHeaderParseFailed != nil {
-			router.hooks.RequestHeaderParseFailed(r, "deleteTransactionsUUID", "x-fingerprint", request.ProcessingResult)
-		}
-
-		return
-	}
-
-	request.header.XFingerprint = XFingerprint
-
-	request = router.parseDeleteTransactionsUUIDRequest(r)
-
-	response := router.service.DeleteTransactionsUUID(r.Context(), &request)
-	response.WriteTo(w)
-}
-
-func (router *TransactionsRouter) parseDeleteTransactionsUUIDRequest(r *http.Request) (request DeleteTransactionsUUIDRequest) {
-	request.ProcessingResult = RequestProcessingResult{typee: ParseSucceed}
-
-	for _, processor := range router.processors {
-		if processor.scheme == SecuritySchemeBearer {
-			name, value, found := processor.extract(r)
-			if !found {
-				request.ProcessingResult = RequestProcessingResult{error: fmt.Errorf("security scheme not found"), typee: SecurityParseFailed}
-				if router.hooks.RequestSecurityParseFailed != nil {
-					router.hooks.RequestSecurityParseFailed(r, "DeleteTransactionsUUID", request.ProcessingResult)
-				}
-				return
-			}
-
-			if err := processor.handle(r, processor.scheme, name, value); err != nil {
-				request.ProcessingResult = RequestProcessingResult{error: err, typee: SecurityCheckFailed}
-				if router.hooks.RequestSecurityCheckFailed != nil {
-					router.hooks.RequestSecurityCheckFailed(r, "DeleteTransactionsUUID", string(processor.scheme), request.ProcessingResult)
-				}
-				return
-			}
-
-			if router.hooks.RequestSecurityCheckCompleted != nil {
-				router.hooks.RequestSecurityCheckCompleted(r, "DeleteTransactionsUUID", string(processor.scheme))
-			}
-			break
-		}
-	}
-	for _, processor := range router.processors {
-		if processor.scheme == SecuritySchemeCookie {
-			name, value, found := processor.extract(r)
-			if !found {
-				request.ProcessingResult = RequestProcessingResult{error: fmt.Errorf("security scheme not found"), typee: SecurityParseFailed}
-				if router.hooks.RequestSecurityParseFailed != nil {
-					router.hooks.RequestSecurityParseFailed(r, "DeleteTransactionsUUID", request.ProcessingResult)
-				}
-				return
-			}
-
-			if err := processor.handle(r, processor.scheme, name, value); err != nil {
-				request.ProcessingResult = RequestProcessingResult{error: err, typee: SecurityCheckFailed}
-				if router.hooks.RequestSecurityCheckFailed != nil {
-					router.hooks.RequestSecurityCheckFailed(r, "DeleteTransactionsUUID", string(processor.scheme), request.ProcessingResult)
-				}
-				return
-			}
-
-			if router.hooks.RequestSecurityCheckCompleted != nil {
-				router.hooks.RequestSecurityCheckCompleted(r, "DeleteTransactionsUUID", string(processor.scheme))
-			}
-			break
-		}
-	}
-	XSignature := r.Header.Get("x-signature")
-	if XSignature != "" {
-		request.header.XSignature = &XSignature
-	}
-	XFingerprint := r.Header.Get("x-fingerprint")
-	if XFingerprint == "" {
-		err := fmt.Errorf("x-fingerprint is required")
-
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderParseFailed}
-		if router.hooks.RequestHeaderParseFailed != nil {
-			router.hooks.RequestHeaderParseFailed(r, "DeleteTransactionsUUID", "x-fingerprint", request.ProcessingResult)
-		}
-
-		return
-	}
-
-	if !fingerprintRegex.MatchString(XFingerprint) {
-		err := fmt.Errorf("x-fingerprint not matched by the '[0-9a-fA-F]+' regex")
-
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderParseFailed}
-		if router.hooks.RequestHeaderParseFailed != nil {
-			router.hooks.RequestHeaderParseFailed(r, "DeleteTransactionsUUID", "x-fingerprint", request.ProcessingResult)
-		}
-
-		return
-	}
-
-	request.header.XFingerprint = XFingerprint
-
-	UUID := chi.URLParam(r, "uuid")
-	if UUID == "" {
-		err := fmt.Errorf("uuid is required")
-
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathParseFailed}
-		if router.hooks.RequestPathParseFailed != nil {
-			router.hooks.RequestPathParseFailed(r, "DeleteTransactionsUUID", "uuid", request.ProcessingResult)
-		}
-
-		return
-	}
-
-	request.path.UUID = UUID
-	RegexParam := chi.URLParam(r, "regexParam")
-	if RegexParam == "" {
-		err := fmt.Errorf("regexParam is required")
-
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathParseFailed}
-		if router.hooks.RequestPathParseFailed != nil {
-			router.hooks.RequestPathParseFailed(r, "DeleteTransactionsUUID", "regexParam", request.ProcessingResult)
-		}
-
-		return
-	}
-
-	if !regexParamRegex.MatchString(RegexParam) {
-		err := fmt.Errorf("regexParam not matched by the '^[.?\\d]+$' regex")
-
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathParseFailed}
-		if router.hooks.RequestPathParseFailed != nil {
-			router.hooks.RequestPathParseFailed(r, "DeleteTransactionsUUID", "regexParam", request.ProcessingResult)
-		}
-
-		return
-	}
-
-	request.path.RegexParam = RegexParam
-
-	TimeParamStr := r.URL.Query().Get("timeParam")
-	TimeParam, err := cast.ToTimeE(TimeParamStr)
-	if err != nil {
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: QueryParseFailed}
-		if router.hooks.RequestQueryParseFailed != nil {
-			router.hooks.RequestQueryParseFailed(r, "DeleteTransactionsUUID", "timeParam", request.ProcessingResult)
-		}
-
-		return
-	}
-
-	request.query.TimeParam = &TimeParam
-
-	if router.hooks.RequestParseCompleted != nil {
-		router.hooks.RequestParseCompleted(r, "DeleteTransactionsUUID")
 	}
 
 	return
@@ -867,6 +867,16 @@ func (r *AuthResponse) WriteTo(w http.ResponseWriter) {
 	}
 }
 
+type CallbacksResponse struct {
+	*response
+}
+
+func (r *CallbacksResponse) WriteTo(w http.ResponseWriter) {
+	if r.response != nil {
+		r.response.WriteTo(w)
+	}
+}
+
 type TransactionsResponse struct {
 	*response
 }
@@ -877,11 +887,11 @@ func (r *TransactionsResponse) WriteTo(w http.ResponseWriter) {
 	}
 }
 
-type CallbacksResponse struct {
+type PostBearerEndpointResponse struct {
 	*response
 }
 
-func (r *CallbacksResponse) WriteTo(w http.ResponseWriter) {
+func (r *PostBearerEndpointResponse) WriteTo(w http.ResponseWriter) {
 	if r.response != nil {
 		r.response.WriteTo(w)
 	}
@@ -907,11 +917,11 @@ func (r *GetSemiSecureEndpointResponse) WriteTo(w http.ResponseWriter) {
 	}
 }
 
-type PostBearerEndpointResponse struct {
+type PostCallbacksCallbackTypeResponse struct {
 	*response
 }
 
-func (r *PostBearerEndpointResponse) WriteTo(w http.ResponseWriter) {
+func (r *PostCallbacksCallbackTypeResponse) WriteTo(w http.ResponseWriter) {
 	if r.response != nil {
 		r.response.WriteTo(w)
 	}
@@ -942,16 +952,6 @@ type DeleteTransactionsUUIDResponse struct {
 }
 
 func (r *DeleteTransactionsUUIDResponse) WriteTo(w http.ResponseWriter) {
-	if r.response != nil {
-		r.response.WriteTo(w)
-	}
-}
-
-type PostCallbacksCallbackTypeResponse struct {
-	*response
-}
-
-func (r *PostCallbacksCallbackTypeResponse) WriteTo(w http.ResponseWriter) {
 	if r.response != nil {
 		r.response.WriteTo(w)
 	}
@@ -1422,6 +1422,19 @@ type GetSemiSecureEndpoint400ContentTypeBuilder struct {
 	response *response
 }
 
+type PostCallbacksCallbackTypeStatus307Builder struct {
+	response *response
+}
+
+func (b *PostCallbacksCallbackTypeStatus307Builder) Status() *PostCallbacksCallbackType307ContentTypeBuilder {
+	b.response.statusCode = 307
+	return &PostCallbacksCallbackType307ContentTypeBuilder{response: b.response}
+}
+
+type PostCallbacksCallbackType307ContentTypeBuilder struct {
+	response *response
+}
+
 type PostCallbacksCallbackTypeStatus200Builder struct {
 	response *response
 }
@@ -1472,31 +1485,6 @@ func (b *PostCallbacksCallbackType200ApplicationOctetStreamHeadersBuilder) Heade
 	return &PostCallbacksCallbackTypeResponse{response: b.response}
 }
 
-type PostCallbacksCallbackTypeStatus307Builder struct {
-	response *response
-}
-
-func (b *PostCallbacksCallbackTypeStatus307Builder) Status() *PostCallbacksCallbackType307ContentTypeBuilder {
-	b.response.statusCode = 307
-	return &PostCallbacksCallbackType307ContentTypeBuilder{response: b.response}
-}
-
-type PostCallbacksCallbackType307ContentTypeBuilder struct {
-	response *response
-}
-
-type PostTransactionResponseInterface interface {
-	WriteTo(http.ResponseWriter)
-}
-
-type PutTransactionResponseInterface interface {
-	WriteTo(http.ResponseWriter)
-}
-
-type DeleteTransactionsUUIDResponseInterface interface {
-	WriteTo(http.ResponseWriter)
-}
-
 type PostBearerEndpointResponseInterface interface {
 	WriteTo(http.ResponseWriter)
 }
@@ -1513,8 +1501,16 @@ type PostCallbacksCallbackTypeResponseInterface interface {
 	WriteTo(http.ResponseWriter)
 }
 
-type GetSecureEndpointRequest struct {
-	ProcessingResult RequestProcessingResult
+type PostTransactionResponseInterface interface {
+	WriteTo(http.ResponseWriter)
+}
+
+type PutTransactionResponseInterface interface {
+	WriteTo(http.ResponseWriter)
+}
+
+type DeleteTransactionsUUIDResponseInterface interface {
+	WriteTo(http.ResponseWriter)
 }
 
 type GetSemiSecureEndpointRequest struct {
@@ -1569,13 +1565,17 @@ type PostCallbacksCallbackTypeRequest struct {
 	ProcessingResult RequestProcessingResult
 }
 
+type GetSecureEndpointRequest struct {
+	ProcessingResult RequestProcessingResult
+}
+
 type SecurityScheme string
 
 const (
+	SecuritySchemeBearer     SecurityScheme = "Bearer"
 	SecuritySchemeCookie     SecurityScheme = "Cookie"
 	SecuritySchemeApiKeyAuth SecurityScheme = "ApiKeyAuth"
 	SecuritySchemeBasic      SecurityScheme = "Basic"
-	SecuritySchemeBearer     SecurityScheme = "Bearer"
 )
 
 type securityProcessor struct {
@@ -1585,6 +1585,10 @@ type securityProcessor struct {
 }
 
 var SecuritySchemeExtractors = map[SecurityScheme]func(r *http.Request) (string, string, bool){
+	SecuritySchemeBearer: func(r *http.Request) (string, string, bool) {
+		value := r.Header.Get("Authorization")
+		return "Authorization", value, value != ""
+	},
 	SecuritySchemeCookie: func(r *http.Request) (string, string, bool) {
 		cookie, err := r.Cookie("JSESSIONID")
 		if err != nil {
@@ -1605,9 +1609,5 @@ var SecuritySchemeExtractors = map[SecurityScheme]func(r *http.Request) (string,
 
 		value = value[7:]
 
-		return "Authorization", value, value != ""
-	},
-	SecuritySchemeBearer: func(r *http.Request) (string, string, bool) {
-		value := r.Header.Get("Authorization")
 		return "Authorization", value, value != ""
 	}}
