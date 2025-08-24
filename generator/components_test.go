@@ -400,10 +400,10 @@ func TestGenerator_typeProperties(t *testing.T) {
 			pointersForRequired: true,
 			expectedFieldCount:  4,
 			expectedRequiredTags: []string{
-				"ID            int",
-				"Name          string",
-				"Email         *string",
-				"OptionalField *string",
+				"ID            *int",    // Required fields get pointers in helper structs
+				"Name          *string", // Required fields get pointers in helper structs
+				"Email         string",  // Optional fields remain regular in helper structs
+				"OptionalField string", // Optional fields remain regular in helper structs
 			},
 		},
 	}

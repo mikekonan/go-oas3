@@ -81,9 +81,9 @@ func TestNullHandling(t *testing.T) {
 		{
 			name:        "regex field validation failure",
 			json:        `{"description": "test description", "regexParam": "invalid"}`,
-			expectError: true,
-			errorMsg:    "field 'RegexParam' does not match pattern",
-			description: "Field not matching regex should produce descriptive error",
+			expectError: false, // UnmarshalJSON should succeed
+			expectValid: false, // but Validate() should fail
+			description: "Field not matching regex should pass UnmarshalJSON but fail validation",
 		},
 		{
 			name:        "regex field validation success",

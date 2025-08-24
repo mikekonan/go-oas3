@@ -128,6 +128,41 @@ func (generator *Generator) fieldValidationRuleFromSchema(receiverName string, p
 			numericRule := jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "Field").Call(params...)
 			fieldRules = append(fieldRules, numericRule)
 		}
+	} else if v.Type != nil && v.Type.Is(TypeArray) {
+		var rules []jen.Code
+		
+		// Always add Length validation for arrays based on minItems/maxItems
+		minItems := int(v.MinItems)
+		maxItems := 1000000 // Large default max
+		if v.MaxItems != nil {
+			maxItems = int(*v.MaxItems)
+		}
+		
+		rules = append(rules, jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "Length").Call(
+			jen.Lit(minItems), jen.Lit(maxItems)))
+		
+		// Always generate validation for arrays if we have any constraints
+		if len(rules) > 0 {
+			var params = []jen.Code{jen.Op("&").Id(receiverName).Dot(propertyName)}
+			
+			// Add Required rule for arrays with minItems > 0
+			// This is needed because Length validation doesn't apply to empty/nil arrays in ozzo-validation
+			if minItems > 0 {
+				params = append(params, jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "Required"))
+			}
+			
+			// Also add Required if the field is marked as required (just in case)
+			if required {
+				// Only add if we haven't already added it
+				if minItems == 0 {
+					params = append(params, jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "Required"))
+				}
+			}
+			
+			params = append(params, rules...)
+			arrayRule := jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "Field").Call(params...)
+			fieldRules = append(fieldRules, arrayRule)
+		}
 	}
 
 	return fieldRules

@@ -157,7 +157,7 @@ func TestGenerator_fieldValidationRuleFromSchema(t *testing.T) {
 			},
 			required: false,
 			expectedInCode: []string{
-				// Array validation not implemented yet - returns nil
+				"v4.Field(&list.Items, v4.Required, v4.Length(1, 10))",
 			},
 		},
 		{
@@ -383,7 +383,7 @@ func TestGenerator_validationRules_MultipleTypes(t *testing.T) {
 			},
 			propertyName: "Tags",
 			expectedInCode: []string{
-				// Array validation not yet implemented
+				"v4.Length(1, 5)",
 			},
 		},
 	}
