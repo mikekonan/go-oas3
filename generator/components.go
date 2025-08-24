@@ -282,6 +282,11 @@ func (generator *Generator) enumFromSchema(name string, schema *openapi3.SchemaR
 	name = generator.normalizer.normalize(name)
 	v := schema.Value
 
+	// Check if this enum should be aliased to an external type instead of generating constants
+	if generator.shouldUseExternalTypeAlias(v) {
+		return generator.generateExternalTypeAlias(name, schema)
+	}
+
 	// Determine base type
 	baseType := jen.String()
 	if v.Type != nil && v.Type.Is(TypeInteger) {
@@ -316,6 +321,64 @@ func (generator *Generator) enumFromSchema(name string, schema *openapi3.SchemaR
 	validationMethod := generator.generateEnumValidation(name, schema)
 
 	return jen.Add(typeDecl, jen.Line(), jen.Line(), constDecl, jen.Line(), jen.Line(), validationMethod)
+}
+
+// shouldUseExternalTypeAlias determines if an enum schema should use a type alias to an external type
+func (generator *Generator) shouldUseExternalTypeAlias(schema *openapi3.Schema) bool {
+	// Check if schema has x-go-type extension (explicit external type mapping)
+	if generator.typee.hasXGoType(schema) {
+		return true
+	}
+	
+	// Check for well-known formats that map to external types
+	if schema.Type != nil && schema.Type.Is(TypeString) && schema.Format != "" {
+		switch schema.Format {
+		case FormatISO3166Alpha2, FormatISO3166Alpha3, FormatISO4217CurrencyCode:
+			return true
+		}
+	}
+	
+	return false
+}
+
+// generateExternalTypeAlias generates a type alias to an external type
+func (generator *Generator) generateExternalTypeAlias(name string, schema *openapi3.SchemaRef) jen.Code {
+	if schema == nil || schema.Value == nil {
+		return jen.Null()
+	}
+
+	v := schema.Value
+	typeAlias := jen.Type().Id(name).Op("=")
+	
+	// Check if there's an explicit x-go-type mapping
+	if pkg, typeName, ok := generator.typee.getXGoType(v); ok {
+		if pkg == "" {
+			typeAlias.Id(typeName)
+		} else {
+			typeAlias.Qual(pkg, typeName)
+		}
+		return typeAlias
+	}
+	
+	// Handle well-known formats
+	if v.Type != nil && v.Type.Is(TypeString) && v.Format != "" {
+		switch v.Format {
+		case FormatISO3166Alpha2:
+			typeAlias.Qual("github.com/mikekonan/go-types/v2/country", "Alpha2Code")
+		case FormatISO3166Alpha3:
+			typeAlias.Qual("github.com/mikekonan/go-types/v2/country", "Alpha3Code")
+		case FormatISO4217CurrencyCode:
+			typeAlias.Qual("github.com/mikekonan/go-types/v2/currency", "Code")
+		default:
+			// Fallback to string if format is unknown
+			typeAlias.String()
+		}
+		return typeAlias
+	}
+	
+	// Fallback - shouldn't reach here if shouldUseExternalTypeAlias returned true
+	typeAlias.String()
+	return typeAlias
 }
 
 // generateEnumValidation generates validation method for enum types
