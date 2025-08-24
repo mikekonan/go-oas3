@@ -617,9 +617,9 @@ func (generator *Generator) fieldValidationRuleFromSchema(receiverName string, p
 				maxLength = *v.MaxLength
 			}
 			var params = []jen.Code{jen.Op("&").Id(receiverName).Dot(propertyName)}
-			if v.MinLength > 0 && required {
-				params = append(params, jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "Required"))
-			} else if v.MinLength > 0 {
+			// Note: Required validation is handled by UnmarshalJSON, not ozzo-validation
+			if v.MinLength > 0 && !required {
+				// For optional fields, skip validation when empty
 				params = append(params, jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "Skip").Dot("When").Call(jen.Id(receiverName).Dot(propertyName).Op("==").Lit("")))
 			}
 			params = append(params, jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "RuneLength").Call(jen.Lit(int(v.MinLength)), jen.Lit(int(maxLength))))
@@ -700,9 +700,9 @@ func (generator *Generator) componentFromSchema(name string, parentSchema *opena
 				regexVarName := generator.useRegex[regex]
 				//regexVarName := generator.normalizer.decapitalize(name) + strings.Title(property) + "Regex"
 				additionalValidationCode = append(additionalValidationCode,
-					jen.If(jen.Op("!").Id(regexVarName).Dot("MatchString").Call(jen.Id("body").Dot(propertyName))).Block(
+					jen.If(jen.Op("!").Id(regexVarName).Dot("MatchString").Call(jen.Id("value").Dot(propertyName))).Block(
 						jen.Return().Qual("fmt",
-							"Errorf").Call(jen.Lit(fmt.Sprintf(`%s not matched by the '%s' regex`, property, html.EscapeString(regex))))).Line())
+							"Errorf").Call(jen.Lit(fmt.Sprintf(`field '%s' does not match pattern '%s'`, property, html.EscapeString(regex))))).Line())
 			}
 
 			fvRule := generator.fieldValidationRuleFromSchema("body", propertyName, schema, false)
@@ -711,8 +711,8 @@ func (generator *Generator) componentFromSchema(name string, parentSchema *opena
 			}
 
 			var generateStatement = jen.Null().Add(additionalValidationCode...)
-
 			isTrimmable := generator.getXGoStringTrimmable(schema)
+			
 			if isTrimmable {
 				return generateStatement.Id("body").Dot(propertyName).Op("=").Qual("strings", "TrimSpace").Call(jen.Id("value").Dot(propertyName)).Line()
 			}
@@ -738,7 +738,7 @@ func (generator *Generator) componentFromSchema(name string, parentSchema *opena
 				additionalValidationCode = append(additionalValidationCode,
 					jen.If(jen.Op("!").Id(regexVarName).Dot("MatchString").Call(jen.Op("*").Id("value").Dot(propertyName))).Block(
 						jen.Return().Qual("fmt",
-							"Errorf").Call(jen.Lit(fmt.Sprintf(`%s not matched by the '%s' regex`, property, html.EscapeString(regex))))).Line())
+							"Errorf").Call(jen.Lit(fmt.Sprintf(`field '%s' does not match pattern '%s'`, property, html.EscapeString(regex))))).Line())
 			}
 
 			fvRule := generator.fieldValidationRuleFromSchema("body", propertyName, schema, true)
@@ -747,7 +747,7 @@ func (generator *Generator) componentFromSchema(name string, parentSchema *opena
 			}
 
 			code := jen.If(jen.Id("value").Dot(propertyName).Op("==").Id("nil")).
-				Block(jen.Return().Qual("fmt", "Errorf").Call(jen.Lit(fmt.Sprintf("%s is required", property)))).
+				Block(jen.Return().Qual("fmt", "Errorf").Call(jen.Lit(fmt.Sprintf("field '%s' is required but was null or missing", property)))).
 				Line().Line().
 				Add(additionalValidationCode...).
 				Line().Line()
