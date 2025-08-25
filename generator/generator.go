@@ -1358,8 +1358,7 @@ func (generator *Generator) wrapper(name string, requestName string, routerName,
 		jen.Id("response").Dot("statusCode").Call(),
 	)
 
-	funcCode = append(funcCode, jen.Id("response").Op(":=").Id("router").Dot("service").Dot(name).Call(jen.Id("r").Dot("Context").Call(),
-		jen.Id("router").Dot("parse"+name+"Request").Call(jen.Id("r"))),
+	funcCode = append(funcCode, jen.Id("response").Op(":=").Id("router").Dot("service").Dot(name).Call(generator.serviceCallParams(name)...),
 		jen.Line().Line(),
 		jen.For(jen.List(jen.Id("header"),
 			jen.Id("value")).Op(":=").Range().Id("response").Dot("headers").Call()).Block(
@@ -2242,6 +2241,34 @@ func (generator *Generator) handlersTypes(swagger *openapi3.T) jen.Code {
 	return jen.Null().Add(result...)
 }
 
+// interfaceMethodParams generates the parameter list for interface methods based on configuration
+func (generator *Generator) interfaceMethodParams(requestTypeName string) []jen.Code {
+	params := []jen.Code{
+		jen.Qual("context", "Context"),
+		jen.Id(requestTypeName),
+	}
+	
+	if generator.config.PassRawRequest {
+		params = append(params, jen.Op("*").Qual("net/http", "Request"))
+	}
+	
+	return params
+}
+
+// serviceCallParams generates the parameter list for service method calls based on configuration
+func (generator *Generator) serviceCallParams(name string) []jen.Code {
+	params := []jen.Code{
+		jen.Id("r").Dot("Context").Call(),
+		jen.Id("router").Dot("parse"+name+"Request").Call(jen.Id("r")),
+	}
+	
+	if generator.config.PassRawRequest {
+		params = append(params, jen.Id("r"))
+	}
+	
+	return params
+}
+
 func (generator *Generator) handlersInterfaces(swagger *openapi3.T) jen.Code {
 	var result []jen.Code
 
@@ -2260,12 +2287,12 @@ func (generator *Generator) handlersInterfaces(swagger *openapi3.T) jen.Code {
 							operation := entry.Value
 
 							if operation.RequestBody == nil {
-								return []jen.Code{jen.Id(name).Params(jen.Qual("context", "Context"), jen.Id(name+"Request")).Params(jen.Id(name + "Response"))}
+								return []jen.Code{jen.Id(name).Params(generator.interfaceMethodParams(name+"Request")...).Params(jen.Id(name + "Response"))}
 							}
 
 							//if we have only one content type we dont need to have it inside function name
 							if len(operation.RequestBody.Value.Content) == 1 {
-								return []jen.Code{jen.Id(name).Params(jen.Qual("context", "Context"), jen.Id(name+"Request")).Params(jen.Id(name + "Response"))}
+								return []jen.Code{jen.Id(name).Params(generator.interfaceMethodParams(name+"Request")...).Params(jen.Id(name + "Response"))}
 							}
 
 							var contentTypedInterfaceMethods []jen.Code
@@ -2279,7 +2306,7 @@ func (generator *Generator) handlersInterfaces(swagger *openapi3.T) jen.Code {
 							for _, contentType := range contentTypes {
 								contentTypedName := name + generator.normalizer.contentType(contentType)
 								contentTypedInterfaceMethods = append(contentTypedInterfaceMethods,
-									jen.Id(contentTypedName).Params(jen.Qual("context", "Context"), jen.Id(contentTypedName+"Request")).Params(jen.Id(name + "Response")))
+									jen.Id(contentTypedName).Params(generator.interfaceMethodParams(contentTypedName+"Request")...).Params(jen.Id(name + "Response")))
 							}
 
 							return contentTypedInterfaceMethods
