@@ -241,6 +241,28 @@ func (generator *Generator) components(swagger *openapi3.T) jen.Code {
 		}).
 		ToSlice(&componentsFromPathsResult)
 
+	// Add inline response body components
+	var inlineResponseComponents []jen.Code
+	for pathName, pathItem := range swagger.Paths {
+		for method, operation := range pathItem.Operations() {
+			if operation.Responses != nil {
+				operationName := generator.normalizer.normalizeOperationName(pathName, method)
+				for _, responseRef := range operation.Responses {
+					if responseRef.Value.Content != nil && len(responseRef.Value.Content) > 0 {
+						for contentType, mediaType := range responseRef.Value.Content {
+							if mediaType.Schema.Ref == "" { // inline schema
+								objName := operationName + strings.Title(generator.normalizer.normalize(contentType))
+								inlineResponseComponents = append(inlineResponseComponents, generator.componentFromSchema(objName, mediaType.Schema))
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	componentsFromPathsResult = append(componentsFromPathsResult, inlineResponseComponents...)
+
 	componentsResult = generator.normalizer.doubleLineAfterEachElement(componentsResult...)
 
 	componentsFromPathsResult = generator.normalizer.doubleLineAfterEachElement(componentsFromPathsResult...)
