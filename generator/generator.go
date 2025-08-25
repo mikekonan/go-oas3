@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html"
 	"slices"
+	"sort"
 	"strings"
 
 	"github.com/ahmetb/go-linq"
@@ -1884,7 +1885,16 @@ func (generator *Generator) builders(swagger *openapi3.T) (result jen.Code) {
 							response.ContentTypeBodyNameMap = map[string]string{}
 
 							headers := map[string]*openapi3.HeaderRef{}
-							for k, v := range kv.Value.(*openapi3.ResponseRef).Value.Headers {
+							
+							// Get header names and sort them for deterministic iteration
+							var headerNames []string
+							for k := range kv.Value.(*openapi3.ResponseRef).Value.Headers {
+								headerNames = append(headerNames, k)
+							}
+							sort.Strings(headerNames)
+							
+							for _, k := range headerNames {
+								v := kv.Value.(*openapi3.ResponseRef).Value.Headers[k]
 								if strings.ToLower(k) == "set-cookie" {
 									response.SetCookie = true
 									continue
