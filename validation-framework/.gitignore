@@ -1,0 +1,10 @@
+# Binary files
+validation-framework
+*.exe
+
+# Validation workspace - temporary files and cross-version testing
+validation-workspace/
+
+# Go build artifacts
+*.test
+*.prof

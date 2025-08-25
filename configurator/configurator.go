@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
+	"path"
 	"strings"
 
 	"github.com/heetch/confita"
@@ -23,8 +23,6 @@ type Config struct {
 	Authorization string `config:"authorization,short=a,description=a list of comma-separated key:value pairs to be sent as headers alongside each http request"`
 
 	PrioritizeXGoType bool `config:"prioritize-x-go-type,description=prioritize x-go-type declaration over schema type, if both are provided"`
-
-	PassRawRequest bool `config:"pass-raw-request,description=pass raw request to handler"`
 }
 
 func (config *Config) Defaults() *Config {
@@ -54,17 +52,13 @@ type Configurator struct {
 }
 
 func (configurator *Configurator) concatPaths(filePath string) (string, error) {
-	if filePath == "" {
-		return filePath, nil
-	}
-	
-	if !filepath.IsAbs(filePath) {
+	if filePath[0] == '.' {
 		wd, err := os.Getwd()
 		if err != nil {
 			return "", err
 		}
 
-		return filepath.Join(wd, filePath), nil
+		return path.Join(wd, filePath), nil
 	}
 
 	return filePath, nil
@@ -79,7 +73,7 @@ func (configurator *Configurator) PostConstruct() (err error) {
 		return err
 	}
 
-	if configurator.config.ComponentsPath, err = configurator.concatPaths(configurator.config.ComponentsPath); err != nil {
+	if configurator.config.Package, err = configurator.concatPaths(configurator.config.Path); err != nil {
 		return err
 	}
 

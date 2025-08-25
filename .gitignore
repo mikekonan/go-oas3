@@ -30,3 +30,12 @@ claude-flow
 claude-flow.bat
 claude-flow.ps1
 hive-mind-prompt-*.txt
+
+# Project artifacts that shouldn't be committed
+PRPs/
+doc/
+go-oas3
+validation-workspace/
+
+# Validation framework workspace (generated files and binaries)
+validation-framework/validation-workspace/

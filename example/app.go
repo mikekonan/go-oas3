@@ -23,7 +23,7 @@ func (t transactionsService) PostTransaction(ctx context.Context, request *PostT
 		}
 	}
 
-	log.Printf("creating transaction - '%v'\n", request.Body)
+	log.Printf("creating transaction - '%v'\n", request.body)
 
 	res := GenericResponse{Result: ResultSuccess}
 	if err := res.Validate(); err != nil {
@@ -58,7 +58,7 @@ func (t transactionsService) PutTransaction(ctx context.Context, request *PutTra
 		}
 	}
 
-	log.Printf("updating transaction - '%v'\n", request.Body)
+	log.Printf("updating transaction - '%v'\n", request.body)
 
 	res := GenericResponse{Result: ResultSuccess}
 	if err := res.Validate(); err != nil {
@@ -151,7 +151,7 @@ func (c callbacksService) PostCallbacksCallbackType(ctx context.Context, request
 	return &PostCallbacksCallbackTypeResponse{
 		response: &response{
 			statusCode: 200,
-			body:       request.Body, // Echo back the raw payload
+			body:       request.body, // Echo back the raw payload
 			headers: map[string]string{
 				"Content-Type":     "application/octet-stream",
 				"Set-Cookie":       "JSESSIONID=example123; Path=/; HttpOnly",
