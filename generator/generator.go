@@ -107,7 +107,13 @@ func (generator *Generator) requestParameters(paths map[string]*openapi3.PathIte
 			linq.From(sortedMapEntries(entry.Value.Operations())).
 				GroupByT(
 					func(entry sortedKeyValue[string, *openapi3.Operation]) string {
-						return generator.normalizer.normalize(entry.Value.Tags[0])
+var tag string
+						if len(entry.Value.Tags) > 0 {
+							tag = entry.Value.Tags[0]
+						} else {
+							tag = "default"
+						}
+						return generator.normalizer.normalize(tag)
 					},
 					func(entry sortedKeyValue[string, *openapi3.Operation]) (result []jen.Code) {
 						name := generator.normalizer.normalizeOperationName(path, entry.Key)
@@ -240,6 +246,28 @@ func (generator *Generator) components(swagger *openapi3.T) jen.Code {
 			return jen.Add(generator.normalizer.doubleLineAfterEachElement(grouped...)...)
 		}).
 		ToSlice(&componentsFromPathsResult)
+
+	// Add inline response body components
+	var inlineResponseComponents []jen.Code
+	for pathName, pathItem := range swagger.Paths {
+		for method, operation := range pathItem.Operations() {
+			if operation.Responses != nil {
+				operationName := generator.normalizer.normalizeOperationName(pathName, method)
+				for _, responseRef := range operation.Responses {
+					if responseRef.Value.Content != nil && len(responseRef.Value.Content) > 0 {
+						for contentType, mediaType := range responseRef.Value.Content {
+							if mediaType.Schema.Ref == "" { // inline schema
+								objName := operationName + strings.Title(generator.normalizer.normalize(contentType))
+								inlineResponseComponents = append(inlineResponseComponents, generator.componentFromSchema(objName, mediaType.Schema))
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	componentsFromPathsResult = append(componentsFromPathsResult, inlineResponseComponents...)
 
 	componentsResult = generator.normalizer.doubleLineAfterEachElement(componentsResult...)
 
@@ -1336,8 +1364,7 @@ func (generator *Generator) wrapper(name string, requestName string, routerName,
 		jen.Id("response").Dot("statusCode").Call(),
 	)
 
-	funcCode = append(funcCode, jen.Id("response").Op(":=").Id("router").Dot("service").Dot(name).Call(jen.Id("r").Dot("Context").Call(),
-		jen.Id("router").Dot("parse"+name+"Request").Call(jen.Id("r"))),
+	funcCode = append(funcCode, jen.Id("response").Op(":=").Id("router").Dot("service").Dot(name).Call(generator.serviceCallParams(name)...),
 		jen.Line().Line(),
 		jen.For(jen.List(jen.Id("header"),
 			jen.Id("value")).Op(":=").Range().Id("response").Dot("headers").Call()).Block(
@@ -1486,7 +1513,12 @@ func (generator *Generator) groupedOperations(swagger *openapi3.T) []groupedOper
 			return linq.From(sortedMapEntries(entry.Value.Operations())).
 				SelectT(func(entry sortedKeyValue[string, *openapi3.Operation]) groupedOperations {
 					operation := entry.Value
-					tag := operation.Tags[0]
+var tag string
+					if len(operation.Tags) > 0 {
+						tag = operation.Tags[0]
+					} else {
+						tag = "default"  // Provide a default tag when none is specified
+					}
 
 					return groupedOperations{
 						tag:        tag,
@@ -2166,8 +2198,15 @@ func (generator *Generator) builders(swagger *openapi3.T) (result jen.Code) {
 				operationResponses = append(operationResponses, response)
 			}
 
+var tag string
+			if len(operation.Tags) > 0 {
+				tag = operation.Tags[0]
+			} else {
+				tag = "default"
+			}
+			
 			operationStruct := operationStruct{
-				Tag:                   operation.Tags[0],
+				Tag:                   tag,
 				Name:                  name,
 				PrivateName:           generator.normalizer.decapitalize(name),
 				RequestName:           name + "Request",
@@ -2220,6 +2259,34 @@ func (generator *Generator) handlersTypes(swagger *openapi3.T) jen.Code {
 	return jen.Null().Add(result...)
 }
 
+// interfaceMethodParams generates the parameter list for interface methods based on configuration
+func (generator *Generator) interfaceMethodParams(requestTypeName string) []jen.Code {
+	params := []jen.Code{
+		jen.Qual("context", "Context"),
+		jen.Id(requestTypeName),
+	}
+	
+	if generator.config.PassRawRequest {
+		params = append(params, jen.Op("*").Qual("net/http", "Request"))
+	}
+	
+	return params
+}
+
+// serviceCallParams generates the parameter list for service method calls based on configuration
+func (generator *Generator) serviceCallParams(name string) []jen.Code {
+	params := []jen.Code{
+		jen.Id("r").Dot("Context").Call(),
+		jen.Id("router").Dot("parse"+name+"Request").Call(jen.Id("r")),
+	}
+	
+	if generator.config.PassRawRequest {
+		params = append(params, jen.Id("r"))
+	}
+	
+	return params
+}
+
 func (generator *Generator) handlersInterfaces(swagger *openapi3.T) jen.Code {
 	var result []jen.Code
 
@@ -2231,6 +2298,10 @@ func (generator *Generator) handlersInterfaces(swagger *openapi3.T) jen.Code {
 
 				linq.From(sortedMapEntries(entry.Value.Operations())).
 					GroupByT(func(entry sortedKeyValue[string, *openapi3.Operation]) string {
+						// Handle operations without tags by providing a default tag
+						if len(entry.Value.Tags) == 0 {
+							return generator.normalizer.normalize("Default")
+						}
 						return generator.normalizer.normalize(entry.Value.Tags[0])
 					},
 						func(entry sortedKeyValue[string, *openapi3.Operation]) []jen.Code {
@@ -2262,6 +2333,7 @@ func (generator *Generator) handlersInterfaces(swagger *openapi3.T) jen.Code {
 
 							return contentTypedInterfaceMethods
 						}).
+					OrderByT(func(kv linq.Group) interface{} { return kv.Key }).
 					ToMapByT(&taggedInterfaceMethods,
 						func(kv linq.Group) interface{} { return kv.Key },
 						func(kv linq.Group) (grouped []jen.Code) {
