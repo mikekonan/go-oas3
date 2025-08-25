@@ -107,7 +107,13 @@ func (generator *Generator) requestParameters(paths map[string]*openapi3.PathIte
 			linq.From(sortedMapEntries(entry.Value.Operations())).
 				GroupByT(
 					func(entry sortedKeyValue[string, *openapi3.Operation]) string {
-						return generator.normalizer.normalize(entry.Value.Tags[0])
+						var tag string
+						if len(entry.Value.Tags) > 0 {
+							tag = entry.Value.Tags[0]
+						} else {
+							tag = "default"
+						}
+						return generator.normalizer.normalize(tag)
 					},
 					func(entry sortedKeyValue[string, *openapi3.Operation]) (result []jen.Code) {
 						name := generator.normalizer.normalizeOperationName(path, entry.Key)
@@ -1507,7 +1513,12 @@ func (generator *Generator) groupedOperations(swagger *openapi3.T) []groupedOper
 			return linq.From(sortedMapEntries(entry.Value.Operations())).
 				SelectT(func(entry sortedKeyValue[string, *openapi3.Operation]) groupedOperations {
 					operation := entry.Value
-					tag := operation.Tags[0]
+					var tag string
+					if len(operation.Tags) > 0 {
+						tag = operation.Tags[0]
+					} else {
+						tag = "default"  // Provide a default tag when none is specified
+					}
 
 					return groupedOperations{
 						tag:        tag,
@@ -2187,8 +2198,15 @@ func (generator *Generator) builders(swagger *openapi3.T) (result jen.Code) {
 				operationResponses = append(operationResponses, response)
 			}
 
+			var tag string
+			if len(operation.Tags) > 0 {
+				tag = operation.Tags[0]
+			} else {
+				tag = "default"
+			}
+			
 			operationStruct := operationStruct{
-				Tag:                   operation.Tags[0],
+				Tag:                   tag,
 				Name:                  name,
 				PrivateName:           generator.normalizer.decapitalize(name),
 				RequestName:           name + "Request",
@@ -2280,6 +2298,10 @@ func (generator *Generator) handlersInterfaces(swagger *openapi3.T) jen.Code {
 
 				linq.From(sortedMapEntries(entry.Value.Operations())).
 					GroupByT(func(entry sortedKeyValue[string, *openapi3.Operation]) string {
+						// Handle operations without tags by providing a default tag
+						if len(entry.Value.Tags) == 0 {
+							return generator.normalizer.normalize("Default")
+						}
 						return generator.normalizer.normalize(entry.Value.Tags[0])
 					},
 						func(entry sortedKeyValue[string, *openapi3.Operation]) []jen.Code {

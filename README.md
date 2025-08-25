@@ -44,7 +44,20 @@ go-oas3 -swagger-addr https://example.com/api/swagger.yaml -package myapi -path 
 - **Validation**: Built-in validation for all request parameters and bodies
 - **Security**: Automatic security middleware generation from OpenAPI security schemes
 
-**Note:** Path stubs generation relies on the **first tag** from your paths.
+**Note:** Path stubs generation relies on the **first tag** from your paths. While tags are not required, they are **strongly recommended** for better organization:
+- **With tags**: Creates separate service interfaces per tag (e.g., `UserService`, `OrderService`)
+- **Without tags**: All operations are grouped under a single `DefaultService` interface
+
+Example with tags:
+```yaml
+paths:
+  /users:
+    get:
+      tags: [users]  # Creates UserService interface
+  /orders:
+    post:
+      tags: [orders]  # Creates OrderService interface
+```
 ## Usage
 
 ### Command Line Arguments
