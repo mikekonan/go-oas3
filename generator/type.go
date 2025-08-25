@@ -2,6 +2,7 @@ package generator
 
 import (
 	"encoding/json"
+	"slices"
 	"strings"
 
 	"dario.cat/mergo"
@@ -35,7 +36,15 @@ func (typ *Type) fillJsonTag(into *jen.Statement, schemaRef *openapi3.SchemaRef,
 }
 
 func (typ *Type) fillAdditionalProperties(into *jen.Statement, schema *openapi3.Schema) {
-	for propName, propSchema := range schema.Properties {
+	// Sort property names to ensure deterministic ordering
+	var propNames []string
+	for propName := range schema.Properties {
+		propNames = append(propNames, propName)
+	}
+	slices.Sort(propNames)
+
+	for _, propName := range propNames {
+		propSchema := schema.Properties[propName]
 		fieldName := typ.normalizer.normalize(propName)
 		field := jen.Id(fieldName)
 
