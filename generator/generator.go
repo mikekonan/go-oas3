@@ -2309,12 +2309,12 @@ func (generator *Generator) handlersInterfaces(swagger *openapi3.T) jen.Code {
 							operation := entry.Value
 
 							if operation.RequestBody == nil {
-								return []jen.Code{jen.Id(name).Params(jen.Qual("context", "Context"), jen.Id(name+"Request")).Params(jen.Id(name + "Response"))}
+								return []jen.Code{jen.Id(name).Params(generator.interfaceMethodParams(name+"Request")...).Params(jen.Id(name + "Response"))}
 							}
 
 							//if we have only one content type we dont need to have it inside function name
 							if len(operation.RequestBody.Value.Content) == 1 {
-								return []jen.Code{jen.Id(name).Params(jen.Qual("context", "Context"), jen.Id(name+"Request")).Params(jen.Id(name + "Response"))}
+								return []jen.Code{jen.Id(name).Params(generator.interfaceMethodParams(name+"Request")...).Params(jen.Id(name + "Response"))}
 							}
 
 							var contentTypedInterfaceMethods []jen.Code
@@ -2328,7 +2328,7 @@ func (generator *Generator) handlersInterfaces(swagger *openapi3.T) jen.Code {
 							for _, contentType := range contentTypes {
 								contentTypedName := name + generator.normalizer.contentType(contentType)
 								contentTypedInterfaceMethods = append(contentTypedInterfaceMethods,
-									jen.Id(contentTypedName).Params(jen.Qual("context", "Context"), jen.Id(contentTypedName+"Request")).Params(jen.Id(name + "Response")))
+									jen.Id(contentTypedName).Params(generator.interfaceMethodParams(contentTypedName+"Request")...).Params(jen.Id(name + "Response")))
 							}
 
 							return contentTypedInterfaceMethods

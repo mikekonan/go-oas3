@@ -18,23 +18,104 @@ import (
 
 var regexParamRegex = regexp.MustCompile("^[.?\\d]+$")
 
-var fingerprintRegex = regexp.MustCompile("[0-9a-fA-F]+")
+type Boolean = bool
+
+type createTransactionRequest struct {
+	Amount        float64              `json:"amount"`
+	AmountCents   int                  `json:"amountCents"`
+	CallbackURL   url.URL              `json:"callbackURL"`
+	Country       countries.Alpha2Code `json:"country"`
+	Currency      currency.Code        `json:"currency"`
+	Description   *string              `json:"description"`
+	Details       *string              `json:"details,omitempty"`
+	Email         email.Email          `json:"email"`
+	RegexParam    string               `json:"regexParam"`
+	Title         string               `json:"title"`
+	TransactionID uuid.UUID            `json:"transactionID"`
+}
+
+type CreateTransactionRequest struct {
+	Amount        float64              `json:"amount"`
+	AmountCents   int                  `json:"amountCents"`
+	CallbackURL   url.URL              `json:"callbackURL"`
+	Country       countries.Alpha2Code `json:"country"`
+	Currency      currency.Code        `json:"currency"`
+	Description   string               `json:"description"`
+	Details       *string              `json:"details,omitempty"`
+	Email         email.Email          `json:"email"`
+	RegexParam    string               `json:"regexParam"`
+	Title         string               `json:"title"`
+	TransactionID uuid.UUID            `json:"transactionID"`
+}
+
+func (body *CreateTransactionRequest) UnmarshalJSON(data []byte) error {
+	var value createTransactionRequest
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+
+	body.Amount = value.Amount
+	body.AmountCents = value.AmountCents
+	body.CallbackURL = value.CallbackURL
+	body.Country = value.Country
+	body.Currency = value.Currency
+	body.Details = value.Details
+	body.Email = value.Email
+	if !regexParamRegex.MatchString(body.RegexParam) {
+		return fmt.Errorf("RegexParam not matched by the '^[.?\\d]+$' regex")
+	}
+	body.RegexParam = value.RegexParam
+	body.Title = strings.TrimSpace(value.Title)
+	body.TransactionID = value.TransactionID
+
+	if value.Description == nil {
+		return fmt.Errorf("Description is required")
+	}
+
+	body.Description = strings.TrimSpace(*value.Description)
+
+	return nil
+}
+func (body CreateTransactionRequest) Validate() error {
+	return validation.ValidateStruct(&body,
+		validation.Field(&body.Amount, validation.Min(0.009).Exclusive()),
+		validation.Field(&body.Country, validation.Skip.When(body.Country == ""), validation.RuneLength(2, 2)),
+		validation.Field(&body.Currency, validation.Skip.When(body.Currency == ""), validation.RuneLength(3, 3)),
+		validation.Field(&body.Title, validation.Skip.When(body.Title == ""), validation.RuneLength(8, 50)),
+		validation.Field(&body.Description, validation.Required, validation.RuneLength(8, 100)))
+}
 
 type Email = email.Email
 
-type RawPayload = []byte
-
-type URL = url.URL
-
-type GenericResponse struct {
-	Result Result `json:"result"`
+type genericResponse struct {
+	Result GenericResponseResultEnum `json:"result"`
 }
 
-func (G GenericResponse) Validate() error {
+type GenericResponse struct {
+	Result GenericResponseResultEnum `json:"result"`
+}
+
+func (body *GenericResponse) UnmarshalJSON(data []byte) error {
+	var value genericResponse
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+
+	body.Result = value.Result
+
+	return nil
+}
+func (body GenericResponse) Validate() error {
 	return nil
 }
 
+type RawPayload = []byte
+
 type Time = time.Time
+
+type URL = url.URL
+
+type URLWithDescription = url.URL
 
 type updateTransactionRequest struct {
 	Description *string `json:"description"`
@@ -43,137 +124,156 @@ type updateTransactionRequest struct {
 }
 
 type UpdateTransactionRequest struct {
+	Description string  `json:"description"`
 	Details     *string `json:"details,omitempty"`
 	Title       string  `json:"title"`
-	Description string  `json:"description"`
 }
 
-func (u *UpdateTransactionRequest) UnmarshalJSON(data []byte) error {
+func (body *UpdateTransactionRequest) UnmarshalJSON(data []byte) error {
 	var value updateTransactionRequest
 	if err := json.Unmarshal(data, &value); err != nil {
 		return err
 	}
+
+	body.Details = value.Details
+	body.Title = strings.TrimSpace(value.Title)
+
 	if value.Description == nil {
-		return fmt.Errorf("field '%s' is required but was null or missing", "Description")
+		return fmt.Errorf("Description is required")
 	}
-	u.Description = strings.TrimSpace(*value.Description)
-	u.Details = value.Details
-	u.Title = value.Title
+
+	body.Description = strings.TrimSpace(*value.Description)
+
 	return nil
 }
 
-type Boolean = bool
-
-type createTransactionRequest struct {
-	RegexParam    string               `json:"regexParam"`
-	TransactionID uuid.UUID            `json:"transactionID"`
-	Amount        float64              `json:"amount"`
-	Currency      currency.Code        `json:"currency"`
-	Description   *string              `json:"description"`
-	Details       *string              `json:"details,omitempty"`
-	CallbackURL   url.URL              `json:"callbackURL"`
-	Country       countries.Alpha2Code `json:"country"`
-	Email         email.Email          `json:"email"`
-	Title         string               `json:"title"`
-	AmountCents   int                  `json:"amountCents"`
+type postBearerEndpointApplicationjson struct {
+	Message string `json:"message"`
 }
 
-type CreateTransactionRequest struct {
-	Amount        float64              `json:"amount"`
-	Currency      currency.Code        `json:"currency"`
-	Description   string               `json:"description"`
-	Details       *string              `json:"details,omitempty"`
-	CallbackURL   url.URL              `json:"callbackURL"`
-	Country       countries.Alpha2Code `json:"country"`
-	Email         email.Email          `json:"email"`
-	Title         string               `json:"title"`
-	AmountCents   int                  `json:"amountCents"`
-	RegexParam    string               `json:"regexParam"`
-	TransactionID uuid.UUID            `json:"transactionID"`
+type PostBearerEndpointApplicationjson struct {
+	Message string `json:"message"`
 }
 
-func (c *CreateTransactionRequest) UnmarshalJSON(data []byte) error {
-	var value createTransactionRequest
+func (body *PostBearerEndpointApplicationjson) UnmarshalJSON(data []byte) error {
+	var value postBearerEndpointApplicationjson
 	if err := json.Unmarshal(data, &value); err != nil {
 		return err
 	}
-	if value.Description == nil {
-		return fmt.Errorf("field '%s' is required but was null or missing", "Description")
-	}
-	c.Details = value.Details
-	c.CallbackURL = value.CallbackURL
-	c.Country = value.Country
-	c.Email = value.Email
-	c.Title = value.Title
-	c.AmountCents = value.AmountCents
-	c.RegexParam = value.RegexParam
-	c.TransactionID = value.TransactionID
-	c.Amount = value.Amount
-	c.Currency = value.Currency
-	c.Description = strings.TrimSpace(*value.Description)
+
+	body.Message = value.Message
+
+	return nil
+}
+func (body PostBearerEndpointApplicationjson) Validate() error {
 	return nil
 }
 
-func (C CreateTransactionRequest) Validate() error {
-	return validation.ValidateStruct(&C, validation.Field(&C.Title, validation.Skip.When(C.Title == ""), validation.RuneLength(8, 50)), validation.Field(&C.Title, validation.By(func(value interface{}) error {
-		if str, ok := value.(string); ok {
-			trimmed := strings.TrimSpace(str)
-			if str != trimmed {
-				return fmt.Errorf("value should be trimmed")
-			}
-		}
-		return nil
-	})), validation.Field(&C.AmountCents, validation.Max(100)), validation.Field(&C.RegexParam, validation.Match(regexParamRegex)), validation.Field(&C.Amount, validation.Min(0.009).Exclusive()), validation.Field(&C.Currency, validation.Skip.When(C.Currency == ""), validation.RuneLength(3, 3)), validation.Field(&C.Description, validation.Skip.When(C.Description == ""), validation.RuneLength(8, 100)), validation.Field(&C.Description, validation.By(func(value interface{}) error {
-		if str, ok := value.(string); ok {
-			trimmed := strings.TrimSpace(str)
-			if str != trimmed {
-				return fmt.Errorf("value should be trimmed")
-			}
-		}
-		return nil
-	})), validation.Field(&C.Country, validation.Skip.When(C.Country == ""), validation.RuneLength(2, 2)))
+type getSecureEndpointApplicationjson struct {
+	Message string `json:"message"`
 }
 
-type CountryAlpha2 = countries.Alpha2Code
+type GetSecureEndpointApplicationjson struct {
+	Message string `json:"message"`
+}
+
+func (body *GetSecureEndpointApplicationjson) UnmarshalJSON(data []byte) error {
+	var value getSecureEndpointApplicationjson
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+
+	body.Message = value.Message
+
+	return nil
+}
+func (body GetSecureEndpointApplicationjson) Validate() error {
+	return nil
+}
+
+type getSemiSecureEndpointApplicationjson struct {
+	ApiKey  string `json:"apiKey"`
+	Message string `json:"message"`
+}
+
+type GetSemiSecureEndpointApplicationjson struct {
+	ApiKey  string `json:"apiKey"`
+	Message string `json:"message"`
+}
+
+func (body *GetSemiSecureEndpointApplicationjson) UnmarshalJSON(data []byte) error {
+	var value getSemiSecureEndpointApplicationjson
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+
+	body.ApiKey = value.ApiKey
+	body.Message = value.Message
+
+	return nil
+}
+func (body GetSemiSecureEndpointApplicationjson) Validate() error {
+	return nil
+}
+
+type GenericResponseResultEnum string
+
+var GenericResponseResultEnumSuccess GenericResponseResultEnum = "success"
+var GenericResponseResultEnumFailed GenericResponseResultEnum = "failed"
+
+func (enum GenericResponseResultEnum) Check() error {
+	switch enum {
+	case GenericResponseResultEnumSuccess, GenericResponseResultEnumFailed:
+
+		return nil
+	}
+
+	return fmt.Errorf("invalid GenericResponseResultEnum enum value")
+}
+
+func (enum *GenericResponseResultEnum) UnmarshalJSON(data []byte) error {
+	var strValue string
+	if err := json.Unmarshal(data, &strValue); err != nil {
+
+		return err
+	}
+	enumValue := GenericResponseResultEnum(strValue)
+	if err := enumValue.Check(); err != nil {
+
+		return err
+	}
+	*enum = enumValue
+
+	return nil
+}
 
 type WithEnum string
 
-const (
-	WithEnumOne WithEnum = "one"
-	WithEnumTwo WithEnum = "two"
-)
+var WithEnumOne WithEnum = "one"
+var WithEnumTwo WithEnum = "two"
 
-func (w WithEnum) Validate() error {
-	switch w {
-	case WithEnumOne:
+func (enum WithEnum) Check() error {
+	switch enum {
+	case WithEnumOne, WithEnumTwo:
+
 		return nil
-	case WithEnumTwo:
-		return nil
-	default:
-		return fmt.Errorf("invalid %s enum value", w)
 	}
+
+	return fmt.Errorf("invalid WithEnum enum value")
 }
 
-type CurrencyCode = currency.Code
+func (enum *WithEnum) UnmarshalJSON(data []byte) error {
+	var strValue string
+	if err := json.Unmarshal(data, &strValue); err != nil {
 
-type Currency = currency.Code
-
-type Country = countries.Alpha2Code
-
-type Result string
-
-const (
-	ResultSuccess Result = "success"
-	ResultFailed  Result = "failed"
-)
-
-func (r Result) Validate() error {
-	switch r {
-	case ResultSuccess:
-		return nil
-	case ResultFailed:
-		return nil
-	default:
-		return fmt.Errorf("invalid %s enum value", r)
+		return err
 	}
+	enumValue := WithEnum(strValue)
+	if err := enumValue.Check(); err != nil {
+
+		return err
+	}
+	*enum = enumValue
+
+	return nil
 }
