@@ -107,7 +107,7 @@ func (generator *Generator) requestParameters(paths map[string]*openapi3.PathIte
 			linq.From(sortedMapEntries(entry.Value.Operations())).
 				GroupByT(
 					func(entry sortedKeyValue[string, *openapi3.Operation]) string {
-var tag string
+						var tag string
 						if len(entry.Value.Tags) > 0 {
 							tag = entry.Value.Tags[0]
 						} else {
@@ -181,7 +181,7 @@ func (generator *Generator) components(swagger *openapi3.T) jen.Code {
 		}
 	}
 	slices.Sort(schemaNames)
-	
+
 	for _, schemaName := range schemaNames {
 		schemaRef := swagger.Components.Schemas[schemaName]
 		componentsResult = append(componentsResult, generator.componentFromSchema(schemaName, schemaRef))
@@ -266,7 +266,7 @@ func (generator *Generator) components(swagger *openapi3.T) jen.Code {
 			}
 		}
 	}
-	
+
 	componentsFromPathsResult = append(componentsFromPathsResult, inlineResponseComponents...)
 
 	componentsResult = generator.normalizer.doubleLineAfterEachElement(componentsResult...)
@@ -321,17 +321,17 @@ func (generator *Generator) additionalConstants(swagger *openapi3.T) (jen.Code, 
 		schemaNames = append(schemaNames, schemaName)
 	}
 	slices.Sort(schemaNames)
-	
+
 	for _, schemaName := range schemaNames {
 		schema := swagger.Components.Schemas[schemaName]
-		
+
 		// Sort property names to ensure deterministic property constants generation order
 		var propNames []string
 		for propName := range schema.Value.Properties {
 			propNames = append(propNames, propName)
 		}
 		slices.Sort(propNames)
-		
+
 		for _, propName := range propNames {
 			propSchema := schema.Value.Properties[propName]
 			name := generator.normalizer.normalize(strings.Title(propName))
@@ -347,23 +347,23 @@ func (generator *Generator) additionalConstants(swagger *openapi3.T) (jen.Code, 
 		pathNames = append(pathNames, pathName)
 	}
 	slices.Sort(pathNames)
-	
+
 	for _, pathName := range pathNames {
 		pathItem := swagger.Paths[pathName]
-		
-		// Sort operations to ensure deterministic operation constants generation order  
+
+		// Sort operations to ensure deterministic operation constants generation order
 		var operationMethods []string
 		for method := range pathItem.Operations() {
 			operationMethods = append(operationMethods, method)
 		}
 		slices.Sort(operationMethods)
-		
+
 		for _, method := range operationMethods {
 			operation := pathItem.Operations()[method]
 			if operation.RequestBody == nil || len(operation.RequestBody.Value.Content) == 0 {
 				continue
 			}
-			
+
 			// Check if any content has inline schema (no ref)
 			hasInlineSchema := false
 			for _, mediaType := range operation.RequestBody.Value.Content {
@@ -372,31 +372,31 @@ func (generator *Generator) additionalConstants(swagger *openapi3.T) (jen.Code, 
 					break
 				}
 			}
-			
+
 			if !hasInlineSchema {
 				continue
 			}
-			
+
 			name := generator.normalizer.normalizeOperationName(pathName, method)
 			name = generator.normalizer.decapitalize(name)
-			
+
 			// Sort content types to ensure deterministic content constants generation order
 			var contentTypes []string
 			for contentType := range operation.RequestBody.Value.Content {
 				contentTypes = append(contentTypes, contentType)
 			}
 			slices.Sort(contentTypes)
-			
+
 			for _, contentType := range contentTypes {
 				meType := operation.RequestBody.Value.Content[contentType]
-				
+
 				// Sort property names to ensure deterministic property constants generation order
 				var propNames []string
 				for propName := range meType.Schema.Value.Properties {
 					propNames = append(propNames, propName)
 				}
 				slices.Sort(propNames)
-				
+
 				for _, propName := range propNames {
 					propSchema := meType.Schema.Value.Properties[propName]
 					name := generator.normalizer.normalize(strings.Title(propName))
@@ -420,24 +420,24 @@ func (generator *Generator) additionalConstants(swagger *openapi3.T) (jen.Code, 
 		pathNames2 = append(pathNames2, pathName)
 	}
 	slices.Sort(pathNames2)
-	
+
 	for _, pathName := range pathNames2 {
 		pathItem := swagger.Paths[pathName]
-		
+
 		// Sort operations to ensure deterministic operation parameter constants generation order
 		var operationMethods2 []string
 		for method := range pathItem.Operations() {
 			operationMethods2 = append(operationMethods2, method)
 		}
 		slices.Sort(operationMethods2)
-		
+
 		for _, method := range operationMethods2 {
 			operation := pathItem.Operations()[method]
 			name := generator.normalizer.normalizeOperationName(pathName, method)
 			name = generator.normalizer.decapitalize(name)
-			
+
 			for _, parameter := range operation.Parameters {
-				parametersCode = append(parametersCode, 
+				parametersCode = append(parametersCode,
 					generator.variableForRegex(generator.normalizer.normalize(strings.Title(parameter.Value.Name)), parameter.Value.Schema))
 			}
 		}
@@ -797,7 +797,7 @@ func (generator *Generator) componentFromSchema(name string, parentSchema *opena
 
 	var fieldValidationRules []jen.Code
 	var unmarshalNonRequiredAssignments []jen.Code
-	
+
 	// Process non-required properties in deterministic order
 	var nonRequiredProps []string
 	for propName := range parentSchema.Value.Properties {
@@ -807,7 +807,7 @@ func (generator *Generator) componentFromSchema(name string, parentSchema *opena
 		}
 	}
 	slices.Sort(nonRequiredProps)
-	
+
 	for _, property := range nonRequiredProps {
 		schema := parentSchema.Value.Properties[property]
 		propertyName := strings.Title(generator.normalizer.normalize(property))
@@ -832,16 +832,16 @@ func (generator *Generator) componentFromSchema(name string, parentSchema *opena
 
 		isTrimmable := generator.getXGoStringTrimmable(schema)
 		if isTrimmable {
-			unmarshalNonRequiredAssignments = append(unmarshalNonRequiredAssignments, 
+			unmarshalNonRequiredAssignments = append(unmarshalNonRequiredAssignments,
 				generateStatement.Id("body").Dot(propertyName).Op("=").Qual("strings", "TrimSpace").Call(jen.Id("value").Dot(propertyName)).Line())
 		} else {
-			unmarshalNonRequiredAssignments = append(unmarshalNonRequiredAssignments, 
+			unmarshalNonRequiredAssignments = append(unmarshalNonRequiredAssignments,
 				generateStatement.Id("body").Dot(propertyName).Op("=").Id("value").Dot(propertyName).Line())
 		}
 	}
 
 	var unmarshalRequiredAssignments []jen.Code
-	
+
 	// Process required properties in deterministic order
 	var requiredProps []string
 	for _, reqProp := range parentSchema.Value.Required {
@@ -850,7 +850,7 @@ func (generator *Generator) componentFromSchema(name string, parentSchema *opena
 		}
 	}
 	slices.Sort(requiredProps)
-	
+
 	for _, property := range requiredProps {
 		schema := parentSchema.Value.Properties[property]
 		propertyName := strings.Title(generator.normalizer.normalize(property))
@@ -878,10 +878,10 @@ func (generator *Generator) componentFromSchema(name string, parentSchema *opena
 
 		isTrimmable := generator.getXGoStringTrimmable(schema)
 		if isTrimmable {
-			unmarshalRequiredAssignments = append(unmarshalRequiredAssignments, 
+			unmarshalRequiredAssignments = append(unmarshalRequiredAssignments,
 				code.Id("body").Dot(propertyName).Op("=").Qual("strings", "TrimSpace").Call(jen.Op("*").Id("value").Dot(propertyName)).Line().Line())
 		} else {
-			unmarshalRequiredAssignments = append(unmarshalRequiredAssignments, 
+			unmarshalRequiredAssignments = append(unmarshalRequiredAssignments,
 				code.Id("body").Dot(propertyName).Op("=").Op("*").Id("value").Dot(propertyName).Line().Line())
 		}
 	}
@@ -917,7 +917,7 @@ func (generator *Generator) typeProperties(typeName string, schema *openapi3.Sch
 		propNames = append(propNames, propName)
 	}
 	slices.Sort(propNames)
-	
+
 	for _, originName := range propNames {
 		schemaRef := schema.Properties[originName]
 		name := generator.normalizer.normalize(originName)
@@ -950,17 +950,17 @@ func (generator *Generator) enums(swagger *openapi3.T) jen.Code {
 		pathNames = append(pathNames, pathName)
 	}
 	slices.Sort(pathNames)
-	
+
 	for _, path := range pathNames {
 		pathItem := swagger.Paths[path]
-		
+
 		// Sort operations to ensure deterministic operation enum generation order
 		var operationMethods []string
 		for method := range pathItem.Operations() {
 			operationMethods = append(operationMethods, method)
 		}
 		slices.Sort(operationMethods)
-		
+
 		for _, method := range operationMethods {
 			operation := pathItem.Operations()[method]
 			var requestBodyResults []jen.Code
@@ -974,7 +974,7 @@ func (generator *Generator) enums(swagger *openapi3.T) jen.Code {
 					contentTypes = append(contentTypes, contentType)
 				}
 				slices.Sort(contentTypes)
-				
+
 				for _, contentType := range contentTypes {
 					mediaType := operation.RequestBody.Value.Content[contentType]
 					schema := mediaType.Schema
@@ -995,7 +995,7 @@ func (generator *Generator) enums(swagger *openapi3.T) jen.Code {
 						}
 					}
 					slices.Sort(propNames)
-					
+
 					for _, propName := range propNames {
 						propSchema := schema.Value.Properties[propName]
 						enumName := namePrefix + generator.normalizer.normalize(strings.Title(propName)) + "Enum"
@@ -1016,10 +1016,10 @@ func (generator *Generator) enums(swagger *openapi3.T) jen.Code {
 				statusCodes = append(statusCodes, statusCode)
 			}
 			slices.Sort(statusCodes)
-			
+
 			for _, statusCode := range statusCodes {
 				response := operation.Responses[statusCode]
-				
+
 				// Sort content types to ensure deterministic response content enum generation order
 				var contentTypes []string
 				for contentType, mediaType := range response.Value.Content {
@@ -1028,7 +1028,7 @@ func (generator *Generator) enums(swagger *openapi3.T) jen.Code {
 					}
 				}
 				slices.Sort(contentTypes)
-				
+
 				for _, contentType := range contentTypes {
 					mediaType := response.Value.Content[contentType]
 					schema := mediaType.Schema
@@ -1048,7 +1048,7 @@ func (generator *Generator) enums(swagger *openapi3.T) jen.Code {
 						}
 					}
 					slices.Sort(propNames)
-					
+
 					for _, propName := range propNames {
 						propSchema := schema.Value.Properties[propName]
 						enumName := namePrefix + generator.normalizer.normalize(strings.Title(propName)) + "Enum"
@@ -1078,7 +1078,7 @@ func (generator *Generator) enums(swagger *openapi3.T) jen.Code {
 		schemaNames = append(schemaNames, schemaName)
 	}
 	slices.Sort(schemaNames)
-	
+
 	for _, schemaName := range schemaNames {
 		schema := swagger.Components.Schemas[schemaName]
 		namePrefix := generator.normalizer.normalize(schemaName)
@@ -1097,7 +1097,7 @@ func (generator *Generator) enums(swagger *openapi3.T) jen.Code {
 			}
 		}
 		slices.Sort(propNames)
-		
+
 		for _, propName := range propNames {
 			propSchema := schema.Value.Properties[propName]
 			enumName := namePrefix + generator.normalizer.normalize(strings.Title(propName)) + "Enum"
@@ -1266,7 +1266,7 @@ func (generator *Generator) wrappers(swagger *openapi3.T) jen.Code {
 		}
 		return 0
 	})
-	
+
 	linq.From(groupedOps).
 		SelectT(func(groupedOperations groupedOperations) jen.Code {
 			tag := generator.normalizer.normalize(cast.ToString(groupedOperations.tag))
@@ -1513,11 +1513,11 @@ func (generator *Generator) groupedOperations(swagger *openapi3.T) []groupedOper
 			return linq.From(sortedMapEntries(entry.Value.Operations())).
 				SelectT(func(entry sortedKeyValue[string, *openapi3.Operation]) groupedOperations {
 					operation := entry.Value
-var tag string
+					var tag string
 					if len(operation.Tags) > 0 {
 						tag = operation.Tags[0]
 					} else {
-						tag = "default"  // Provide a default tag when none is specified
+						tag = "default" // Provide a default tag when none is specified
 					}
 
 					return groupedOperations{
@@ -1999,6 +1999,8 @@ func (generator *Generator) wrapperSecurity(name string, operation *openapi3.Ope
 		return code
 	}
 
+	skipSecurityCheck := generator.typee.getXGoSkipSecurityCheck(operation)
+
 	var schemasCode []jen.Code
 	linq.From(*operation.Security).
 		SelectT(func(securityRequirement openapi3.SecurityRequirement) jen.Code {
@@ -2011,49 +2013,68 @@ func (generator *Generator) wrapperSecurity(name string, operation *openapi3.Ope
 		}).
 		ToSlice(&schemasCode)
 
-	code = code.Line().Id("isSecurityCheckPassed").Op(":=").Id("false").Line().
-		For(jen.List(jen.Id("_"),
-			jen.Id("processors")).Op(":=").Range().Index().Index().Id("securityProcessor").Values(schemasCode...)).Block(
-		jen.Id("isLinkedChecksValid").Op(":=").Id("true"),
-		jen.Line().For(jen.List(jen.Id("_"),
-			jen.Id("processor")).Op(":=").Range().Id("processors")).Block(
-			jen.List(jen.Id("name"), jen.Id("value"),
-				jen.Id("isExtracted")).Op(":=").Id("processor").Dot("extract").Call(jen.Id("r")),
-			jen.Line().If(jen.Op("!").Id("isExtracted")).Block(
-				jen.Id("isLinkedChecksValid").Op("=").Id("false"),
-				jen.Break()),
-			jen.Line().If(jen.Id("err").Op(":=").Id("processor").Dot("handle").Call(jen.Id("r"),
-				jen.Id("processor").Dot("scheme"),
-				jen.Id("name"),
-				jen.Id("value")),
-				jen.Id("err").Op("!=").Id("nil")).Block(
-				jen.If(jen.Id("router").Dot("hooks").Dot("RequestSecurityCheckFailed").Op("!=").Id("nil")).Block(
-					jen.Id("router").Dot("hooks").Dot("RequestSecurityCheckFailed").Call(jen.Id("r"),
+	if skipSecurityCheck {
+		// Skip security check mode: extract values but don't validate
+		code = code.Line().Comment("Skip security check mode: extract values but don't validate").Line().
+			For(jen.List(jen.Id("_"),
+				jen.Id("processors")).Op(":=").Range().Index().Index().Id("securityProcessor").Values(schemasCode...)).Block(
+			jen.For(jen.List(jen.Id("_"),
+				jen.Id("processor")).Op(":=").Range().Id("processors")).Block(
+				jen.List(jen.Id("_"), jen.Id("value"),
+					jen.Id("isExtracted")).Op(":=").Id("processor").Dot("extract").Call(jen.Id("r")),
+				jen.Line().If(jen.Id("isExtracted")).Block(
+					jen.If(jen.Id("len").Call(jen.Id("request").Dot("SecurityCheckResults")).Op("==").Lit(0)).Block(
+						jen.Id("request").Dot("SecurityCheckResults").Op("=").Map(jen.Id("SecurityScheme")).Id("string").Values()),
+					jen.Line().Id("request").Dot("SecurityCheckResults").Index(jen.Id("processor").Dot("scheme")).Op("=").Id("value")),
+			),
+			jen.Break(), // Take first available security requirement
+		).Line()
+	} else {
+		// Normal security check mode
+		code = code.Line().Id("isSecurityCheckPassed").Op(":=").Id("false").Line().
+			For(jen.List(jen.Id("_"),
+				jen.Id("processors")).Op(":=").Range().Index().Index().Id("securityProcessor").Values(schemasCode...)).Block(
+			jen.Id("isLinkedChecksValid").Op(":=").Id("true"),
+			jen.Line().For(jen.List(jen.Id("_"),
+				jen.Id("processor")).Op(":=").Range().Id("processors")).Block(
+				jen.List(jen.Id("name"), jen.Id("value"),
+					jen.Id("isExtracted")).Op(":=").Id("processor").Dot("extract").Call(jen.Id("r")),
+				jen.Line().If(jen.Op("!").Id("isExtracted")).Block(
+					jen.Id("isLinkedChecksValid").Op("=").Id("false"),
+					jen.Break()),
+				jen.Line().If(jen.Id("err").Op(":=").Id("processor").Dot("handle").Call(jen.Id("r"),
+					jen.Id("processor").Dot("scheme"),
+					jen.Id("name"),
+					jen.Id("value")),
+					jen.Id("err").Op("!=").Id("nil")).Block(
+					jen.If(jen.Id("router").Dot("hooks").Dot("RequestSecurityCheckFailed").Op("!=").Id("nil")).Block(
+						jen.Id("router").Dot("hooks").Dot("RequestSecurityCheckFailed").Call(jen.Id("r"),
+							jen.Lit(name),
+							jen.Id("string").Call(jen.Id("processor").Dot("scheme")),
+							jen.Id("RequestProcessingResult").Values(jen.Id("error").Op(":").Id("err"), jen.Id("typee").Op(":").Id("SecurityCheckFailed")))),
+					jen.Line().Id("isLinkedChecksValid").Op("=").Id("false"),
+					jen.Line().Break()),
+				jen.Line().If(jen.Id("router").Dot("hooks").Dot("RequestSecurityCheckCompleted").Op("!=").Id("nil")).Block(
+					jen.Id("router").Dot("hooks").Dot("RequestSecurityCheckCompleted").Call(jen.Id("r"),
 						jen.Lit(name),
-						jen.Id("string").Call(jen.Id("processor").Dot("scheme")),
-						jen.Id("RequestProcessingResult").Values(jen.Id("error").Op(":").Id("err"), jen.Id("typee").Op(":").Id("SecurityCheckFailed")))),
-				jen.Line().Id("isLinkedChecksValid").Op("=").Id("false"),
-				jen.Line().Break()),
-			jen.Line().If(jen.Id("router").Dot("hooks").Dot("RequestSecurityCheckCompleted").Op("!=").Id("nil")).Block(
-				jen.Id("router").Dot("hooks").Dot("RequestSecurityCheckCompleted").Call(jen.Id("r"),
+						jen.Id("string").Call(jen.Id("processor").Dot("scheme")))),
+				jen.Line().If(jen.Id("len").Call(jen.Id("request").Dot("SecurityCheckResults")).Op("==").Lit(0)).Block(
+					jen.Id("request").Dot("SecurityCheckResults").Op("=").Map(jen.Id("SecurityScheme")).Id("string").Values()),
+				jen.Line().Id("request").Dot("SecurityCheckResults").Index(jen.Id("processor").Dot("scheme")).Op("=").Id("value")),
+			jen.Line().If(jen.Id("isLinkedChecksValid")).Block(
+				jen.Id("isSecurityCheckPassed").Op("=").Id("true"),
+				jen.Break())).
+			Line().Line().If(jen.Op("!").Id("isSecurityCheckPassed")).Block(
+			jen.Id("err").Op(":=").Qual("fmt",
+				"Errorf").Call(jen.Lit("failed passing security checks")),
+			jen.Line().Id("request").Dot("ProcessingResult").Op("=").Id("RequestProcessingResult").Values(jen.Id("error").Op(":").Id("err"),
+				jen.Id("typee").Op(":").Id("SecurityParseFailed")),
+			jen.Line().If(jen.Id("router").Dot("hooks").Dot("RequestSecurityParseFailed").Op("!=").Id("nil")).Block(
+				jen.Id("router").Dot("hooks").Dot("RequestSecurityParseFailed").Call(jen.Id("r"),
 					jen.Lit(name),
-					jen.Id("string").Call(jen.Id("processor").Dot("scheme")))),
-			jen.Line().If(jen.Id("len").Call(jen.Id("request").Dot("SecurityCheckResults")).Op("==").Lit(0)).Block(
-				jen.Id("request").Dot("SecurityCheckResults").Op("=").Map(jen.Id("SecurityScheme")).Id("string").Values()),
-			jen.Line().Id("request").Dot("SecurityCheckResults").Index(jen.Id("processor").Dot("scheme")).Op("=").Id("value")),
-		jen.Line().If(jen.Id("isLinkedChecksValid")).Block(
-			jen.Id("isSecurityCheckPassed").Op("=").Id("true"),
-			jen.Break())).
-		Line().Line().If(jen.Op("!").Id("isSecurityCheckPassed")).Block(
-		jen.Id("err").Op(":=").Qual("fmt",
-			"Errorf").Call(jen.Lit("failed passing security checks")),
-		jen.Line().Id("request").Dot("ProcessingResult").Op("=").Id("RequestProcessingResult").Values(jen.Id("error").Op(":").Id("err"),
-			jen.Id("typee").Op(":").Id("SecurityParseFailed")),
-		jen.Line().If(jen.Id("router").Dot("hooks").Dot("RequestSecurityParseFailed").Op("!=").Id("nil")).Block(
-			jen.Id("router").Dot("hooks").Dot("RequestSecurityParseFailed").Call(jen.Id("r"),
-				jen.Lit(name),
-				jen.Id("request").Dot("ProcessingResult"))),
-		jen.Line().Return()).Line()
+					jen.Id("request").Dot("ProcessingResult"))),
+			jen.Line().Return()).Line()
+	}
 
 	code = code.Line().If(jen.Id("router").Dot("hooks").Dot("RequestSecurityParseCompleted").Op("!=").Id("nil")).Block(
 		jen.Id("router").Dot("hooks").Dot("RequestSecurityParseCompleted").Call(jen.Id("r"), jen.Lit(name)))
@@ -2122,7 +2143,7 @@ func (generator *Generator) builders(swagger *openapi3.T) (result jen.Code) {
 		pathNames = append(pathNames, pathName)
 	}
 	slices.Sort(pathNames)
-	
+
 	for _, pathName := range pathNames {
 		pathItem := swagger.Paths[pathName]
 		var operationStructs []operationStruct
@@ -2133,7 +2154,7 @@ func (generator *Generator) builders(swagger *openapi3.T) (result jen.Code) {
 			operationMethods = append(operationMethods, method)
 		}
 		slices.Sort(operationMethods)
-		
+
 		for _, method := range operationMethods {
 			operation := pathItem.Operations()[method]
 			name := generator.normalizer.normalizeOperationName(pathName, method)
@@ -2145,7 +2166,7 @@ func (generator *Generator) builders(swagger *openapi3.T) (result jen.Code) {
 				statusCodes = append(statusCodes, statusCode)
 			}
 			slices.Sort(statusCodes)
-			
+
 			for _, statusCode := range statusCodes {
 				responseRef := operation.Responses[statusCode]
 				var response operationResponse
@@ -2158,7 +2179,7 @@ func (generator *Generator) builders(swagger *openapi3.T) (result jen.Code) {
 					headerNames = append(headerNames, k)
 				}
 				slices.Sort(headerNames)
-				
+
 				for _, k := range headerNames {
 					v := responseRef.Value.Headers[k]
 					if strings.ToLower(k) == "set-cookie" {
@@ -2181,7 +2202,7 @@ func (generator *Generator) builders(swagger *openapi3.T) (result jen.Code) {
 					contentTypes = append(contentTypes, contentType)
 				}
 				slices.Sort(contentTypes)
-				
+
 				for _, contentType := range contentTypes {
 					mediaType := responseRef.Value.Content[contentType]
 					var structName string
@@ -2198,13 +2219,13 @@ func (generator *Generator) builders(swagger *openapi3.T) (result jen.Code) {
 				operationResponses = append(operationResponses, response)
 			}
 
-var tag string
+			var tag string
 			if len(operation.Tags) > 0 {
 				tag = operation.Tags[0]
 			} else {
 				tag = "default"
 			}
-			
+
 			operationStruct := operationStruct{
 				Tag:                   tag,
 				Name:                  name,
@@ -2234,7 +2255,7 @@ func (generator *Generator) handlersTypes(swagger *openapi3.T) jen.Code {
 		pathNames = append(pathNames, pathName)
 	}
 	slices.Sort(pathNames)
-	
+
 	for _, pathName := range pathNames {
 		pathItem := swagger.Paths[pathName]
 		var pathResult []jen.Code
@@ -2245,7 +2266,7 @@ func (generator *Generator) handlersTypes(swagger *openapi3.T) jen.Code {
 			operationMethods = append(operationMethods, method)
 		}
 		slices.Sort(operationMethods)
-		
+
 		for _, method := range operationMethods {
 			name := generator.normalizer.normalizeOperationName(pathName, method)
 			pathResult = append(pathResult, jen.Null().Add(generator.normalizer.doubleLineAfterEachElement(generator.responseType(name))...))
@@ -2265,11 +2286,11 @@ func (generator *Generator) interfaceMethodParams(requestTypeName string) []jen.
 		jen.Qual("context", "Context"),
 		jen.Id(requestTypeName),
 	}
-	
+
 	if generator.config.PassRawRequest {
 		params = append(params, jen.Op("*").Qual("net/http", "Request"))
 	}
-	
+
 	return params
 }
 
@@ -2277,13 +2298,13 @@ func (generator *Generator) interfaceMethodParams(requestTypeName string) []jen.
 func (generator *Generator) serviceCallParams(name string) []jen.Code {
 	params := []jen.Code{
 		jen.Id("r").Dot("Context").Call(),
-		jen.Id("router").Dot("parse"+name+"Request").Call(jen.Id("r")),
+		jen.Id("router").Dot("parse" + name + "Request").Call(jen.Id("r")),
 	}
-	
+
 	if generator.config.PassRawRequest {
 		params = append(params, jen.Id("r"))
 	}
-	
+
 	return params
 }
 
@@ -2309,12 +2330,12 @@ func (generator *Generator) handlersInterfaces(swagger *openapi3.T) jen.Code {
 							operation := entry.Value
 
 							if operation.RequestBody == nil {
-								return []jen.Code{jen.Id(name).Params(generator.interfaceMethodParams(name+"Request")...).Params(jen.Id(name + "Response"))}
+								return []jen.Code{jen.Id(name).Params(generator.interfaceMethodParams(name + "Request")...).Params(jen.Id(name + "Response"))}
 							}
 
 							//if we have only one content type we dont need to have it inside function name
 							if len(operation.RequestBody.Value.Content) == 1 {
-								return []jen.Code{jen.Id(name).Params(generator.interfaceMethodParams(name+"Request")...).Params(jen.Id(name + "Response"))}
+								return []jen.Code{jen.Id(name).Params(generator.interfaceMethodParams(name + "Request")...).Params(jen.Id(name + "Response"))}
 							}
 
 							var contentTypedInterfaceMethods []jen.Code
@@ -2324,11 +2345,11 @@ func (generator *Generator) handlersInterfaces(swagger *openapi3.T) jen.Code {
 								contentTypes = append(contentTypes, contentType)
 							}
 							slices.Sort(contentTypes)
-							
+
 							for _, contentType := range contentTypes {
 								contentTypedName := name + generator.normalizer.contentType(contentType)
 								contentTypedInterfaceMethods = append(contentTypedInterfaceMethods,
-									jen.Id(contentTypedName).Params(generator.interfaceMethodParams(contentTypedName+"Request")...).Params(jen.Id(name + "Response")))
+									jen.Id(contentTypedName).Params(generator.interfaceMethodParams(contentTypedName+"Request")...).Params(jen.Id(name+"Response")))
 							}
 
 							return contentTypedInterfaceMethods
@@ -2475,7 +2496,7 @@ func (generator *Generator) responseBuilders(operationStruct operationStruct) je
 	slices.SortFunc(sortedResponses, func(a, b operationResponse) int {
 		return strings.Compare(a.StatusCode, b.StatusCode)
 	})
-	
+
 	for _, resp := range sortedResponses {
 		var responseResults []jen.Code
 		hasHeaders := len(resp.Headers) > 0
@@ -2498,7 +2519,7 @@ func (generator *Generator) responseBuilders(operationStruct operationStruct) je
 				contentTypes = append(contentTypes, contentType)
 			}
 			slices.Sort(contentTypes)
-			
+
 			for _, contentTypeName := range contentTypes {
 				contentType := resp.ContentTypeBodyNameMap[contentTypeName]
 				var result []jen.Code
@@ -2858,7 +2879,7 @@ func (generator *Generator) shouldUseExternalTypeAlias(schema *openapi3.Schema) 
 	if generator.typee.hasXGoType(schema) {
 		return true
 	}
-	
+
 	// Check for well-known formats that map to external types
 	if schema.Type == "string" && schema.Format != "" {
 		switch schema.Format {
@@ -2866,7 +2887,7 @@ func (generator *Generator) shouldUseExternalTypeAlias(schema *openapi3.Schema) 
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -2878,7 +2899,7 @@ func (generator *Generator) generateExternalTypeAlias(name string, schema *opena
 
 	v := schema.Value
 	typeAlias := jen.Type().Id(name).Op("=")
-	
+
 	// Check if there's an explicit x-go-type mapping
 	if pkg, typeName, ok := generator.typee.getXGoType(v); ok {
 		if pkg == "" {
@@ -2888,7 +2909,7 @@ func (generator *Generator) generateExternalTypeAlias(name string, schema *opena
 		}
 		return typeAlias
 	}
-	
+
 	// Handle well-known formats
 	if v.Type == "string" && v.Format != "" {
 		switch v.Format {
@@ -2904,7 +2925,7 @@ func (generator *Generator) generateExternalTypeAlias(name string, schema *opena
 		}
 		return typeAlias
 	}
-	
+
 	// Fallback - shouldn't reach here if shouldUseExternalTypeAlias returned true
 	typeAlias.String()
 	return typeAlias

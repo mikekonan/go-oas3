@@ -448,55 +448,20 @@ func (router *authRouter) GetSecureEndpoint(w http.ResponseWriter, r *http.Reque
 func (router *authRouter) parseGetSemiSecureEndpointRequest(r *http.Request) (request GetSemiSecureEndpointRequest) {
 	request.ProcessingResult = RequestProcessingResult{typee: ParseSucceed}
 
-	isSecurityCheckPassed := false
+	// Skip security check mode: extract values but don't validate
 	for _, processors := range [][]securityProcessor{{router.securityHandlers[SecuritySchemeApiKeyAuth]}} {
-		isLinkedChecksValid := true
-
 		for _, processor := range processors {
-			name, value, isExtracted := processor.extract(r)
+			_, value, isExtracted := processor.extract(r)
 
-			if !isExtracted {
-				isLinkedChecksValid = false
-				break
-			}
-
-			if err := processor.handle(r, processor.scheme, name, value); err != nil {
-				if router.hooks.RequestSecurityCheckFailed != nil {
-					router.hooks.RequestSecurityCheckFailed(r, "GetSemiSecureEndpoint", string(processor.scheme), RequestProcessingResult{error: err, typee: SecurityCheckFailed})
+			if isExtracted {
+				if len(request.SecurityCheckResults) == 0 {
+					request.SecurityCheckResults = map[SecurityScheme]string{}
 				}
 
-				isLinkedChecksValid = false
-
-				break
+				request.SecurityCheckResults[processor.scheme] = value
 			}
-
-			if router.hooks.RequestSecurityCheckCompleted != nil {
-				router.hooks.RequestSecurityCheckCompleted(r, "GetSemiSecureEndpoint", string(processor.scheme))
-			}
-
-			if len(request.SecurityCheckResults) == 0 {
-				request.SecurityCheckResults = map[SecurityScheme]string{}
-			}
-
-			request.SecurityCheckResults[processor.scheme] = value
 		}
-
-		if isLinkedChecksValid {
-			isSecurityCheckPassed = true
-			break
-		}
-	}
-
-	if !isSecurityCheckPassed {
-		err := fmt.Errorf("failed passing security checks")
-
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: SecurityParseFailed}
-
-		if router.hooks.RequestSecurityParseFailed != nil {
-			router.hooks.RequestSecurityParseFailed(r, "GetSemiSecureEndpoint", request.ProcessingResult)
-		}
-
-		return
+		break
 	}
 
 	if router.hooks.RequestSecurityParseCompleted != nil {

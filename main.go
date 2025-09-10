@@ -21,12 +21,12 @@ func getVersion() string {
 	if !ok {
 		return "unknown"
 	}
-	
+
 	// Get module version
 	if info.Main.Version != "" && info.Main.Version != "(devel)" {
 		return info.Main.Version
 	}
-	
+
 	// Fallback to VCS revision if available
 	for _, setting := range info.Settings {
 		if setting.Key == "vcs.revision" {
@@ -36,7 +36,7 @@ func getVersion() string {
 			return "dev-" + setting.Value
 		}
 	}
-	
+
 	return "development"
 }
 
@@ -45,7 +45,7 @@ func main() {
 	for _, arg := range os.Args[1:] {
 		if arg == "-version" || arg == "--version" {
 			fmt.Printf("go-oas3 version %s\n", getVersion())
-			
+
 			// Print additional build info
 			if info, ok := debug.ReadBuildInfo(); ok {
 				fmt.Printf("Go version: %s\n", info.GoVersion)
