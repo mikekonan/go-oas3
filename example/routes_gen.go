@@ -1849,6 +1849,9 @@ type postBearerEndpoint200ApplicationJsonBodyBuilder struct {
 
 func (builder *postBearerEndpoint200ApplicationJsonBodyBuilder) BodyBytesWithEncoding(encoding string, body []byte) *PostBearerEndpoint200ApplicationJsonResponseBuilder {
 	builder.response.bodyRaw = body
+	if builder.response.headers == nil {
+		builder.response.headers = make(map[string]string)
+	}
 	builder.response.headers["Content-Encoding"] = encoding
 
 	return &PostBearerEndpoint200ApplicationJsonResponseBuilder{response: builder.response}
@@ -1945,6 +1948,9 @@ type postCallbacksCallbackType200ApplicationOctetStreamBodyBuilder struct {
 
 func (builder *postCallbacksCallbackType200ApplicationOctetStreamBodyBuilder) BodyBytesWithEncoding(encoding string, body []byte) *PostCallbacksCallbackType200ApplicationOctetStreamResponseBuilder {
 	builder.response.bodyRaw = body
+	if builder.response.headers == nil {
+		builder.response.headers = make(map[string]string)
+	}
 	builder.response.headers["Content-Encoding"] = encoding
 
 	return &PostCallbacksCallbackType200ApplicationOctetStreamResponseBuilder{response: builder.response}
@@ -2033,6 +2039,9 @@ type getSecureEndpoint200ApplicationJsonBodyBuilder struct {
 
 func (builder *getSecureEndpoint200ApplicationJsonBodyBuilder) BodyBytesWithEncoding(encoding string, body []byte) *GetSecureEndpoint200ApplicationJsonResponseBuilder {
 	builder.response.bodyRaw = body
+	if builder.response.headers == nil {
+		builder.response.headers = make(map[string]string)
+	}
 	builder.response.headers["Content-Encoding"] = encoding
 
 	return &GetSecureEndpoint200ApplicationJsonResponseBuilder{response: builder.response}
@@ -2102,6 +2111,9 @@ type getSemiSecureEndpoint200ApplicationJsonBodyBuilder struct {
 
 func (builder *getSemiSecureEndpoint200ApplicationJsonBodyBuilder) BodyBytesWithEncoding(encoding string, body []byte) *GetSemiSecureEndpoint200ApplicationJsonResponseBuilder {
 	builder.response.bodyRaw = body
+	if builder.response.headers == nil {
+		builder.response.headers = make(map[string]string)
+	}
 	builder.response.headers["Content-Encoding"] = encoding
 
 	return &GetSemiSecureEndpoint200ApplicationJsonResponseBuilder{response: builder.response}
@@ -2171,6 +2183,9 @@ type postTransaction201ApplicationJsonBodyBuilder struct {
 
 func (builder *postTransaction201ApplicationJsonBodyBuilder) BodyBytesWithEncoding(encoding string, body []byte) *PostTransaction201ApplicationJsonResponseBuilder {
 	builder.response.bodyRaw = body
+	if builder.response.headers == nil {
+		builder.response.headers = make(map[string]string)
+	}
 	builder.response.headers["Content-Encoding"] = encoding
 
 	return &PostTransaction201ApplicationJsonResponseBuilder{response: builder.response}
@@ -2218,6 +2233,9 @@ type postTransaction400ApplicationJsonBodyBuilder struct {
 
 func (builder *postTransaction400ApplicationJsonBodyBuilder) BodyBytesWithEncoding(encoding string, body []byte) *PostTransaction400ApplicationJsonResponseBuilder {
 	builder.response.bodyRaw = body
+	if builder.response.headers == nil {
+		builder.response.headers = make(map[string]string)
+	}
 	builder.response.headers["Content-Encoding"] = encoding
 
 	return &PostTransaction400ApplicationJsonResponseBuilder{response: builder.response}
@@ -2265,6 +2283,9 @@ type postTransaction500ApplicationJsonBodyBuilder struct {
 
 func (builder *postTransaction500ApplicationJsonBodyBuilder) BodyBytesWithEncoding(encoding string, body []byte) *PostTransaction500ApplicationJsonResponseBuilder {
 	builder.response.bodyRaw = body
+	if builder.response.headers == nil {
+		builder.response.headers = make(map[string]string)
+	}
 	builder.response.headers["Content-Encoding"] = encoding
 
 	return &PostTransaction500ApplicationJsonResponseBuilder{response: builder.response}
@@ -2320,6 +2341,9 @@ type putTransaction200ApplicationJsonBodyBuilder struct {
 
 func (builder *putTransaction200ApplicationJsonBodyBuilder) BodyBytesWithEncoding(encoding string, body []byte) *PutTransaction200ApplicationJsonResponseBuilder {
 	builder.response.bodyRaw = body
+	if builder.response.headers == nil {
+		builder.response.headers = make(map[string]string)
+	}
 	builder.response.headers["Content-Encoding"] = encoding
 
 	return &PutTransaction200ApplicationJsonResponseBuilder{response: builder.response}
@@ -2367,6 +2391,9 @@ type putTransaction400ApplicationJsonBodyBuilder struct {
 
 func (builder *putTransaction400ApplicationJsonBodyBuilder) BodyBytesWithEncoding(encoding string, body []byte) *PutTransaction400ApplicationJsonResponseBuilder {
 	builder.response.bodyRaw = body
+	if builder.response.headers == nil {
+		builder.response.headers = make(map[string]string)
+	}
 	builder.response.headers["Content-Encoding"] = encoding
 
 	return &PutTransaction400ApplicationJsonResponseBuilder{response: builder.response}
@@ -2414,6 +2441,9 @@ type putTransaction500ApplicationJsonBodyBuilder struct {
 
 func (builder *putTransaction500ApplicationJsonBodyBuilder) BodyBytesWithEncoding(encoding string, body []byte) *PutTransaction500ApplicationJsonResponseBuilder {
 	builder.response.bodyRaw = body
+	if builder.response.headers == nil {
+		builder.response.headers = make(map[string]string)
+	}
 	builder.response.headers["Content-Encoding"] = encoding
 
 	return &PutTransaction500ApplicationJsonResponseBuilder{response: builder.response}
@@ -2469,6 +2499,9 @@ type deleteTransactionsUUID200ApplicationJsonBodyBuilder struct {
 
 func (builder *deleteTransactionsUUID200ApplicationJsonBodyBuilder) BodyBytesWithEncoding(encoding string, body []byte) *DeleteTransactionsUUID200ApplicationJsonResponseBuilder {
 	builder.response.bodyRaw = body
+	if builder.response.headers == nil {
+		builder.response.headers = make(map[string]string)
+	}
 	builder.response.headers["Content-Encoding"] = encoding
 
 	return &DeleteTransactionsUUID200ApplicationJsonResponseBuilder{response: builder.response}
@@ -2516,6 +2549,9 @@ type deleteTransactionsUUID400ApplicationJsonBodyBuilder struct {
 
 func (builder *deleteTransactionsUUID400ApplicationJsonBodyBuilder) BodyBytesWithEncoding(encoding string, body []byte) *DeleteTransactionsUUID400ApplicationJsonResponseBuilder {
 	builder.response.bodyRaw = body
+	if builder.response.headers == nil {
+		builder.response.headers = make(map[string]string)
+	}
 	builder.response.headers["Content-Encoding"] = encoding
 
 	return &DeleteTransactionsUUID400ApplicationJsonResponseBuilder{response: builder.response}

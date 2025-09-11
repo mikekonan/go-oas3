@@ -2582,6 +2582,9 @@ func (generator *Generator) responseContentTypeBuilder(contentTypeName string, c
 		jen.Id("encoding").String(), jen.Id("body").Index().Byte()).Params(
 		jen.Op("*").Id(nextBuilderName)).Block(
 		jen.Id("builder").Dot("response").Dot("bodyRaw").Op("=").Id("body"),
+		jen.If(jen.Id("builder").Dot("response").Dot("headers").Op("==").Nil()).Block(
+			jen.Id("builder").Dot("response").Dot("headers").Op("=").Make(jen.Map(jen.String()).String()),
+		),
 		jen.Id("builder").Dot("response").Dot("headers").Index(jen.Lit("Content-Encoding")).Op("=").Id("encoding"),
 		jen.Line().Return().Op("&").Id(nextBuilderName).Values(jen.Id("response").Op(":").Id("builder").Dot("response"))))
 
