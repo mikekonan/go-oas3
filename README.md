@@ -1,6 +1,6 @@
 # Go OpenAPI v3 Server Code Generator
 
-A powerful, modern code generator that creates clean server boilerplate from OpenAPI v3 specifications. Built with Go 1.24+ and the latest dependencies, featuring enhanced error handling and extensive customization options.
+A powerful, modern code generator that creates clean server boilerplate from OpenAPI v3 specifications. Built with Go 1.22+ and the latest dependencies, featuring enhanced error handling and extensive customization options.
 
 ## Table of Contents
 
@@ -12,12 +12,13 @@ A powerful, modern code generator that creates clean server boilerplate from Ope
 - [OpenAPI Features](#openapi-features)
 - [Extensions Reference](#extensions-reference)
 - [Limitations](#limitations)
+- [Questions or Feature Requests](#questions-or-feature-requests)
 - [Contributing](#contributing)
 
 ## Quick Start
 
 ### Prerequisites
-- **Go 1.24+** (updated for latest language features)
+- **Go 1.22+** (updated for latest language features)
 - Valid OpenAPI 3.0+ specification file
 - Basic understanding of Go modules
 
@@ -44,7 +45,7 @@ go-oas3 -swagger-addr https://example.com/api/swagger.yaml -package myapi -path 
 - **Validation**: Built-in validation for all request parameters and bodies
 - **Security**: Automatic security middleware generation from OpenAPI security schemes
 
-**Note:** Path stubs generation relies on the **first tag** from your paths. While tags are not required, they are **strongly recommended** for better organization:
+**Note:** Path stub generation relies on the **first tag** from your paths. While tags are not required, they are **strongly recommended** for better organization:
 - **With tags**: Creates separate service interfaces per tag (e.g., `UserService`, `OrderService`)
 - **Without tags**: All operations are grouped under a single `DefaultService` interface
 
@@ -81,7 +82,7 @@ go-oas3 -swagger-addr swagger.yaml -package api -path ./generated
 
 # Remote file with custom components
 go-oas3 \
-  -swagger-addr https://petstore.swagger.io/v2/swagger.json \
+  -swagger-addr https://petstore3.swagger.io/api/v3/openapi.json \
   -package petstore \
   -path ./api \
   -componentsPackage models \
@@ -97,7 +98,7 @@ go-oas3 \
 
 ## Complete Workflow Example
 
-Here's a complete example from OpenAPI spec to running server:
+Here's a complete example from an OpenAPI spec to a running server:
 
 ### 1. Create OpenAPI Specification (`api.yaml`)
 ```yaml
@@ -155,7 +156,7 @@ import (
     "context"
     "net/http"
     "github.com/go-chi/chi/v5"
-    "./generated"
+    userapi "./generated"
 )
 
 type UsersService struct{}
@@ -215,13 +216,13 @@ The generated boilerplate includes:
 ## OpenAPI Features
 
 ### Required Fields
-Path, query, component, and header required fields are supported.
+Required fields in path, query, headers, and components are supported.
 
 ### Security
-Security schemas for HTTP and API key (header/cookie) are supported.
+Security schemes for HTTP and API key (header/cookie) are supported.
 
 ### Cookie
-Response header `Set-Cookie` is supported. *Cookie in request is supported via security schema only.*
+Response header `Set-Cookie` is supported. Cookies in requests are supported via security schemes only.
 
 ### Validation
 Type validation supports the following data types:
