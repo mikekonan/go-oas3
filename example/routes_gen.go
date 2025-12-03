@@ -3,6 +3,7 @@
 package example
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"encoding/xml"
@@ -11,6 +12,7 @@ import (
 	chi "github.com/go-chi/chi/v5"
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 	cast "github.com/spf13/cast"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"regexp"
@@ -187,7 +189,12 @@ func (router *authRouter) parsePostBearerEndpointRequest(r *http.Request) (reque
 func (router *authRouter) PostBearerEndpoint(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
-	response := router.service.PostBearerEndpoint(r.Context(), router.parsePostBearerEndpointRequest(r))
+	cloned, cloneErr := cloneWithBody(r)
+	if cloneErr != nil {
+		http.Error(w, "failed to read request body", http.StatusInternalServerError)
+		return
+	}
+	response := router.service.PostBearerEndpoint(r.Context(), router.parsePostBearerEndpointRequest(cloned), r)
 
 	for header, value := range response.headers() {
 		w.Header().Set(header, value)
@@ -350,7 +357,12 @@ func (router *authRouter) parseGetSecureEndpointRequest(r *http.Request) (reques
 func (router *authRouter) GetSecureEndpoint(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
-	response := router.service.GetSecureEndpoint(r.Context(), router.parseGetSecureEndpointRequest(r))
+	cloned, cloneErr := cloneWithBody(r)
+	if cloneErr != nil {
+		http.Error(w, "failed to read request body", http.StatusInternalServerError)
+		return
+	}
+	response := router.service.GetSecureEndpoint(r.Context(), router.parseGetSecureEndpointRequest(cloned), r)
 
 	for header, value := range response.headers() {
 		w.Header().Set(header, value)
@@ -478,7 +490,12 @@ func (router *authRouter) parseGetSemiSecureEndpointRequest(r *http.Request) (re
 func (router *authRouter) GetSemiSecureEndpoint(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
-	response := router.service.GetSemiSecureEndpoint(r.Context(), router.parseGetSemiSecureEndpointRequest(r))
+	cloned, cloneErr := cloneWithBody(r)
+	if cloneErr != nil {
+		http.Error(w, "failed to read request body", http.StatusInternalServerError)
+		return
+	}
+	response := router.service.GetSemiSecureEndpoint(r.Context(), router.parseGetSemiSecureEndpointRequest(cloned), r)
 
 	for header, value := range response.headers() {
 		w.Header().Set(header, value)
@@ -754,7 +771,12 @@ func (router *callbacksRouter) parsePostCallbacksCallbackTypeRequest(r *http.Req
 func (router *callbacksRouter) PostCallbacksCallbackType(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
-	response := router.service.PostCallbacksCallbackType(r.Context(), router.parsePostCallbacksCallbackTypeRequest(r))
+	cloned, cloneErr := cloneWithBody(r)
+	if cloneErr != nil {
+		http.Error(w, "failed to read request body", http.StatusInternalServerError)
+		return
+	}
+	response := router.service.PostCallbacksCallbackType(r.Context(), router.parsePostCallbacksCallbackTypeRequest(cloned), r)
 
 	for header, value := range response.headers() {
 		w.Header().Set(header, value)
@@ -968,7 +990,12 @@ func (router *transactionsRouter) parsePostTransactionRequest(r *http.Request) (
 func (router *transactionsRouter) PostTransaction(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
-	response := router.service.PostTransaction(r.Context(), router.parsePostTransactionRequest(r))
+	cloned, cloneErr := cloneWithBody(r)
+	if cloneErr != nil {
+		http.Error(w, "failed to read request body", http.StatusInternalServerError)
+		return
+	}
+	response := router.service.PostTransaction(r.Context(), router.parsePostTransactionRequest(cloned), r)
 
 	for header, value := range response.headers() {
 		w.Header().Set(header, value)
@@ -1139,7 +1166,12 @@ func (router *transactionsRouter) parsePutTransactionRequest(r *http.Request) (r
 func (router *transactionsRouter) PutTransaction(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
-	response := router.service.PutTransaction(r.Context(), router.parsePutTransactionRequest(r))
+	cloned, cloneErr := cloneWithBody(r)
+	if cloneErr != nil {
+		http.Error(w, "failed to read request body", http.StatusInternalServerError)
+		return
+	}
+	response := router.service.PutTransaction(r.Context(), router.parsePutTransactionRequest(cloned), r)
 
 	for header, value := range response.headers() {
 		w.Header().Set(header, value)
@@ -1423,7 +1455,12 @@ func (router *transactionsRouter) parseDeleteTransactionsUUIDRequest(r *http.Req
 func (router *transactionsRouter) DeleteTransactionsUUID(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
-	response := router.service.DeleteTransactionsUUID(r.Context(), router.parseDeleteTransactionsUUIDRequest(r))
+	cloned, cloneErr := cloneWithBody(r)
+	if cloneErr != nil {
+		http.Error(w, "failed to read request body", http.StatusInternalServerError)
+		return
+	}
+	response := router.service.DeleteTransactionsUUID(r.Context(), router.parseDeleteTransactionsUUIDRequest(cloned), r)
 
 	for header, value := range response.headers() {
 		w.Header().Set(header, value)
@@ -1516,6 +1553,18 @@ func (router *transactionsRouter) DeleteTransactionsUUID(w http.ResponseWriter, 
 	if router.hooks.ServiceCompleted != nil {
 		router.hooks.ServiceCompleted(r, "DeleteTransactionsUUID")
 	}
+}
+
+func cloneWithBody(r *http.Request) (*http.Request, error) {
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		return nil, err
+	}
+	r.Body.Close()
+	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+	cloned := r.Clone(r.Context())
+	cloned.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+	return cloned, nil
 }
 
 type response struct {
@@ -2570,19 +2619,19 @@ func (builder *deleteTransactionsUUID400ApplicationJsonBodyBuilder) Body(body Ge
 }
 
 type AuthService interface {
-	PostBearerEndpoint(context.Context, PostBearerEndpointRequest) PostBearerEndpointResponse
-	GetSecureEndpoint(context.Context, GetSecureEndpointRequest) GetSecureEndpointResponse
-	GetSemiSecureEndpoint(context.Context, GetSemiSecureEndpointRequest) GetSemiSecureEndpointResponse
+	PostBearerEndpoint(context.Context, PostBearerEndpointRequest, *http.Request) PostBearerEndpointResponse
+	GetSecureEndpoint(context.Context, GetSecureEndpointRequest, *http.Request) GetSecureEndpointResponse
+	GetSemiSecureEndpoint(context.Context, GetSemiSecureEndpointRequest, *http.Request) GetSemiSecureEndpointResponse
 }
 
 type CallbacksService interface {
-	PostCallbacksCallbackType(context.Context, PostCallbacksCallbackTypeRequest) PostCallbacksCallbackTypeResponse
+	PostCallbacksCallbackType(context.Context, PostCallbacksCallbackTypeRequest, *http.Request) PostCallbacksCallbackTypeResponse
 }
 
 type TransactionsService interface {
-	PostTransaction(context.Context, PostTransactionRequest) PostTransactionResponse
-	PutTransaction(context.Context, PutTransactionRequest) PutTransactionResponse
-	DeleteTransactionsUUID(context.Context, DeleteTransactionsUUIDRequest) DeleteTransactionsUUIDResponse
+	PostTransaction(context.Context, PostTransactionRequest, *http.Request) PostTransactionResponse
+	PutTransaction(context.Context, PutTransactionRequest, *http.Request) PutTransactionResponse
+	DeleteTransactionsUUID(context.Context, DeleteTransactionsUUIDRequest, *http.Request) DeleteTransactionsUUIDResponse
 }
 
 type PostBearerEndpointRequest struct {

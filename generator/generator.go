@@ -1341,6 +1341,32 @@ func (generator *Generator) wrappers(swagger *openapi3.T) jen.Code {
 
 		}).ToSlice(&results)
 
+	// Generate cloneWithBody helper function when PassRawRequest is enabled
+	// This function clones the request while preserving the body for both
+	// the parsing phase and the original request passed to handlers
+	if generator.config.PassRawRequest {
+		results = append(results, jen.Func().Id("cloneWithBody").Params(
+			jen.Id("r").Op("*").Qual("net/http", "Request"),
+		).Params(
+			jen.Op("*").Qual("net/http", "Request"),
+			jen.Error(),
+		).Block(
+			jen.List(jen.Id("bodyBytes"), jen.Id("err")).Op(":=").Qual("io", "ReadAll").Call(jen.Id("r").Dot("Body")),
+			jen.If(jen.Id("err").Op("!=").Nil()).Block(
+				jen.Return(jen.Nil(), jen.Id("err")),
+			),
+			jen.Id("r").Dot("Body").Dot("Close").Call(),
+			jen.Id("r").Dot("Body").Op("=").Qual("io", "NopCloser").Call(
+				jen.Qual("bytes", "NewReader").Call(jen.Id("bodyBytes")),
+			),
+			jen.Id("cloned").Op(":=").Id("r").Dot("Clone").Call(jen.Id("r").Dot("Context").Call()),
+			jen.Id("cloned").Dot("Body").Op("=").Qual("io", "NopCloser").Call(
+				jen.Qual("bytes", "NewReader").Call(jen.Id("bodyBytes")),
+			),
+			jen.Return(jen.Id("cloned"), jen.Nil()),
+		))
+	}
+
 	return jen.Null().
 		Add(generator.hooksStruct()).
 		Add(jen.Line(), jen.Line()).
@@ -1363,6 +1389,22 @@ func (generator *Generator) wrapper(name string, requestName string, routerName,
 		}),
 		jen.Id("response").Dot("statusCode").Call(),
 	)
+
+	// When PassRawRequest is enabled, clone the request first to preserve body
+	// The cloned request is used for parsing, while original request is passed to handler
+	if generator.config.PassRawRequest {
+		funcCode = append(funcCode,
+			jen.List(jen.Id("cloned"), jen.Id("cloneErr")).Op(":=").Id("cloneWithBody").Call(jen.Id("r")),
+			jen.If(jen.Id("cloneErr").Op("!=").Nil()).Block(
+				jen.Qual("net/http", "Error").Call(
+					jen.Id("w"),
+					jen.Lit("failed to read request body"),
+					jen.Qual("net/http", "StatusInternalServerError"),
+				),
+				jen.Return(),
+			),
+		)
+	}
 
 	funcCode = append(funcCode, jen.Id("response").Op(":=").Id("router").Dot("service").Dot(name).Call(generator.serviceCallParams(name)...),
 		jen.Line().Line(),
@@ -2295,14 +2337,23 @@ func (generator *Generator) interfaceMethodParams(requestTypeName string) []jen.
 }
 
 // serviceCallParams generates the parameter list for service method calls based on configuration
+// When PassRawRequest is enabled, parsing is done on a cloned request to preserve the body
+// in the original request that gets passed to the handler
 func (generator *Generator) serviceCallParams(name string) []jen.Code {
-	params := []jen.Code{
-		jen.Id("r").Dot("Context").Call(),
-		jen.Id("router").Dot("parse" + name + "Request").Call(jen.Id("r")),
-	}
+	var params []jen.Code
 
 	if generator.config.PassRawRequest {
-		params = append(params, jen.Id("r"))
+		// Use cloned request for parsing to preserve body in original request
+		params = []jen.Code{
+			jen.Id("r").Dot("Context").Call(),
+			jen.Id("router").Dot("parse" + name + "Request").Call(jen.Id("cloned")),
+			jen.Id("r"),
+		}
+	} else {
+		params = []jen.Code{
+			jen.Id("r").Dot("Context").Call(),
+			jen.Id("router").Dot("parse" + name + "Request").Call(jen.Id("r")),
+		}
 	}
 
 	return params
