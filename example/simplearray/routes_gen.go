@@ -112,6 +112,10 @@ func (router *defaultRouter) parsePostTestRequest(r *http.Request) (request Post
 
 	request.Body = body
 
+	if router.hooks.RequestBodyUnmarshalCompleted != nil {
+		router.hooks.RequestBodyUnmarshalCompleted(r, "PostTest")
+	}
+
 	if err := request.Body.Validate(); err != nil {
 		request.ProcessingResult = RequestProcessingResult{error: err, typee: BodyValidationFailed}
 		if router.hooks.RequestBodyValidationFailed != nil {
@@ -119,10 +123,6 @@ func (router *defaultRouter) parsePostTestRequest(r *http.Request) (request Post
 		}
 
 		return
-	}
-
-	if router.hooks.RequestBodyUnmarshalCompleted != nil {
-		router.hooks.RequestBodyUnmarshalCompleted(r, "PostTest")
 	}
 
 	if router.hooks.RequestParseCompleted != nil {

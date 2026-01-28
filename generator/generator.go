@@ -1997,10 +1997,15 @@ func (generator *Generator) wrapperBody(method string, path string, contentType 
 			jen.Line().Return())).
 		Add(jen.Line(), jen.Line()).
 		Add(jen.Id("request").Dot("Body").Op("=").Id("body")).
-		Add(jen.Line(), jen.Line())
+		Add(jen.Line(), jen.Line()).
+		Add(jen.If(jen.Id("router").Dot("hooks").Dot("RequestBodyUnmarshalCompleted").Op("!=").Id("nil")).Block(
+			jen.Id("router").Dot("hooks").Dot("RequestBodyUnmarshalCompleted").Call(
+				jen.Id("r"),
+				jen.Lit(wrapperName)))).
+		Add(jen.Line())
 
 	if contentType != "application/octet-stream" && !generator.typee.getXGoSkipValidation(body.Value) {
-		result = result.Add(jen.If(jen.Id("err").Op(":=").Id("request").Dot("Body").Dot("Validate").Call(),
+		result = result.Add(jen.Line()).Add(jen.If(jen.Id("err").Op(":=").Id("request").Dot("Body").Dot("Validate").Call(),
 			jen.Id("err").Op("!=").Id("nil")).
 			Block(jen.Id("request").Dot("ProcessingResult").Op("=").Id("RequestProcessingResult").Values(jen.Id("error").Op(":").Id("err"),
 				jen.Id("typee").Op(":").Id("BodyValidationFailed")),
@@ -2012,12 +2017,7 @@ func (generator *Generator) wrapperBody(method string, path string, contentType 
 				jen.Line().Return()))
 	}
 
-	return result.Add(jen.Line(), jen.Line()).
-		Add(jen.If(jen.Id("router").Dot("hooks").Dot("RequestBodyUnmarshalCompleted").Op("!=").Id("nil")).Block(
-			jen.Id("router").Dot("hooks").Dot("RequestBodyUnmarshalCompleted").Call(
-				jen.Id("r"),
-				jen.Lit(wrapperName)))).
-		Add(jen.Line())
+	return result.Add(jen.Line())
 }
 func (generator *Generator) wrapperSecurity(name string, operation *openapi3.Operation) jen.Code {
 	code := jen.Null()

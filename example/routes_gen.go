@@ -945,6 +945,10 @@ func (router *transactionsRouter) parsePostTransactionRequest(r *http.Request) (
 
 	request.Body = body
 
+	if router.hooks.RequestBodyUnmarshalCompleted != nil {
+		router.hooks.RequestBodyUnmarshalCompleted(r, "PostTransaction")
+	}
+
 	if err := request.Body.Validate(); err != nil {
 		request.ProcessingResult = RequestProcessingResult{error: err, typee: BodyValidationFailed}
 		if router.hooks.RequestBodyValidationFailed != nil {
@@ -952,10 +956,6 @@ func (router *transactionsRouter) parsePostTransactionRequest(r *http.Request) (
 		}
 
 		return
-	}
-
-	if router.hooks.RequestBodyUnmarshalCompleted != nil {
-		router.hooks.RequestBodyUnmarshalCompleted(r, "PostTransaction")
 	}
 
 	if router.hooks.RequestParseCompleted != nil {
