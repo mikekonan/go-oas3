@@ -73,6 +73,10 @@ func (r RequestProcessingResult) Err() error {
 }
 
 func DefaultHandler(impl DefaultService, r chi.Router, hooks *Hooks) http.Handler {
+	if hooks == nil {
+		hooks = &Hooks{}
+	}
+
 	router := &defaultRouter{router: r, service: impl, hooks: hooks}
 
 	router.mount()

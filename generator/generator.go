@@ -1617,7 +1617,10 @@ func (generator *Generator) handler(name string, serviceName string, routerName 
 			jen.Id("hooks").Op("*").Id("Hooks"), schemasInterfaceParameter).
 		Params(jen.Qual("net/http", "Handler")).
 		Block(
-			jen.Id("router").Op(":=").Op("&").Id(routerName).Values(jen.Id("router").Op(":").Id("r"),
+			jen.If(jen.Id("hooks").Op("==").Nil()).Block(
+				jen.Id("hooks").Op("=").Op("&").Id("Hooks").Values(),
+			),
+			jen.Line().Id("router").Op(":=").Op("&").Id(routerName).Values(jen.Id("router").Op(":").Id("r"),
 				jen.Id("service").Op(":").Id("impl"), jen.Id("hooks").Op(":").Id("hooks")),
 			schemas,
 			jen.Line().Id("router").Dot("mount").Call(),

@@ -86,6 +86,10 @@ func (r RequestProcessingResult) Err() error {
 }
 
 func AuthHandler(impl AuthService, r chi.Router, hooks *Hooks, securitySchemas SecuritySchemas) http.Handler {
+	if hooks == nil {
+		hooks = &Hooks{}
+	}
+
 	router := &authRouter{router: r, service: impl, hooks: hooks}
 
 	router.securityHandlers = map[SecurityScheme]securityProcessor{
@@ -574,6 +578,10 @@ func (router *authRouter) GetSemiSecureEndpoint(w http.ResponseWriter, r *http.R
 }
 
 func CallbacksHandler(impl CallbacksService, r chi.Router, hooks *Hooks, securitySchemas SecuritySchemas) http.Handler {
+	if hooks == nil {
+		hooks = &Hooks{}
+	}
+
 	router := &callbacksRouter{router: r, service: impl, hooks: hooks}
 
 	router.securityHandlers = map[SecurityScheme]securityProcessor{
@@ -850,6 +858,10 @@ func (router *callbacksRouter) PostCallbacksCallbackType(w http.ResponseWriter, 
 }
 
 func TransactionsHandler(impl TransactionsService, r chi.Router, hooks *Hooks, securitySchemas SecuritySchemas) http.Handler {
+	if hooks == nil {
+		hooks = &Hooks{}
+	}
+
 	router := &transactionsRouter{router: r, service: impl, hooks: hooks}
 
 	router.securityHandlers = map[SecurityScheme]securityProcessor{
