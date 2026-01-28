@@ -4,45 +4,10 @@ package minimal
 
 import (
 	"context"
-	"encoding/json"
 	chi "github.com/go-chi/chi/v5"
 	"net/http"
+	"slices"
 )
-
-type DefaultService interface {
-	GetTest(ctx context.Context, request *GetTestRequest) *GetTestResponse
-}
-
-type DefaultRouter struct {
-	service DefaultService
-	router  *chi.Mux
-	hooks   *Hooks
-}
-
-func NewDefaultRouter(service DefaultService) *DefaultRouter {
-	router := chi.NewMux()
-	instance := &DefaultRouter{service: service, router: router, hooks: &Hooks{}}
-	return instance
-}
-
-func (router *DefaultRouter) getTest(w http.ResponseWriter, r *http.Request) {
-	var request GetTestRequest
-
-	request = router.parseGetTestRequest(r)
-
-	response := router.service.GetTest(r.Context(), &request)
-	response.WriteTo(w)
-}
-
-func (router *DefaultRouter) parseGetTestRequest(r *http.Request) (request GetTestRequest) {
-	request.ProcessingResult = RequestProcessingResult{typee: ParseSucceed}
-
-	if router.hooks.RequestParseCompleted != nil {
-		router.hooks.RequestParseCompleted(r, "GetTest")
-	}
-
-	return
-}
 
 type Hooks struct {
 	RequestSecurityParseFailed    func(*http.Request, string, RequestProcessingResult)
@@ -107,68 +72,177 @@ func (r RequestProcessingResult) Err() error {
 	return r.error
 }
 
-type response struct {
-	body        interface{}
-	contentType string
-	statusCode  int
-	headers     map[string]string
+func DefaultHandler(impl DefaultService, r chi.Router, hooks *Hooks) http.Handler {
+	router := &defaultRouter{router: r, service: impl, hooks: hooks}
+
+	router.mount()
+
+	return router.router
 }
 
-func (r *response) WriteTo(w http.ResponseWriter) {
-	for key, value := range r.headers {
-		w.Header().Set(key, value)
+type defaultRouter struct {
+	router  chi.Router
+	service DefaultService
+	hooks   *Hooks
+}
+
+func (router *defaultRouter) mount() {
+	router.router.Get("/test", router.GetTest)
+}
+
+func (router *defaultRouter) parseGetTestRequest(r *http.Request) (request GetTestRequest) {
+	request.ProcessingResult = RequestProcessingResult{typee: ParseSucceed}
+
+	if router.hooks.RequestParseCompleted != nil {
+		router.hooks.RequestParseCompleted(r, "GetTest")
 	}
-	w.Header().Set("Content-Type", r.contentType)
-	w.WriteHeader(r.statusCode)
-	switch body := r.body.(type) {
-	case string:
-		w.Write([]byte(body))
-	case []byte:
-		w.Write(body)
-	default:
-		if r.body != nil {
-			json.NewEncoder(w).Encode(r.body)
+
+	return
+}
+
+func (router *defaultRouter) GetTest(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
+	response := router.service.GetTest(r.Context(), router.parseGetTestRequest(r))
+
+	for header, value := range response.headers() {
+		w.Header().Set(header, value)
+	}
+
+	for _, c := range response.cookies() {
+		cookie := c
+		http.SetCookie(w, &cookie)
+	}
+
+	if slices.Contains([]int{301, 302, 303, 307, 308}, response.statusCode()) && response.redirectURL() != "" {
+		if router.hooks.RequestRedirectStarted != nil {
+			router.hooks.RequestRedirectStarted(r, "GetTest", response.redirectURL())
 		}
+
+		http.Redirect(w, r, response.redirectURL(), response.statusCode())
+
+		if router.hooks.ServiceCompleted != nil {
+			router.hooks.ServiceCompleted(r, "GetTest")
+		}
+
+		return
+	}
+
+	if router.hooks.RequestProcessingCompleted != nil {
+		router.hooks.RequestProcessingCompleted(r, "GetTest")
+	}
+
+	w.WriteHeader(response.statusCode())
+
+	if router.hooks.ServiceCompleted != nil {
+		router.hooks.ServiceCompleted(r, "GetTest")
 	}
 }
 
-type DefaultResponse struct {
-	*response
+type response struct {
+	statusCode  int
+	body        interface{}
+	bodyRaw     []byte
+	contentType string
+	redirectURL string
+	headers     map[string]string
+	cookies     []http.Cookie
 }
 
-func (r *DefaultResponse) WriteTo(w http.ResponseWriter) {
-	if r.response != nil {
-		r.response.WriteTo(w)
-	}
+type responseInterface interface {
+	statusCode() int
+	body() interface{}
+	bodyRaw() []byte
+	contentType() string
+	redirectURL() string
+	cookies() []http.Cookie
+	headers() map[string]string
 }
 
-type GetTestResponse struct {
-	*response
+type GetTestResponse interface {
+	responseInterface
+	getTestResponse()
 }
 
-func (r *GetTestResponse) WriteTo(w http.ResponseWriter) {
-	if r.response != nil {
-		r.response.WriteTo(w)
-	}
+type getTestResponse struct {
+	response
 }
 
-type GetTestStatus200Builder struct {
-	response *response
+func (getTestResponse) getTestResponse() {}
+
+func (response getTestResponse) statusCode() int {
+	return response.response.statusCode
 }
 
-func (b *GetTestStatus200Builder) Status() *GetTest200ContentTypeBuilder {
-	b.response.statusCode = 200
-	return &GetTest200ContentTypeBuilder{response: b.response}
+func (response getTestResponse) body() interface{} {
+	return response.response.body
 }
 
-type GetTest200ContentTypeBuilder struct {
-	response *response
+func (response getTestResponse) bodyRaw() []byte {
+	return response.response.bodyRaw
 }
 
-type GetTestResponseInterface interface {
-	WriteTo(http.ResponseWriter)
+func (response getTestResponse) contentType() string {
+	return response.response.contentType
+}
+
+func (response getTestResponse) redirectURL() string {
+	return response.response.redirectURL
+}
+
+func (response getTestResponse) headers() map[string]string {
+	return response.response.headers
+}
+
+func (response getTestResponse) cookies() []http.Cookie {
+	return response.response.cookies
+}
+
+type getTestStatusCodeResponseBuilder struct {
+	response
+}
+
+func GetTestResponseBuilder() *getTestStatusCodeResponseBuilder {
+	return new(getTestStatusCodeResponseBuilder)
+}
+
+func (builder *getTestStatusCodeResponseBuilder) StatusCode200() *GetTest200ResponseBuilder {
+	builder.response.statusCode = 200
+
+	return &GetTest200ResponseBuilder{response: builder.response}
+}
+
+type GetTest200ResponseBuilder struct {
+	response
+}
+
+func (builder *GetTest200ResponseBuilder) Build() GetTestResponse {
+	return getTestResponse{response: builder.response}
+}
+
+type DefaultService interface {
+	GetTest(context.Context, GetTestRequest) GetTestResponse
 }
 
 type GetTestRequest struct {
 	ProcessingResult RequestProcessingResult
+}
+
+type SecurityScheme string
+
+const ()
+
+type securityProcessor struct {
+	scheme  SecurityScheme
+	extract func(r *http.Request) (string, string, bool)
+	handle  func(r *http.Request, scheme SecurityScheme, name string, value string) error
+}
+
+var securityExtractorsFuncs = map[SecurityScheme]func(r *http.Request) (string, string, bool){}
+
+type SecuritySchemas interface{}
+
+type SecurityCheckResult struct {
+	Scheme SecurityScheme
+	Value  string
 }

@@ -5,46 +5,50 @@ package arraytest
 import (
 	"encoding/json"
 	"fmt"
-	validation "github.com/go-ozzo/ozzo-validation/v4"
 )
 
 type arrayTestRequest struct {
-	RequiredStringArray *[]string      `json:"requiredStringArray"`
 	EmptyAllowedArray   []string       `json:"emptyAllowedArray"`
 	ObjectArray         []NestedObject `json:"objectArray"`
 	OptionalStringArray []string       `json:"optionalStringArray"`
 	RequiredIntArray    *[]int         `json:"requiredIntArray"`
+	RequiredStringArray *[]string      `json:"requiredStringArray"`
 }
 
 type ArrayTestRequest struct {
+	EmptyAllowedArray   []string       `json:"emptyAllowedArray"`
 	ObjectArray         []NestedObject `json:"objectArray"`
 	OptionalStringArray []string       `json:"optionalStringArray"`
 	RequiredIntArray    []int          `json:"requiredIntArray"`
 	RequiredStringArray []string       `json:"requiredStringArray"`
-	EmptyAllowedArray   []string       `json:"emptyAllowedArray"`
 }
 
-func (a *ArrayTestRequest) UnmarshalJSON(data []byte) error {
+func (body *ArrayTestRequest) UnmarshalJSON(data []byte) error {
 	var value arrayTestRequest
 	if err := json.Unmarshal(data, &value); err != nil {
 		return err
 	}
-	if value.RequiredStringArray == nil {
-		return fmt.Errorf("field '%s' is required but was null or missing", "RequiredStringArray")
-	}
+
+	body.EmptyAllowedArray = value.EmptyAllowedArray
+	body.ObjectArray = value.ObjectArray
+	body.OptionalStringArray = value.OptionalStringArray
+
 	if value.RequiredIntArray == nil {
-		return fmt.Errorf("field '%s' is required but was null or missing", "RequiredIntArray")
+		return fmt.Errorf("requiredIntArray is required")
 	}
-	a.EmptyAllowedArray = value.EmptyAllowedArray
-	a.ObjectArray = value.ObjectArray
-	a.OptionalStringArray = value.OptionalStringArray
-	a.RequiredIntArray = *value.RequiredIntArray
-	a.RequiredStringArray = *value.RequiredStringArray
+
+	body.RequiredIntArray = *value.RequiredIntArray
+
+	if value.RequiredStringArray == nil {
+		return fmt.Errorf("requiredStringArray is required")
+	}
+
+	body.RequiredStringArray = *value.RequiredStringArray
+
 	return nil
 }
-
-func (A ArrayTestRequest) Validate() error {
-	return validation.ValidateStruct(&A, validation.Field(&A.RequiredIntArray, validation.Required, validation.Length(2, 1000000)), validation.Field(&A.RequiredStringArray, validation.Required, validation.Length(1, 10)), validation.Field(&A.EmptyAllowedArray, validation.Length(0, 3)), validation.Field(&A.ObjectArray, validation.Length(0, 1000000)), validation.Field(&A.OptionalStringArray, validation.Length(0, 5)))
+func (body ArrayTestRequest) Validate() error {
+	return nil
 }
 
 type nestedObject struct {
@@ -57,19 +61,22 @@ type NestedObject struct {
 	Name string `json:"name"`
 }
 
-func (n *NestedObject) UnmarshalJSON(data []byte) error {
+func (body *NestedObject) UnmarshalJSON(data []byte) error {
 	var value nestedObject
 	if err := json.Unmarshal(data, &value); err != nil {
 		return err
 	}
+
+	body.Name = value.Name
+
 	if value.ID == nil {
-		return fmt.Errorf("field '%s' is required but was null or missing", "ID")
+		return fmt.Errorf("id is required")
 	}
-	n.Name = value.Name
-	n.ID = *value.ID
+
+	body.ID = *value.ID
+
 	return nil
 }
-
-func (N NestedObject) Validate() error {
+func (body NestedObject) Validate() error {
 	return nil
 }

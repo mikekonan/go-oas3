@@ -2,4 +2,11 @@
 
 package simplearray
 
-var OpenAPISpec = []byte("{\"components\":{\"schemas\":{\"SimpleArrayTest\":{\"properties\":{\"optionalArray\":{\"items\":{\"maxLength\":10,\"minLength\":2,\"type\":\"string\"},\"maxItems\":5,\"minItems\":1,\"type\":\"array\"}},\"type\":\"object\"}}},\"info\":{\"title\":\"Simple Array Test\",\"version\":\"1.0.0\"},\"openapi\":\"3.0.0\",\"paths\":{\"/test\":{\"post\":{\"requestBody\":{\"content\":{\"application/json\":{\"schema\":{\"$ref\":\"#/components/schemas/SimpleArrayTest\"}}}},\"responses\":{\"200\":{\"description\":\"OK\"}}}}}}")
+import "net/http"
+
+var spec = []byte("{\"components\":{\"schemas\":{\"SimpleArrayTest\":{\"properties\":{\"optionalArray\":{\"items\":{\"maxLength\":10,\"minLength\":2,\"type\":\"string\"},\"maxItems\":5,\"minItems\":1,\"type\":\"array\"}},\"type\":\"object\"}}},\"info\":{\"title\":\"Simple Array Test\",\"version\":\"1.0.0\"},\"openapi\":\"3.0.0\",\"paths\":{\"/test\":{\"post\":{\"requestBody\":{\"content\":{\"application/json\":{\"schema\":{\"$ref\":\"#/components/schemas/SimpleArrayTest\"}}}},\"responses\":{\"200\":{\"description\":\"OK\"}}}}}}")
+
+func Spec(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Add("Content-Type", "application/json")
+	w.Write(spec)
+}

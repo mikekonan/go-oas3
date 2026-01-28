@@ -2,10 +2,26 @@
 
 package simplearray
 
+import "encoding/json"
+
+type simpleArrayTest struct {
+	OptionalArray []string `json:"optionalArray"`
+}
+
 type SimpleArrayTest struct {
 	OptionalArray []string `json:"optionalArray"`
 }
 
-func (S SimpleArrayTest) Validate() error {
+func (body *SimpleArrayTest) UnmarshalJSON(data []byte) error {
+	var value simpleArrayTest
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+
+	body.OptionalArray = value.OptionalArray
+
+	return nil
+}
+func (body SimpleArrayTest) Validate() error {
 	return nil
 }

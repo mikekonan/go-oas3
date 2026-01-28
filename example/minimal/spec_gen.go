@@ -2,4 +2,11 @@
 
 package minimal
 
-var OpenAPISpec = []byte("{\"components\":{\"schemas\":{\"TestArray\":{\"items\":{\"type\":\"string\"},\"maxItems\":3,\"minItems\":1,\"type\":\"array\"}}},\"info\":{\"title\":\"Minimal Array Test\",\"version\":\"1.0.0\"},\"openapi\":\"3.0.0\",\"paths\":{\"/test\":{\"get\":{\"responses\":{\"200\":{\"description\":\"OK\"}}}}}}")
+import "net/http"
+
+var spec = []byte("{\"components\":{\"schemas\":{\"TestArray\":{\"items\":{\"type\":\"string\"},\"maxItems\":3,\"minItems\":1,\"type\":\"array\"}}},\"info\":{\"title\":\"Minimal Array Test\",\"version\":\"1.0.0\"},\"openapi\":\"3.0.0\",\"paths\":{\"/test\":{\"get\":{\"responses\":{\"200\":{\"description\":\"OK\"}}}}}}")
+
+func Spec(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Add("Content-Type", "application/json")
+	w.Write(spec)
+}
