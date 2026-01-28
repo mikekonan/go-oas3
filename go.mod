@@ -9,7 +9,7 @@ require (
 	github.com/getkin/kin-openapi v0.133.0
 	github.com/goioc/di v1.7.1
 	github.com/heetch/confita v0.10.0
-	github.com/spf13/cast v1.7.1
+	github.com/spf13/cast v1.10.0
 	github.com/tdewolff/minify/v2 v2.21.3
 )
 
