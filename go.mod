@@ -23,7 +23,7 @@ require (
 	github.com/oasdiff/yaml3 v0.0.0-20250309153720-d2182401db90 // indirect
 	github.com/perimeterx/marshmallow v1.1.5 // indirect
 	github.com/pkg/errors v0.8.1 // indirect
-	github.com/sirupsen/logrus v1.8.1 // indirect
+	github.com/sirupsen/logrus v1.9.4 // indirect
 	github.com/tdewolff/parse/v2 v2.7.19 // indirect
 	github.com/ugorji/go v1.1.4 // indirect
 	github.com/woodsbury/decimal128 v1.3.0 // indirect
