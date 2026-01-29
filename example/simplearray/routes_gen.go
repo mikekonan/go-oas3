@@ -7,72 +7,8 @@ import (
 	"encoding/json"
 	chi "github.com/go-chi/chi/v5"
 	"net/http"
+	"slices"
 )
-
-type DefaultService interface {
-	PostTest(ctx context.Context, request *PostTestRequest) *PostTestResponse
-}
-
-type DefaultRouter struct {
-	service DefaultService
-	router  *chi.Mux
-	hooks   *Hooks
-}
-
-func NewDefaultRouter(service DefaultService) *DefaultRouter {
-	router := chi.NewMux()
-	instance := &DefaultRouter{service: service, router: router, hooks: &Hooks{}}
-	return instance
-}
-
-func (router *DefaultRouter) postTest(w http.ResponseWriter, r *http.Request) {
-	var request PostTestRequest
-
-	var (
-		body      SimpleArrayTest
-		decodeErr error
-	)
-	decodeErr = json.NewDecoder(r.Body).Decode(&body)
-	if decodeErr != nil {
-		request.ProcessingResult = RequestProcessingResult{error: decodeErr, typee: BodyUnmarshalFailed}
-		if router.hooks.RequestBodyUnmarshalFailed != nil {
-			router.hooks.RequestBodyUnmarshalFailed(r, "postTest", request.ProcessingResult)
-		}
-
-		return
-	}
-	request.body = body
-
-	request = router.parsePostTestRequest(r)
-
-	response := router.service.PostTest(r.Context(), &request)
-	response.WriteTo(w)
-}
-
-func (router *DefaultRouter) parsePostTestRequest(r *http.Request) (request PostTestRequest) {
-	request.ProcessingResult = RequestProcessingResult{typee: ParseSucceed}
-
-	var (
-		body      SimpleArrayTest
-		decodeErr error
-	)
-	decodeErr = json.NewDecoder(r.Body).Decode(&body)
-	if decodeErr != nil {
-		request.ProcessingResult = RequestProcessingResult{error: decodeErr, typee: BodyUnmarshalFailed}
-		if router.hooks.RequestBodyUnmarshalFailed != nil {
-			router.hooks.RequestBodyUnmarshalFailed(r, "PostTest", request.ProcessingResult)
-		}
-
-		return
-	}
-	request.body = body
-
-	if router.hooks.RequestParseCompleted != nil {
-		router.hooks.RequestParseCompleted(r, "PostTest")
-	}
-
-	return
-}
 
 type Hooks struct {
 	RequestSecurityParseFailed    func(*http.Request, string, RequestProcessingResult)
@@ -137,69 +73,213 @@ func (r RequestProcessingResult) Err() error {
 	return r.error
 }
 
-type response struct {
-	body        interface{}
-	contentType string
-	statusCode  int
-	headers     map[string]string
+func DefaultHandler(impl DefaultService, r chi.Router, hooks *Hooks) http.Handler {
+	if hooks == nil {
+		hooks = &Hooks{}
+	}
+
+	router := &defaultRouter{router: r, service: impl, hooks: hooks}
+
+	router.mount()
+
+	return router.router
 }
 
-func (r *response) WriteTo(w http.ResponseWriter) {
-	for key, value := range r.headers {
-		w.Header().Set(key, value)
-	}
-	w.Header().Set("Content-Type", r.contentType)
-	w.WriteHeader(r.statusCode)
-	switch body := r.body.(type) {
-	case string:
-		w.Write([]byte(body))
-	case []byte:
-		w.Write(body)
-	default:
-		if r.body != nil {
-			json.NewEncoder(w).Encode(r.body)
+type defaultRouter struct {
+	router  chi.Router
+	service DefaultService
+	hooks   *Hooks
+}
+
+func (router *defaultRouter) mount() {
+	router.router.Post("/test", router.PostTest)
+}
+
+func (router *defaultRouter) parsePostTestRequest(r *http.Request) (request PostTestRequest) {
+	request.ProcessingResult = RequestProcessingResult{typee: ParseSucceed}
+
+	var (
+		body      SimpleArrayTest
+		decodeErr error
+	)
+	decodeErr = json.NewDecoder(r.Body).Decode(&body)
+	if decodeErr != nil {
+		request.ProcessingResult = RequestProcessingResult{error: decodeErr, typee: BodyUnmarshalFailed}
+		if router.hooks.RequestBodyUnmarshalFailed != nil {
+			router.hooks.RequestBodyUnmarshalFailed(r, "PostTest", request.ProcessingResult)
+
+			return
 		}
+
+		return
+	}
+
+	request.Body = body
+
+	if router.hooks.RequestBodyUnmarshalCompleted != nil {
+		router.hooks.RequestBodyUnmarshalCompleted(r, "PostTest")
+	}
+
+	if err := request.Body.Validate(); err != nil {
+		request.ProcessingResult = RequestProcessingResult{error: err, typee: BodyValidationFailed}
+		if router.hooks.RequestBodyValidationFailed != nil {
+			router.hooks.RequestBodyValidationFailed(r, "PostTest", request.ProcessingResult)
+		}
+
+		return
+	}
+
+	if router.hooks.RequestParseCompleted != nil {
+		router.hooks.RequestParseCompleted(r, "PostTest")
+	}
+
+	return
+}
+
+func (router *defaultRouter) PostTest(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
+	response := router.service.PostTest(r.Context(), router.parsePostTestRequest(r))
+
+	for header, value := range response.headers() {
+		w.Header().Set(header, value)
+	}
+
+	for _, c := range response.cookies() {
+		cookie := c
+		http.SetCookie(w, &cookie)
+	}
+
+	if slices.Contains([]int{301, 302, 303, 307, 308}, response.statusCode()) && response.redirectURL() != "" {
+		if router.hooks.RequestRedirectStarted != nil {
+			router.hooks.RequestRedirectStarted(r, "PostTest", response.redirectURL())
+		}
+
+		http.Redirect(w, r, response.redirectURL(), response.statusCode())
+
+		if router.hooks.ServiceCompleted != nil {
+			router.hooks.ServiceCompleted(r, "PostTest")
+		}
+
+		return
+	}
+
+	if router.hooks.RequestProcessingCompleted != nil {
+		router.hooks.RequestProcessingCompleted(r, "PostTest")
+	}
+
+	w.WriteHeader(response.statusCode())
+
+	if router.hooks.ServiceCompleted != nil {
+		router.hooks.ServiceCompleted(r, "PostTest")
 	}
 }
 
-type DefaultResponse struct {
-	*response
+type response struct {
+	statusCode  int
+	body        interface{}
+	bodyRaw     []byte
+	contentType string
+	redirectURL string
+	headers     map[string]string
+	cookies     []http.Cookie
 }
 
-func (r *DefaultResponse) WriteTo(w http.ResponseWriter) {
-	if r.response != nil {
-		r.response.WriteTo(w)
-	}
+type responseInterface interface {
+	statusCode() int
+	body() interface{}
+	bodyRaw() []byte
+	contentType() string
+	redirectURL() string
+	cookies() []http.Cookie
+	headers() map[string]string
 }
 
-type PostTestResponse struct {
-	*response
+type PostTestResponse interface {
+	responseInterface
+	postTestResponse()
 }
 
-func (r *PostTestResponse) WriteTo(w http.ResponseWriter) {
-	if r.response != nil {
-		r.response.WriteTo(w)
-	}
+type postTestResponse struct {
+	response
 }
 
-type PostTestStatus200Builder struct {
-	response *response
+func (postTestResponse) postTestResponse() {}
+
+func (response postTestResponse) statusCode() int {
+	return response.response.statusCode
 }
 
-func (b *PostTestStatus200Builder) Status() *PostTest200ContentTypeBuilder {
-	b.response.statusCode = 200
-	return &PostTest200ContentTypeBuilder{response: b.response}
+func (response postTestResponse) body() interface{} {
+	return response.response.body
 }
 
-type PostTest200ContentTypeBuilder struct {
-	response *response
+func (response postTestResponse) bodyRaw() []byte {
+	return response.response.bodyRaw
 }
 
-type PostTestResponseInterface interface {
-	WriteTo(http.ResponseWriter)
+func (response postTestResponse) contentType() string {
+	return response.response.contentType
+}
+
+func (response postTestResponse) redirectURL() string {
+	return response.response.redirectURL
+}
+
+func (response postTestResponse) headers() map[string]string {
+	return response.response.headers
+}
+
+func (response postTestResponse) cookies() []http.Cookie {
+	return response.response.cookies
+}
+
+type postTestStatusCodeResponseBuilder struct {
+	response
+}
+
+func PostTestResponseBuilder() *postTestStatusCodeResponseBuilder {
+	return new(postTestStatusCodeResponseBuilder)
+}
+
+func (builder *postTestStatusCodeResponseBuilder) StatusCode200() *PostTest200ResponseBuilder {
+	builder.response.statusCode = 200
+
+	return &PostTest200ResponseBuilder{response: builder.response}
+}
+
+type PostTest200ResponseBuilder struct {
+	response
+}
+
+func (builder *PostTest200ResponseBuilder) Build() PostTestResponse {
+	return postTestResponse{response: builder.response}
+}
+
+type DefaultService interface {
+	PostTest(context.Context, PostTestRequest) PostTestResponse
 }
 
 type PostTestRequest struct {
-	body             SimpleArrayTest
+	Body             SimpleArrayTest
 	ProcessingResult RequestProcessingResult
+}
+
+type SecurityScheme string
+
+const ()
+
+type securityProcessor struct {
+	scheme  SecurityScheme
+	extract func(r *http.Request) (string, string, bool)
+	handle  func(r *http.Request, scheme SecurityScheme, name string, value string) error
+}
+
+var securityExtractorsFuncs = map[SecurityScheme]func(r *http.Request) (string, string, bool){}
+
+type SecuritySchemas interface{}
+
+type SecurityCheckResult struct {
+	Scheme SecurityScheme
+	Value  string
 }

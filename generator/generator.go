@@ -188,7 +188,7 @@ func (generator *Generator) components(swagger *openapi3.T) jen.Code {
 	}
 
 	var componentsFromPathsResult []jen.Code
-	linq.From(sortedMapEntries(swagger.Paths)).
+	linq.From(sortedMapEntries(swagger.Paths.Map())).
 		SelectManyT(func(entry sortedKeyValue[string, *openapi3.PathItem]) linq.Query {
 			path := entry.Key
 			componentsByName := map[string]jen.Code{}
@@ -249,11 +249,11 @@ func (generator *Generator) components(swagger *openapi3.T) jen.Code {
 
 	// Add inline response body components
 	var inlineResponseComponents []jen.Code
-	for pathName, pathItem := range swagger.Paths {
+	for pathName, pathItem := range swagger.Paths.Map() {
 		for method, operation := range pathItem.Operations() {
-			if operation.Responses != nil {
+			if operation.Responses != nil && operation.Responses.Len() > 0 {
 				operationName := generator.normalizer.normalizeOperationName(pathName, method)
-				for _, responseRef := range operation.Responses {
+				for _, responseRef := range operation.Responses.Map() {
 					if responseRef.Value.Content != nil && len(responseRef.Value.Content) > 0 {
 						for contentType, mediaType := range responseRef.Value.Content {
 							if mediaType.Schema.Ref == "" { // inline schema
@@ -285,14 +285,11 @@ func (generator *Generator) components(swagger *openapi3.T) jen.Code {
 func (generator *Generator) variableForRegex(name string, schema *openapi3.SchemaRef) jen.Code {
 	hasGoRegexExtension := len(schema.Value.Extensions) > 0 && schema.Value.Extensions[goRegex] != nil
 
-	if !hasGoRegexExtension || schema.Value.Type != "string" {
+	if !hasGoRegexExtension || !isSchemaType(schema.Value.Type, "string") {
 		return jen.Null()
 	}
 
-	var regex string
-	if err := json.Unmarshal(schema.Value.Extensions[goRegex].(json.RawMessage), &regex); err != nil {
-		panic(err)
-	}
+	regex := parseExtensionString(schema.Value.Extensions[goRegex])
 
 	if generator.useRegex == nil {
 		generator.useRegex = map[string]string{}
@@ -343,13 +340,13 @@ func (generator *Generator) additionalConstants(swagger *openapi3.T) (jen.Code, 
 
 	// Sort paths to ensure deterministic path constants generation order
 	var pathNames []string
-	for pathName := range swagger.Paths {
+	for pathName := range swagger.Paths.Map() {
 		pathNames = append(pathNames, pathName)
 	}
 	slices.Sort(pathNames)
 
 	for _, pathName := range pathNames {
-		pathItem := swagger.Paths[pathName]
+		pathItem := swagger.Paths.Value(pathName)
 
 		// Sort operations to ensure deterministic operation constants generation order
 		var operationMethods []string
@@ -416,13 +413,13 @@ func (generator *Generator) additionalConstants(swagger *openapi3.T) (jen.Code, 
 
 	// Sort paths to ensure deterministic parameter constants generation order
 	var pathNames2 []string
-	for pathName := range swagger.Paths {
+	for pathName := range swagger.Paths.Map() {
 		pathNames2 = append(pathNames2, pathName)
 	}
 	slices.Sort(pathNames2)
 
 	for _, pathName := range pathNames2 {
-		pathItem := swagger.Paths[pathName]
+		pathItem := swagger.Paths.Value(pathName)
 
 		// Sort operations to ensure deterministic operation parameter constants generation order
 		var operationMethods2 []string
@@ -671,12 +668,7 @@ func (generator *Generator) enumFromSchema(name string, schema *openapi3.SchemaR
 
 func (generator *Generator) getXGoRegex(schema *openapi3.SchemaRef) string {
 	if len(schema.Value.Extensions) > 0 && schema.Value.Extensions[goRegex] != nil {
-		var regex string
-		if err := json.Unmarshal(schema.Value.Extensions[goRegex].(json.RawMessage), &regex); err != nil {
-			panic(err)
-		}
-
-		return regex
+		return parseExtensionString(schema.Value.Extensions[goRegex])
 	}
 
 	return ""
@@ -684,12 +676,7 @@ func (generator *Generator) getXGoRegex(schema *openapi3.SchemaRef) string {
 
 func (generator *Generator) getXGoStringTrimmable(schema *openapi3.SchemaRef) bool {
 	if len(schema.Value.Extensions) > 0 && schema.Value.Extensions[goStringTrimmable] != nil {
-		var isTrimmable bool
-		if err := json.Unmarshal(schema.Value.Extensions[goStringTrimmable].(json.RawMessage), &isTrimmable); err != nil {
-			panic(err)
-		}
-
-		return isTrimmable
+		return parseExtensionBool(schema.Value.Extensions[goStringTrimmable])
 	}
 
 	return false
@@ -719,8 +706,7 @@ func (generator *Generator) fieldValidationRuleFromSchema(receiverName string, p
 		return fieldRule
 	}
 
-	switch v.Type {
-	case "string":
+	if isSchemaType(v.Type, "string") {
 		if v.MaxLength != nil || v.MinLength > 0 {
 			var maxLength uint64
 			if v.MaxLength != nil {
@@ -735,11 +721,11 @@ func (generator *Generator) fieldValidationRuleFromSchema(receiverName string, p
 			params = append(params, jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "RuneLength").Call(jen.Lit(int(v.MinLength)), jen.Lit(int(maxLength))))
 			fieldRule = jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "Field").Call(params...)
 		}
-	case "integer", "number":
+	} else if isSchemaType(v.Type, "integer") || isSchemaType(v.Type, "number") {
 		var rules []jen.Code
 		if v.Min != nil {
 			min := jen.Lit(*v.Min)
-			if v.Type == "integer" {
+			if isSchemaType(v.Type, "integer") {
 				min = jen.Lit(int(*v.Min))
 			}
 			r := jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "Min").Call(min)
@@ -750,7 +736,7 @@ func (generator *Generator) fieldValidationRuleFromSchema(receiverName string, p
 		}
 		if v.Max != nil {
 			max := jen.Lit(*v.Max)
-			if v.Type == "integer" {
+			if isSchemaType(v.Type, "integer") {
 				max = jen.Lit(int(*v.Max))
 			}
 			r := jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "Max").Call(max)
@@ -946,13 +932,13 @@ func (generator *Generator) enums(swagger *openapi3.T) jen.Code {
 
 	// Sort paths to ensure deterministic path enum generation order
 	var pathNames []string
-	for pathName := range swagger.Paths {
+	for pathName := range swagger.Paths.Map() {
 		pathNames = append(pathNames, pathName)
 	}
 	slices.Sort(pathNames)
 
 	for _, path := range pathNames {
-		pathItem := swagger.Paths[path]
+		pathItem := swagger.Paths.Value(path)
 
 		// Sort operations to ensure deterministic operation enum generation order
 		var operationMethods []string
@@ -1012,13 +998,13 @@ func (generator *Generator) enums(swagger *openapi3.T) jen.Code {
 			var responseResults []jen.Code
 			// Sort response status codes to ensure deterministic response enum generation order
 			var statusCodes []string
-			for statusCode := range operation.Responses {
+			for statusCode := range operation.Responses.Map() {
 				statusCodes = append(statusCodes, statusCode)
 			}
 			slices.Sort(statusCodes)
 
 			for _, statusCode := range statusCodes {
-				response := operation.Responses[statusCode]
+				response := operation.Responses.Map()[statusCode]
 
 				// Sort content types to ensure deterministic response content enum generation order
 				var contentTypes []string
@@ -1441,7 +1427,7 @@ func (generator *Generator) wrapper(name string, requestName string, routerName,
 				jen.Id("r"),
 				jen.Lit(name)))).Line().Line())
 
-	if len(operation.Responses) > 0 && linq.From(operation.Responses).AnyWithT(func(kv linq.KeyValue) bool { return len(kv.Value.(*openapi3.ResponseRef).Value.Content) > 0 }) {
+	if operation.Responses.Len() > 0 && linq.From(operation.Responses.Map()).AnyWithT(func(kv linq.KeyValue) bool { return len(kv.Value.(*openapi3.ResponseRef).Value.Content) > 0 }) {
 		funcCode = append(funcCode, jen.If(jen.Id("len").Call(jen.Id("response").Dot("contentType").Call()).Op(">").Lit(0)).Block(
 			jen.Id("w").Dot("Header").Call().Dot("Set").Call(jen.Lit("content-type"),
 				jen.Id("response").Dot("contentType").Call())).Line())
@@ -1548,7 +1534,7 @@ type operationWithPath struct {
 func (generator *Generator) groupedOperations(swagger *openapi3.T) []groupedOperations {
 	var result []groupedOperations
 
-	linq.From(sortedMapEntries(swagger.Paths)).
+	linq.From(sortedMapEntries(swagger.Paths.Map())).
 		SelectManyT(func(entry sortedKeyValue[string, *openapi3.PathItem]) linq.Query {
 			path := entry.Key
 
@@ -1631,7 +1617,10 @@ func (generator *Generator) handler(name string, serviceName string, routerName 
 			jen.Id("hooks").Op("*").Id("Hooks"), schemasInterfaceParameter).
 		Params(jen.Qual("net/http", "Handler")).
 		Block(
-			jen.Id("router").Op(":=").Op("&").Id(routerName).Values(jen.Id("router").Op(":").Id("r"),
+			jen.If(jen.Id("hooks").Op("==").Nil()).Block(
+				jen.Id("hooks").Op("=").Op("&").Id("Hooks").Values(),
+			),
+			jen.Line().Id("router").Op(":=").Op("&").Id(routerName).Values(jen.Id("router").Op(":").Id("r"),
 				jen.Id("service").Op(":").Id("impl"), jen.Id("hooks").Op(":").Id("hooks")),
 			schemas,
 			jen.Line().Id("router").Dot("mount").Call(),
@@ -1693,7 +1682,7 @@ func (generator *Generator) wrapperRequestParsers(wrapperName string, operation 
 					return generator.wrapperEnum(in, enumType, name, paramName, wrapperName, parameter)
 				}
 
-				if parameter.Value.Schema.Value.Type == "integer" {
+				if isSchemaType(parameter.Value.Schema.Value.Type, "integer") {
 					return generator.wrapperInteger(in, name, paramName, wrapperName, parameter)
 				}
 
@@ -2011,10 +2000,15 @@ func (generator *Generator) wrapperBody(method string, path string, contentType 
 			jen.Line().Return())).
 		Add(jen.Line(), jen.Line()).
 		Add(jen.Id("request").Dot("Body").Op("=").Id("body")).
-		Add(jen.Line(), jen.Line())
+		Add(jen.Line(), jen.Line()).
+		Add(jen.If(jen.Id("router").Dot("hooks").Dot("RequestBodyUnmarshalCompleted").Op("!=").Id("nil")).Block(
+			jen.Id("router").Dot("hooks").Dot("RequestBodyUnmarshalCompleted").Call(
+				jen.Id("r"),
+				jen.Lit(wrapperName)))).
+		Add(jen.Line())
 
 	if contentType != "application/octet-stream" && !generator.typee.getXGoSkipValidation(body.Value) {
-		result = result.Add(jen.If(jen.Id("err").Op(":=").Id("request").Dot("Body").Dot("Validate").Call(),
+		result = result.Add(jen.Line()).Add(jen.If(jen.Id("err").Op(":=").Id("request").Dot("Body").Dot("Validate").Call(),
 			jen.Id("err").Op("!=").Id("nil")).
 			Block(jen.Id("request").Dot("ProcessingResult").Op("=").Id("RequestProcessingResult").Values(jen.Id("error").Op(":").Id("err"),
 				jen.Id("typee").Op(":").Id("BodyValidationFailed")),
@@ -2026,12 +2020,7 @@ func (generator *Generator) wrapperBody(method string, path string, contentType 
 				jen.Line().Return()))
 	}
 
-	return result.Add(jen.Line(), jen.Line()).
-		Add(jen.If(jen.Id("router").Dot("hooks").Dot("RequestBodyUnmarshalCompleted").Op("!=").Id("nil")).Block(
-			jen.Id("router").Dot("hooks").Dot("RequestBodyUnmarshalCompleted").Call(
-				jen.Id("r"),
-				jen.Lit(wrapperName)))).
-		Add(jen.Line())
+	return result.Add(jen.Line())
 }
 func (generator *Generator) wrapperSecurity(name string, operation *openapi3.Operation) jen.Code {
 	code := jen.Null()
@@ -2151,7 +2140,7 @@ func (generator *Generator) requestResponseBuilders(swagger *openapi3.T) jen.Cod
 		generator.handlersTypes(swagger),
 		generator.builders(swagger),
 		generator.handlersInterfaces(swagger),
-		generator.requestParameters(swagger.Paths),
+		generator.requestParameters(swagger.Paths.Map()),
 	}
 
 	result = generator.normalizer.doubleLineAfterEachElement(result...)
@@ -2181,13 +2170,13 @@ func (generator *Generator) builders(swagger *openapi3.T) (result jen.Code) {
 
 	// Sort paths to ensure deterministic builders generation order
 	var pathNames []string
-	for pathName := range swagger.Paths {
+	for pathName := range swagger.Paths.Map() {
 		pathNames = append(pathNames, pathName)
 	}
 	slices.Sort(pathNames)
 
 	for _, pathName := range pathNames {
-		pathItem := swagger.Paths[pathName]
+		pathItem := swagger.Paths.Value(pathName)
 		var operationStructs []operationStruct
 
 		// Sort operations to ensure deterministic operation builders generation order
@@ -2204,13 +2193,13 @@ func (generator *Generator) builders(swagger *openapi3.T) (result jen.Code) {
 
 			// Sort response status codes to ensure deterministic response processing order
 			var statusCodes []string
-			for statusCode := range operation.Responses {
+			for statusCode := range operation.Responses.Map() {
 				statusCodes = append(statusCodes, statusCode)
 			}
 			slices.Sort(statusCodes)
 
 			for _, statusCode := range statusCodes {
-				responseRef := operation.Responses[statusCode]
+				responseRef := operation.Responses.Map()[statusCode]
 				var response operationResponse
 				response.ContentTypeBodyNameMap = map[string]string{}
 
@@ -2293,13 +2282,13 @@ func (generator *Generator) handlersTypes(swagger *openapi3.T) jen.Code {
 
 	// Sort paths to ensure deterministic handlers types generation order
 	var pathNames []string
-	for pathName := range swagger.Paths {
+	for pathName := range swagger.Paths.Map() {
 		pathNames = append(pathNames, pathName)
 	}
 	slices.Sort(pathNames)
 
 	for _, pathName := range pathNames {
-		pathItem := swagger.Paths[pathName]
+		pathItem := swagger.Paths.Value(pathName)
 		var pathResult []jen.Code
 
 		// Sort operations to ensure deterministic operation handlers types generation order
@@ -2362,7 +2351,7 @@ func (generator *Generator) serviceCallParams(name string) []jen.Code {
 func (generator *Generator) handlersInterfaces(swagger *openapi3.T) jen.Code {
 	var result []jen.Code
 
-	linq.From(sortedMapEntries(swagger.Paths)).
+	linq.From(sortedMapEntries(swagger.Paths.Map())).
 		SelectManyT(
 			func(entry sortedKeyValue[string, *openapi3.PathItem]) linq.Query {
 				path := entry.Key
@@ -2935,7 +2924,7 @@ func (generator *Generator) shouldUseExternalTypeAlias(schema *openapi3.Schema) 
 	}
 
 	// Check for well-known formats that map to external types
-	if schema.Type == "string" && schema.Format != "" {
+	if isSchemaType(schema.Type, "string") && schema.Format != "" {
 		switch schema.Format {
 		case "iso3166-alpha-2", "iso3166-alpha-3", "iso4217-currency-code":
 			return true
@@ -2965,7 +2954,7 @@ func (generator *Generator) generateExternalTypeAlias(name string, schema *opena
 	}
 
 	// Handle well-known formats
-	if v.Type == "string" && v.Format != "" {
+	if isSchemaType(v.Type, "string") && v.Format != "" {
 		switch v.Format {
 		case "iso3166-alpha-2":
 			typeAlias.Qual("github.com/mikekonan/go-types/v2/country", "Alpha2Code")
