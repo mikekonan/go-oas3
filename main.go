@@ -4,10 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"reflect"
 	"runtime/debug"
-
-	"github.com/goioc/di"
 
 	"github.com/mikekonan/go-oas3/application"
 	"github.com/mikekonan/go-oas3/configurator"
@@ -65,20 +62,18 @@ func main() {
 			os.Exit(0)
 		}
 	}
-	di.RegisterBeanInstance("config", new(configurator.Config).Defaults())
-	di.RegisterBean("loader", reflect.TypeOf((*loader.Loader)(nil)))
-	di.RegisterBean("configurator", reflect.TypeOf((*configurator.Configurator)(nil)))
-	di.RegisterBean("generator", reflect.TypeOf((*generator.Generator)(nil)))
-	di.RegisterBean("typeFiller", reflect.TypeOf((*generator.Type)(nil)))
-	di.RegisterBean("normalizer", reflect.TypeOf((*generator.Normalizer)(nil)))
-	di.RegisterBean("writer", reflect.TypeOf((*writer.Writer)(nil)))
-	di.RegisterBean("app", reflect.TypeOf((*application.Application)(nil)))
-
-	if err := di.InitializeContainer(); err != nil {
+	cfg := new(configurator.Config).Defaults()
+	if err := configurator.New(cfg).LoadFlags(); err != nil {
 		log.Fatal(err.Error())
 	}
 
-	app := di.GetInstance("app").(*application.Application)
+	normalizer := generator.NewNormalizer()
+	typeFiller := generator.NewType(normalizer, cfg)
+	app := application.New(
+		loader.New(cfg),
+		generator.New(normalizer, typeFiller, cfg),
+		writer.New(cfg),
+	)
 
 	if err := app.Run(); err != nil {
 		log.Fatal(err.Error())

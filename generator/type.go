@@ -22,6 +22,7 @@ const (
 	goOmitempty         = "x-go-omitempty"
 	goSkipValidation    = "x-go-skip-validation"
 	goSkipSecurityCheck = "x-go-skip-security-check"
+	goGenerics          = "x-go-generics"
 )
 
 // isSchemaType safely checks if schema type matches the given type string.
@@ -65,8 +66,8 @@ func parseExtensionBool(ext any) bool {
 }
 
 type Type struct {
-	normalizer *Normalizer          `di.inject:"normalizer"`
-	config     *configurator.Config `di.inject:"config"`
+	normalizer *Normalizer
+	config     *configurator.Config
 }
 
 func (typ *Type) fillJsonTag(into *jen.Statement, schemaRef *openapi3.SchemaRef, name string) {
@@ -198,7 +199,14 @@ func (typ *Type) fillGoType(into *jen.Statement, parentTypeName string, typeName
 			return
 		}
 
-		if schema.AdditionalProperties.Has != nil || schema.AdditionalProperties.Schema != nil {
+		// Open map only when the spec says so: a typed `additionalProperties`
+		// schema, or `additionalProperties: true`. `additionalProperties:
+		// false` keeps the closed-struct path below — emitting a map for
+		// `false` would silently turn declared-shape objects into open-ended
+		// maps, the opposite of what the spec demands.
+		hasOpenMap := schema.AdditionalProperties.Schema != nil ||
+			(schema.AdditionalProperties.Has != nil && *schema.AdditionalProperties.Has)
+		if hasOpenMap {
 			keyCode := jen.Null()
 
 			keyPkg, keyValue, ok := typ.getXGoType(schemaRef.Value)
@@ -213,6 +221,13 @@ func (typ *Type) fillGoType(into *jen.Statement, parentTypeName string, typeName
 			}
 
 			into.Map(keyCode)
+
+			// `additionalProperties: true` leaves Schema nil — recursing
+			// into fillGoType with nil NPEs, so emit `interface{}` here.
+			if schema.AdditionalProperties.Schema == nil {
+				into.Interface()
+				return
+			}
 
 			typ.fillGoType(into, parentTypeName, typeName, schema.AdditionalProperties.Schema, false, false)
 

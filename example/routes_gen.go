@@ -11,10 +11,10 @@ import (
 	chi "github.com/go-chi/chi/v5"
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 	cast "github.com/spf13/cast"
-	"io/ioutil"
+	"io"
 	"net/http"
+	"reflect"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -22,6 +22,15 @@ import (
 
 var xFingerprintRegex = regexp.MustCompile("[0-9a-fA-F]+")
 
+// Hooks are observability callbacks fired by the generated routing layer.
+// Any field may be left nil — ensureHooks() at handler-init time fills the
+// nil entries with no-op stubs, so call sites never need to nil-check.
+//
+// Contract: hooks are for observability (logging, metrics, tracing). The
+// runtime owns the response. ResponseBodyMarshalFailed receives an
+// http.ResponseWriter for inspection only — the runtime calls http.Error
+// immediately after the hook returns, so writing to w from the hook will
+// produce a duplicate-WriteHeader warning. Read headers/r.Context() at most.
 type Hooks struct {
 	RequestSecurityParseFailed    func(*http.Request, string, RequestProcessingResult)
 	RequestSecurityParseCompleted func(*http.Request, string)
@@ -49,10 +58,157 @@ type Hooks struct {
 	ServiceCompleted              func(*http.Request, string)
 }
 
+func ensureHooks(h *Hooks) *Hooks {
+	if h == nil {
+		h = &Hooks{}
+	}
+	if h.RequestSecurityParseFailed == nil {
+		h.RequestSecurityParseFailed = func(*http.Request, string, RequestProcessingResult) {}
+	}
+	if h.RequestSecurityParseCompleted == nil {
+		h.RequestSecurityParseCompleted = func(*http.Request, string) {}
+	}
+	if h.RequestSecurityCheckFailed == nil {
+		h.RequestSecurityCheckFailed = func(*http.Request, string, string, RequestProcessingResult) {}
+	}
+	if h.RequestSecurityCheckCompleted == nil {
+		h.RequestSecurityCheckCompleted = func(*http.Request, string, string) {}
+	}
+	if h.RequestBodyUnmarshalFailed == nil {
+		h.RequestBodyUnmarshalFailed = func(*http.Request, string, RequestProcessingResult) {}
+	}
+	if h.RequestHeaderParseFailed == nil {
+		h.RequestHeaderParseFailed = func(*http.Request, string, string, RequestProcessingResult) {}
+	}
+	if h.RequestPathParseFailed == nil {
+		h.RequestPathParseFailed = func(*http.Request, string, string, RequestProcessingResult) {}
+	}
+	if h.RequestQueryParseFailed == nil {
+		h.RequestQueryParseFailed = func(*http.Request, string, string, RequestProcessingResult) {}
+	}
+	if h.RequestBodyValidationFailed == nil {
+		h.RequestBodyValidationFailed = func(*http.Request, string, RequestProcessingResult) {}
+	}
+	if h.RequestHeaderValidationFailed == nil {
+		h.RequestHeaderValidationFailed = func(*http.Request, string, RequestProcessingResult) {}
+	}
+	if h.RequestPathValidationFailed == nil {
+		h.RequestPathValidationFailed = func(*http.Request, string, RequestProcessingResult) {}
+	}
+	if h.RequestQueryValidationFailed == nil {
+		h.RequestQueryValidationFailed = func(*http.Request, string, RequestProcessingResult) {}
+	}
+	if h.RequestBodyUnmarshalCompleted == nil {
+		h.RequestBodyUnmarshalCompleted = func(*http.Request, string) {}
+	}
+	if h.RequestHeaderParseCompleted == nil {
+		h.RequestHeaderParseCompleted = func(*http.Request, string) {}
+	}
+	if h.RequestPathParseCompleted == nil {
+		h.RequestPathParseCompleted = func(*http.Request, string) {}
+	}
+	if h.RequestQueryParseCompleted == nil {
+		h.RequestQueryParseCompleted = func(*http.Request, string) {}
+	}
+	if h.RequestParseCompleted == nil {
+		h.RequestParseCompleted = func(*http.Request, string) {}
+	}
+	if h.RequestProcessingCompleted == nil {
+		h.RequestProcessingCompleted = func(*http.Request, string) {}
+	}
+	if h.RequestRedirectStarted == nil {
+		h.RequestRedirectStarted = func(*http.Request, string, string) {}
+	}
+	if h.ResponseBodyMarshalCompleted == nil {
+		h.ResponseBodyMarshalCompleted = func(*http.Request, string) {}
+	}
+	if h.ResponseBodyWriteCompleted == nil {
+		h.ResponseBodyWriteCompleted = func(*http.Request, string, int) {}
+	}
+	if h.ResponseBodyMarshalFailed == nil {
+		h.ResponseBodyMarshalFailed = func(http.ResponseWriter, *http.Request, string, error) {}
+	}
+	if h.ResponseBodyWriteFailed == nil {
+		h.ResponseBodyWriteFailed = func(*http.Request, string, int, error) {}
+	}
+	if h.ServiceCompleted == nil {
+		h.ServiceCompleted = func(*http.Request, string) {}
+	}
+	return h
+}
+
+func extractSecurity(
+	r *http.Request,
+	hooks *Hooks,
+	name string,
+	requirements [][]securityProcessor,
+	skipCheck bool,
+) (results map[SecurityScheme]string, passed bool, checkErr error) {
+	if skipCheck {
+		// Expose every extractable credential across all OR-branches so the
+		// handler can decide. Validation is skipped by contract.
+		for _, processors := range requirements {
+			for _, processor := range processors {
+				_, value, isExtracted := processor.extract(r)
+				if !isExtracted {
+					continue
+				}
+				if results == nil {
+					results = map[SecurityScheme]string{}
+				}
+				results[processor.scheme] = value
+			}
+		}
+		return results, true, nil
+	}
+
+	for _, processors := range requirements {
+		// Per-branch buffer: a partially-extracted branch must not leak its
+		// credentials into the final results. Allocated lazily on the first
+		// extracted credential so failed branches cost no allocation.
+		var branchResults map[SecurityScheme]string
+		linkedChecksValid := true
+		attemptCheckErr := error(nil)
+		for _, processor := range processors {
+			schemeName, value, isExtracted := processor.extract(r)
+			if !isExtracted {
+				linkedChecksValid = false
+				break
+			}
+			if err := processor.handle(r, processor.scheme, schemeName, value); err != nil {
+				hooks.RequestSecurityCheckFailed(r, name, string(processor.scheme),
+					RequestProcessingResult{error: err, typee: SecurityCheckFailed})
+				linkedChecksValid = false
+				attemptCheckErr = err
+				break
+			}
+			hooks.RequestSecurityCheckCompleted(r, name, string(processor.scheme))
+			if branchResults == nil {
+				branchResults = make(map[SecurityScheme]string, len(processors))
+			}
+			branchResults[processor.scheme] = value
+		}
+		if linkedChecksValid {
+			if len(branchResults) > 0 {
+				results = branchResults
+			}
+			return results, true, nil
+		}
+		// Preserve the first real handle() error across OR-branches. A later
+		// branch that fails only on extract (attemptCheckErr stays nil) must
+		// NOT overwrite a real auth-handler error from an earlier branch.
+		if checkErr == nil {
+			checkErr = attemptCheckErr
+		}
+	}
+	return results, false, checkErr
+}
+
 type requestProcessingResultType uint8
 
 const (
-	BodyUnmarshalFailed requestProcessingResultType = iota + 1
+	ParseSucceed requestProcessingResultType = iota
+	BodyUnmarshalFailed
 	BodyValidationFailed
 	HeaderParseFailed
 	HeaderValidationFailed
@@ -62,7 +218,6 @@ const (
 	PathValidationFailed
 	SecurityParseFailed
 	SecurityCheckFailed
-	ParseSucceed
 )
 
 type RequestProcessingResult struct {
@@ -85,25 +240,45 @@ func (r RequestProcessingResult) Err() error {
 	return r.error
 }
 
-func AuthHandler(impl AuthService, r chi.Router, hooks *Hooks, securitySchemas SecuritySchemas) http.Handler {
-	if hooks == nil {
-		hooks = &Hooks{}
+var (
+	_ = reflect.ValueOf
+)
+
+func isNilResponse(v responseInterface) bool {
+	if v == nil {
+		return true
 	}
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+	case reflect.Pointer, reflect.Interface, reflect.Chan, reflect.Func, reflect.Map, reflect.Slice:
+		return rv.IsNil()
+	}
+	return false
+}
+
+func AuthHandler(impl AuthService, r chi.Router, hooks *Hooks, securitySchemas SecuritySchemas) http.Handler {
+	hooks = ensureHooks(hooks)
 
 	router := &authRouter{router: r, service: impl, hooks: hooks}
 
 	router.securityHandlers = map[SecurityScheme]securityProcessor{
-		SecuritySchemeBearer: {
-			scheme:  SecuritySchemeBearer,
-			extract: securityExtractorsFuncs[SecuritySchemeBearer],
-			handle:  securitySchemas.SecuritySchemeBearer,
-		},
 		SecuritySchemeApiKeyAuth: {
 			scheme:  SecuritySchemeApiKeyAuth,
 			extract: securityExtractorsFuncs[SecuritySchemeApiKeyAuth],
 			handle:  securitySchemas.SecuritySchemeApiKeyAuth,
 		},
+		SecuritySchemeBearer: {
+			scheme:  SecuritySchemeBearer,
+			extract: securityExtractorsFuncs[SecuritySchemeBearer],
+			handle:  securitySchemas.SecuritySchemeBearer,
+		},
 	}
+
+	router.postBearerEndpointSecurityReqs = [][]securityProcessor{{router.securityHandlers[SecuritySchemeBearer]}}
+
+	router.getSecureEndpointSecurityReqs = [][]securityProcessor{{router.securityHandlers[SecuritySchemeApiKeyAuth]}}
+
+	router.getSemiSecureEndpointSecurityReqs = [][]securityProcessor{{router.securityHandlers[SecuritySchemeApiKeyAuth]}}
 
 	router.mount()
 
@@ -111,10 +286,13 @@ func AuthHandler(impl AuthService, r chi.Router, hooks *Hooks, securitySchemas S
 }
 
 type authRouter struct {
-	router           chi.Router
-	service          AuthService
-	hooks            *Hooks
-	securityHandlers map[SecurityScheme]securityProcessor
+	router                            chi.Router
+	service                           AuthService
+	hooks                             *Hooks
+	securityHandlers                  map[SecurityScheme]securityProcessor
+	postBearerEndpointSecurityReqs    [][]securityProcessor
+	getSecureEndpointSecurityReqs     [][]securityProcessor
+	getSemiSecureEndpointSecurityReqs [][]securityProcessor
 }
 
 func (router *authRouter) mount() {
@@ -124,463 +302,100 @@ func (router *authRouter) mount() {
 }
 
 func (router *authRouter) parsePostBearerEndpointRequest(r *http.Request) (request PostBearerEndpointRequest) {
-	request.ProcessingResult = RequestProcessingResult{typee: ParseSucceed}
 
-	isSecurityCheckPassed := false
-	for _, processors := range [][]securityProcessor{{router.securityHandlers[SecuritySchemeBearer]}} {
-		isLinkedChecksValid := true
-
-		for _, processor := range processors {
-			name, value, isExtracted := processor.extract(r)
-
-			if !isExtracted {
-				isLinkedChecksValid = false
-				break
-			}
-
-			if err := processor.handle(r, processor.scheme, name, value); err != nil {
-				if router.hooks.RequestSecurityCheckFailed != nil {
-					router.hooks.RequestSecurityCheckFailed(r, "PostBearerEndpoint", string(processor.scheme), RequestProcessingResult{error: err, typee: SecurityCheckFailed})
-				}
-
-				isLinkedChecksValid = false
-
-				break
-			}
-
-			if router.hooks.RequestSecurityCheckCompleted != nil {
-				router.hooks.RequestSecurityCheckCompleted(r, "PostBearerEndpoint", string(processor.scheme))
-			}
-
-			if len(request.SecurityCheckResults) == 0 {
-				request.SecurityCheckResults = map[SecurityScheme]string{}
-			}
-
-			request.SecurityCheckResults[processor.scheme] = value
+	results, passed, checkErr := extractSecurity(r, router.hooks, "PostBearerEndpoint", router.postBearerEndpointSecurityReqs, false)
+	request.SecurityCheckResults = results
+	if !passed {
+		if checkErr != nil {
+			request.ProcessingResult = RequestProcessingResult{error: checkErr, typee: SecurityCheckFailed}
+			return
 		}
-
-		if isLinkedChecksValid {
-			isSecurityCheckPassed = true
-			break
-		}
-	}
-
-	if !isSecurityCheckPassed {
-		err := fmt.Errorf("failed passing security checks")
-
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: SecurityParseFailed}
-
-		if router.hooks.RequestSecurityParseFailed != nil {
-			router.hooks.RequestSecurityParseFailed(r, "PostBearerEndpoint", request.ProcessingResult)
-		}
-
+		request.ProcessingResult = RequestProcessingResult{error: errFailedPassingSecurityChecks, typee: SecurityParseFailed}
+		router.hooks.RequestSecurityParseFailed(r, "PostBearerEndpoint", request.ProcessingResult)
 		return
 	}
+	router.hooks.RequestSecurityParseCompleted(r, "PostBearerEndpoint")
 
-	if router.hooks.RequestSecurityParseCompleted != nil {
-		router.hooks.RequestSecurityParseCompleted(r, "PostBearerEndpoint")
-	}
-
-	if router.hooks.RequestParseCompleted != nil {
-		router.hooks.RequestParseCompleted(r, "PostBearerEndpoint")
-	}
+	router.hooks.RequestParseCompleted(r, "PostBearerEndpoint")
 
 	return
 }
 
 func (router *authRouter) PostBearerEndpoint(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-
-	response := router.service.PostBearerEndpoint(r.Context(), router.parsePostBearerEndpointRequest(r))
-
-	for header, value := range response.headers() {
-		w.Header().Set(header, value)
-	}
-
-	for _, c := range response.cookies() {
-		cookie := c
-		http.SetCookie(w, &cookie)
-	}
-
-	if slices.Contains([]int{301, 302, 303, 307, 308}, response.statusCode()) && response.redirectURL() != "" {
-		if router.hooks.RequestRedirectStarted != nil {
-			router.hooks.RequestRedirectStarted(r, "PostBearerEndpoint", response.redirectURL())
-		}
-
-		http.Redirect(w, r, response.redirectURL(), response.statusCode())
-
-		if router.hooks.ServiceCompleted != nil {
-			router.hooks.ServiceCompleted(r, "PostBearerEndpoint")
-		}
-
+	result := router.service.PostBearerEndpoint(r.Context(), router.parsePostBearerEndpointRequest(r))
+	if isNilResponse(result) {
+		router.hooks.ResponseBodyMarshalFailed(w, r, "PostBearerEndpoint", errServiceReturnedANilResponse)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-
-	if router.hooks.RequestProcessingCompleted != nil {
-		router.hooks.RequestProcessingCompleted(r, "PostBearerEndpoint")
-	}
-
-	if len(response.contentType()) > 0 {
-		w.Header().Set("content-type", response.contentType())
-	}
-
-	w.WriteHeader(response.statusCode())
-
-	var body []byte
-
-	if response.body() != nil {
-		var err error
-
-		switch response.contentType() {
-		case "application/xml":
-			body, err = xml.Marshal(response.body())
-		case "application/octet-stream":
-			var ok bool
-			if body, ok = (response.body()).([]byte); !ok {
-				err = errors.New("body is not []byte")
-			}
-		case "text/html":
-			body = []byte(fmt.Sprint(response.body()))
-		case "application/json":
-			fallthrough
-		default:
-			body, err = json.Marshal(response.body())
-		}
-
-		if err != nil {
-			if router.hooks.ResponseBodyMarshalFailed != nil {
-				router.hooks.ResponseBodyMarshalFailed(w, r, "PostBearerEndpoint", err)
-			}
-
-			return
-		}
-
-		if router.hooks.ResponseBodyMarshalCompleted != nil {
-			router.hooks.ResponseBodyMarshalCompleted(r, "PostBearerEndpoint")
-		}
-	} else if len(response.bodyRaw()) > 0 {
-		body = response.bodyRaw()
-	}
-
-	if len(body) > 0 {
-		count, err := w.Write(body)
-		if err != nil {
-			if router.hooks.ResponseBodyWriteFailed != nil {
-				router.hooks.ResponseBodyWriteFailed(r, "PostBearerEndpoint", count, err)
-			}
-
-			if router.hooks.ResponseBodyWriteCompleted != nil {
-				router.hooks.ResponseBodyWriteCompleted(r, "PostBearerEndpoint", count)
-			}
-
-			return
-		}
-
-		if router.hooks.ResponseBodyWriteCompleted != nil {
-			router.hooks.ResponseBodyWriteCompleted(r, "PostBearerEndpoint", count)
-		}
-	}
-
-	if router.hooks.ServiceCompleted != nil {
-		router.hooks.ServiceCompleted(r, "PostBearerEndpoint")
-	}
+	respond(w, r, router.hooks, "PostBearerEndpoint", result.inner(), true)
 }
 
 func (router *authRouter) parseGetSecureEndpointRequest(r *http.Request) (request GetSecureEndpointRequest) {
-	request.ProcessingResult = RequestProcessingResult{typee: ParseSucceed}
 
-	isSecurityCheckPassed := false
-	for _, processors := range [][]securityProcessor{{router.securityHandlers[SecuritySchemeApiKeyAuth]}} {
-		isLinkedChecksValid := true
-
-		for _, processor := range processors {
-			name, value, isExtracted := processor.extract(r)
-
-			if !isExtracted {
-				isLinkedChecksValid = false
-				break
-			}
-
-			if err := processor.handle(r, processor.scheme, name, value); err != nil {
-				if router.hooks.RequestSecurityCheckFailed != nil {
-					router.hooks.RequestSecurityCheckFailed(r, "GetSecureEndpoint", string(processor.scheme), RequestProcessingResult{error: err, typee: SecurityCheckFailed})
-				}
-
-				isLinkedChecksValid = false
-
-				break
-			}
-
-			if router.hooks.RequestSecurityCheckCompleted != nil {
-				router.hooks.RequestSecurityCheckCompleted(r, "GetSecureEndpoint", string(processor.scheme))
-			}
-
-			if len(request.SecurityCheckResults) == 0 {
-				request.SecurityCheckResults = map[SecurityScheme]string{}
-			}
-
-			request.SecurityCheckResults[processor.scheme] = value
+	results, passed, checkErr := extractSecurity(r, router.hooks, "GetSecureEndpoint", router.getSecureEndpointSecurityReqs, false)
+	request.SecurityCheckResults = results
+	if !passed {
+		if checkErr != nil {
+			request.ProcessingResult = RequestProcessingResult{error: checkErr, typee: SecurityCheckFailed}
+			return
 		}
-
-		if isLinkedChecksValid {
-			isSecurityCheckPassed = true
-			break
-		}
-	}
-
-	if !isSecurityCheckPassed {
-		err := fmt.Errorf("failed passing security checks")
-
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: SecurityParseFailed}
-
-		if router.hooks.RequestSecurityParseFailed != nil {
-			router.hooks.RequestSecurityParseFailed(r, "GetSecureEndpoint", request.ProcessingResult)
-		}
-
+		request.ProcessingResult = RequestProcessingResult{error: errFailedPassingSecurityChecks, typee: SecurityParseFailed}
+		router.hooks.RequestSecurityParseFailed(r, "GetSecureEndpoint", request.ProcessingResult)
 		return
 	}
+	router.hooks.RequestSecurityParseCompleted(r, "GetSecureEndpoint")
 
-	if router.hooks.RequestSecurityParseCompleted != nil {
-		router.hooks.RequestSecurityParseCompleted(r, "GetSecureEndpoint")
-	}
-
-	if router.hooks.RequestParseCompleted != nil {
-		router.hooks.RequestParseCompleted(r, "GetSecureEndpoint")
-	}
+	router.hooks.RequestParseCompleted(r, "GetSecureEndpoint")
 
 	return
 }
 
 func (router *authRouter) GetSecureEndpoint(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-
-	response := router.service.GetSecureEndpoint(r.Context(), router.parseGetSecureEndpointRequest(r))
-
-	for header, value := range response.headers() {
-		w.Header().Set(header, value)
-	}
-
-	for _, c := range response.cookies() {
-		cookie := c
-		http.SetCookie(w, &cookie)
-	}
-
-	if slices.Contains([]int{301, 302, 303, 307, 308}, response.statusCode()) && response.redirectURL() != "" {
-		if router.hooks.RequestRedirectStarted != nil {
-			router.hooks.RequestRedirectStarted(r, "GetSecureEndpoint", response.redirectURL())
-		}
-
-		http.Redirect(w, r, response.redirectURL(), response.statusCode())
-
-		if router.hooks.ServiceCompleted != nil {
-			router.hooks.ServiceCompleted(r, "GetSecureEndpoint")
-		}
-
+	result := router.service.GetSecureEndpoint(r.Context(), router.parseGetSecureEndpointRequest(r))
+	if isNilResponse(result) {
+		router.hooks.ResponseBodyMarshalFailed(w, r, "GetSecureEndpoint", errServiceReturnedANilResponse)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-
-	if router.hooks.RequestProcessingCompleted != nil {
-		router.hooks.RequestProcessingCompleted(r, "GetSecureEndpoint")
-	}
-
-	if len(response.contentType()) > 0 {
-		w.Header().Set("content-type", response.contentType())
-	}
-
-	w.WriteHeader(response.statusCode())
-
-	var body []byte
-
-	if response.body() != nil {
-		var err error
-
-		switch response.contentType() {
-		case "application/xml":
-			body, err = xml.Marshal(response.body())
-		case "application/octet-stream":
-			var ok bool
-			if body, ok = (response.body()).([]byte); !ok {
-				err = errors.New("body is not []byte")
-			}
-		case "text/html":
-			body = []byte(fmt.Sprint(response.body()))
-		case "application/json":
-			fallthrough
-		default:
-			body, err = json.Marshal(response.body())
-		}
-
-		if err != nil {
-			if router.hooks.ResponseBodyMarshalFailed != nil {
-				router.hooks.ResponseBodyMarshalFailed(w, r, "GetSecureEndpoint", err)
-			}
-
-			return
-		}
-
-		if router.hooks.ResponseBodyMarshalCompleted != nil {
-			router.hooks.ResponseBodyMarshalCompleted(r, "GetSecureEndpoint")
-		}
-	} else if len(response.bodyRaw()) > 0 {
-		body = response.bodyRaw()
-	}
-
-	if len(body) > 0 {
-		count, err := w.Write(body)
-		if err != nil {
-			if router.hooks.ResponseBodyWriteFailed != nil {
-				router.hooks.ResponseBodyWriteFailed(r, "GetSecureEndpoint", count, err)
-			}
-
-			if router.hooks.ResponseBodyWriteCompleted != nil {
-				router.hooks.ResponseBodyWriteCompleted(r, "GetSecureEndpoint", count)
-			}
-
-			return
-		}
-
-		if router.hooks.ResponseBodyWriteCompleted != nil {
-			router.hooks.ResponseBodyWriteCompleted(r, "GetSecureEndpoint", count)
-		}
-	}
-
-	if router.hooks.ServiceCompleted != nil {
-		router.hooks.ServiceCompleted(r, "GetSecureEndpoint")
-	}
+	respond(w, r, router.hooks, "GetSecureEndpoint", result.inner(), true)
 }
 
 func (router *authRouter) parseGetSemiSecureEndpointRequest(r *http.Request) (request GetSemiSecureEndpointRequest) {
-	request.ProcessingResult = RequestProcessingResult{typee: ParseSucceed}
 
-	// Skip security check mode: extract values but don't validate
-	for _, processors := range [][]securityProcessor{{router.securityHandlers[SecuritySchemeApiKeyAuth]}} {
-		for _, processor := range processors {
-			_, value, isExtracted := processor.extract(r)
-
-			if isExtracted {
-				if len(request.SecurityCheckResults) == 0 {
-					request.SecurityCheckResults = map[SecurityScheme]string{}
-				}
-
-				request.SecurityCheckResults[processor.scheme] = value
-			}
+	results, passed, checkErr := extractSecurity(r, router.hooks, "GetSemiSecureEndpoint", router.getSemiSecureEndpointSecurityReqs, true)
+	request.SecurityCheckResults = results
+	if !passed {
+		if checkErr != nil {
+			request.ProcessingResult = RequestProcessingResult{error: checkErr, typee: SecurityCheckFailed}
+			return
 		}
-		break
+		request.ProcessingResult = RequestProcessingResult{error: errFailedPassingSecurityChecks, typee: SecurityParseFailed}
+		router.hooks.RequestSecurityParseFailed(r, "GetSemiSecureEndpoint", request.ProcessingResult)
+		return
 	}
+	router.hooks.RequestSecurityParseCompleted(r, "GetSemiSecureEndpoint")
 
-	if router.hooks.RequestSecurityParseCompleted != nil {
-		router.hooks.RequestSecurityParseCompleted(r, "GetSemiSecureEndpoint")
-	}
-
-	if router.hooks.RequestParseCompleted != nil {
-		router.hooks.RequestParseCompleted(r, "GetSemiSecureEndpoint")
-	}
+	router.hooks.RequestParseCompleted(r, "GetSemiSecureEndpoint")
 
 	return
 }
 
 func (router *authRouter) GetSemiSecureEndpoint(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-
-	response := router.service.GetSemiSecureEndpoint(r.Context(), router.parseGetSemiSecureEndpointRequest(r))
-
-	for header, value := range response.headers() {
-		w.Header().Set(header, value)
-	}
-
-	for _, c := range response.cookies() {
-		cookie := c
-		http.SetCookie(w, &cookie)
-	}
-
-	if slices.Contains([]int{301, 302, 303, 307, 308}, response.statusCode()) && response.redirectURL() != "" {
-		if router.hooks.RequestRedirectStarted != nil {
-			router.hooks.RequestRedirectStarted(r, "GetSemiSecureEndpoint", response.redirectURL())
-		}
-
-		http.Redirect(w, r, response.redirectURL(), response.statusCode())
-
-		if router.hooks.ServiceCompleted != nil {
-			router.hooks.ServiceCompleted(r, "GetSemiSecureEndpoint")
-		}
-
+	result := router.service.GetSemiSecureEndpoint(r.Context(), router.parseGetSemiSecureEndpointRequest(r))
+	if isNilResponse(result) {
+		router.hooks.ResponseBodyMarshalFailed(w, r, "GetSemiSecureEndpoint", errServiceReturnedANilResponse)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-
-	if router.hooks.RequestProcessingCompleted != nil {
-		router.hooks.RequestProcessingCompleted(r, "GetSemiSecureEndpoint")
-	}
-
-	if len(response.contentType()) > 0 {
-		w.Header().Set("content-type", response.contentType())
-	}
-
-	w.WriteHeader(response.statusCode())
-
-	var body []byte
-
-	if response.body() != nil {
-		var err error
-
-		switch response.contentType() {
-		case "application/xml":
-			body, err = xml.Marshal(response.body())
-		case "application/octet-stream":
-			var ok bool
-			if body, ok = (response.body()).([]byte); !ok {
-				err = errors.New("body is not []byte")
-			}
-		case "text/html":
-			body = []byte(fmt.Sprint(response.body()))
-		case "application/json":
-			fallthrough
-		default:
-			body, err = json.Marshal(response.body())
-		}
-
-		if err != nil {
-			if router.hooks.ResponseBodyMarshalFailed != nil {
-				router.hooks.ResponseBodyMarshalFailed(w, r, "GetSemiSecureEndpoint", err)
-			}
-
-			return
-		}
-
-		if router.hooks.ResponseBodyMarshalCompleted != nil {
-			router.hooks.ResponseBodyMarshalCompleted(r, "GetSemiSecureEndpoint")
-		}
-	} else if len(response.bodyRaw()) > 0 {
-		body = response.bodyRaw()
-	}
-
-	if len(body) > 0 {
-		count, err := w.Write(body)
-		if err != nil {
-			if router.hooks.ResponseBodyWriteFailed != nil {
-				router.hooks.ResponseBodyWriteFailed(r, "GetSemiSecureEndpoint", count, err)
-			}
-
-			if router.hooks.ResponseBodyWriteCompleted != nil {
-				router.hooks.ResponseBodyWriteCompleted(r, "GetSemiSecureEndpoint", count)
-			}
-
-			return
-		}
-
-		if router.hooks.ResponseBodyWriteCompleted != nil {
-			router.hooks.ResponseBodyWriteCompleted(r, "GetSemiSecureEndpoint", count)
-		}
-	}
-
-	if router.hooks.ServiceCompleted != nil {
-		router.hooks.ServiceCompleted(r, "GetSemiSecureEndpoint")
-	}
+	respond(w, r, router.hooks, "GetSemiSecureEndpoint", result.inner(), true)
 }
 
 func CallbacksHandler(impl CallbacksService, r chi.Router, hooks *Hooks, securitySchemas SecuritySchemas) http.Handler {
-	if hooks == nil {
-		hooks = &Hooks{}
-	}
+	hooks = ensureHooks(hooks)
 
 	router := &callbacksRouter{router: r, service: impl, hooks: hooks}
 
@@ -592,16 +407,19 @@ func CallbacksHandler(impl CallbacksService, r chi.Router, hooks *Hooks, securit
 		},
 	}
 
+	router.postCallbacksCallbackTypeSecurityReqs = [][]securityProcessor{{router.securityHandlers[SecuritySchemeCookie]}}
+
 	router.mount()
 
 	return router.router
 }
 
 type callbacksRouter struct {
-	router           chi.Router
-	service          CallbacksService
-	hooks            *Hooks
-	securityHandlers map[SecurityScheme]securityProcessor
+	router                                chi.Router
+	service                               CallbacksService
+	hooks                                 *Hooks
+	securityHandlers                      map[SecurityScheme]securityProcessor
+	postCallbacksCallbackTypeSecurityReqs [][]securityProcessor
 }
 
 func (router *callbacksRouter) mount() {
@@ -609,71 +427,27 @@ func (router *callbacksRouter) mount() {
 }
 
 func (router *callbacksRouter) parsePostCallbacksCallbackTypeRequest(r *http.Request) (request PostCallbacksCallbackTypeRequest) {
-	request.ProcessingResult = RequestProcessingResult{typee: ParseSucceed}
+	query := r.URL.Query()
 
-	isSecurityCheckPassed := false
-	for _, processors := range [][]securityProcessor{{router.securityHandlers[SecuritySchemeCookie]}} {
-		isLinkedChecksValid := true
-
-		for _, processor := range processors {
-			name, value, isExtracted := processor.extract(r)
-
-			if !isExtracted {
-				isLinkedChecksValid = false
-				break
-			}
-
-			if err := processor.handle(r, processor.scheme, name, value); err != nil {
-				if router.hooks.RequestSecurityCheckFailed != nil {
-					router.hooks.RequestSecurityCheckFailed(r, "PostCallbacksCallbackType", string(processor.scheme), RequestProcessingResult{error: err, typee: SecurityCheckFailed})
-				}
-
-				isLinkedChecksValid = false
-
-				break
-			}
-
-			if router.hooks.RequestSecurityCheckCompleted != nil {
-				router.hooks.RequestSecurityCheckCompleted(r, "PostCallbacksCallbackType", string(processor.scheme))
-			}
-
-			if len(request.SecurityCheckResults) == 0 {
-				request.SecurityCheckResults = map[SecurityScheme]string{}
-			}
-
-			request.SecurityCheckResults[processor.scheme] = value
+	results, passed, checkErr := extractSecurity(r, router.hooks, "PostCallbacksCallbackType", router.postCallbacksCallbackTypeSecurityReqs, false)
+	request.SecurityCheckResults = results
+	if !passed {
+		if checkErr != nil {
+			request.ProcessingResult = RequestProcessingResult{error: checkErr, typee: SecurityCheckFailed}
+			return
 		}
-
-		if isLinkedChecksValid {
-			isSecurityCheckPassed = true
-			break
-		}
-	}
-
-	if !isSecurityCheckPassed {
-		err := fmt.Errorf("failed passing security checks")
-
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: SecurityParseFailed}
-
-		if router.hooks.RequestSecurityParseFailed != nil {
-			router.hooks.RequestSecurityParseFailed(r, "PostCallbacksCallbackType", request.ProcessingResult)
-		}
-
+		request.ProcessingResult = RequestProcessingResult{error: errFailedPassingSecurityChecks, typee: SecurityParseFailed}
+		router.hooks.RequestSecurityParseFailed(r, "PostCallbacksCallbackType", request.ProcessingResult)
 		return
 	}
-
-	if router.hooks.RequestSecurityParseCompleted != nil {
-		router.hooks.RequestSecurityParseCompleted(r, "PostCallbacksCallbackType")
-	}
+	router.hooks.RequestSecurityParseCompleted(r, "PostCallbacksCallbackType")
 
 	pathCallbackType := chi.URLParam(r, "callbackType")
 	if pathCallbackType == "" {
-		err := fmt.Errorf("callbackType is empty")
+		err := errCallbackTypeIsEmpty
 
 		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathParseFailed}
-		if router.hooks.RequestPathParseFailed != nil {
-			router.hooks.RequestPathParseFailed(r, "PostCallbacksCallbackType", "callbackType", request.ProcessingResult)
-		}
+		router.hooks.RequestPathParseFailed(r, "PostCallbacksCallbackType", "callbackType", request.ProcessingResult)
 
 		return
 	}
@@ -682,25 +456,19 @@ func (router *callbacksRouter) parsePostCallbacksCallbackTypeRequest(r *http.Req
 
 	if err := request.Path.Validate(); err != nil {
 		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathValidationFailed}
-		if router.hooks.RequestPathValidationFailed != nil {
-			router.hooks.RequestPathValidationFailed(r, "PostCallbacksCallbackType", request.ProcessingResult)
-		}
+		router.hooks.RequestPathValidationFailed(r, "PostCallbacksCallbackType", request.ProcessingResult)
 
 		return
 	}
 
-	if router.hooks.RequestPathParseCompleted != nil {
-		router.hooks.RequestPathParseCompleted(r, "PostCallbacksCallbackType")
-	}
+	router.hooks.RequestPathParseCompleted(r, "PostCallbacksCallbackType")
 
-	queryHasSmthStr := r.URL.Query().Get("hasSmth")
+	queryHasSmthStr := query.Get("hasSmth")
 	if queryHasSmthStr != "" {
 		queryHasSmth, err := strconv.ParseBool(queryHasSmthStr)
 		if err != nil {
 			request.ProcessingResult = RequestProcessingResult{error: err, typee: QueryParseFailed}
-			if router.hooks.RequestQueryParseFailed != nil {
-				router.hooks.RequestQueryParseFailed(r, "PostCallbacksCallbackType", "hasSmth", request.ProcessingResult)
-			}
+			router.hooks.RequestQueryParseFailed(r, "PostCallbacksCallbackType", "hasSmth", request.ProcessingResult)
 
 			return
 		}
@@ -710,157 +478,52 @@ func (router *callbacksRouter) parsePostCallbacksCallbackTypeRequest(r *http.Req
 
 	if err := request.Query.Validate(); err != nil {
 		request.ProcessingResult = RequestProcessingResult{error: err, typee: QueryValidationFailed}
-		if router.hooks.RequestQueryValidationFailed != nil {
-			router.hooks.RequestQueryValidationFailed(r, "PostCallbacksCallbackType", request.ProcessingResult)
-		}
+		router.hooks.RequestQueryValidationFailed(r, "PostCallbacksCallbackType", request.ProcessingResult)
 
 		return
 	}
 
-	if router.hooks.RequestQueryParseCompleted != nil {
-		router.hooks.RequestQueryParseCompleted(r, "PostCallbacksCallbackType")
-	}
+	router.hooks.RequestQueryParseCompleted(r, "PostCallbacksCallbackType")
 
 	var (
 		body      RawPayload
 		decodeErr error
 	)
-	var (
-		buf     interface{}
-		ok      bool
-		readErr error
-	)
-	if buf, readErr = ioutil.ReadAll(r.Body); readErr == nil {
-		if body, ok = buf.(RawPayload); !ok {
-			decodeErr = errors.New("body is not []byte")
-		}
+	bodyBytes, readErr := io.ReadAll(r.Body)
+	if readErr != nil {
+		decodeErr = readErr
+	} else {
+		body = RawPayload(bodyBytes)
 	}
 	if decodeErr != nil {
 		request.ProcessingResult = RequestProcessingResult{error: decodeErr, typee: BodyUnmarshalFailed}
-		if router.hooks.RequestBodyUnmarshalFailed != nil {
-			router.hooks.RequestBodyUnmarshalFailed(r, "PostCallbacksCallbackType", request.ProcessingResult)
-
-			return
-		}
+		router.hooks.RequestBodyUnmarshalFailed(r, "PostCallbacksCallbackType", request.ProcessingResult)
 
 		return
 	}
 
 	request.Body = body
 
-	if router.hooks.RequestBodyUnmarshalCompleted != nil {
-		router.hooks.RequestBodyUnmarshalCompleted(r, "PostCallbacksCallbackType")
-	}
+	router.hooks.RequestBodyUnmarshalCompleted(r, "PostCallbacksCallbackType")
 
-	if router.hooks.RequestParseCompleted != nil {
-		router.hooks.RequestParseCompleted(r, "PostCallbacksCallbackType")
-	}
+	router.hooks.RequestParseCompleted(r, "PostCallbacksCallbackType")
 
 	return
 }
 
 func (router *callbacksRouter) PostCallbacksCallbackType(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-
-	response := router.service.PostCallbacksCallbackType(r.Context(), router.parsePostCallbacksCallbackTypeRequest(r))
-
-	for header, value := range response.headers() {
-		w.Header().Set(header, value)
-	}
-
-	for _, c := range response.cookies() {
-		cookie := c
-		http.SetCookie(w, &cookie)
-	}
-
-	if slices.Contains([]int{301, 302, 303, 307, 308}, response.statusCode()) && response.redirectURL() != "" {
-		if router.hooks.RequestRedirectStarted != nil {
-			router.hooks.RequestRedirectStarted(r, "PostCallbacksCallbackType", response.redirectURL())
-		}
-
-		http.Redirect(w, r, response.redirectURL(), response.statusCode())
-
-		if router.hooks.ServiceCompleted != nil {
-			router.hooks.ServiceCompleted(r, "PostCallbacksCallbackType")
-		}
-
+	result := router.service.PostCallbacksCallbackType(r.Context(), router.parsePostCallbacksCallbackTypeRequest(r))
+	if isNilResponse(result) {
+		router.hooks.ResponseBodyMarshalFailed(w, r, "PostCallbacksCallbackType", errServiceReturnedANilResponse)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-
-	if router.hooks.RequestProcessingCompleted != nil {
-		router.hooks.RequestProcessingCompleted(r, "PostCallbacksCallbackType")
-	}
-
-	if len(response.contentType()) > 0 {
-		w.Header().Set("content-type", response.contentType())
-	}
-
-	w.WriteHeader(response.statusCode())
-
-	var body []byte
-
-	if response.body() != nil {
-		var err error
-
-		switch response.contentType() {
-		case "application/xml":
-			body, err = xml.Marshal(response.body())
-		case "application/octet-stream":
-			var ok bool
-			if body, ok = (response.body()).([]byte); !ok {
-				err = errors.New("body is not []byte")
-			}
-		case "text/html":
-			body = []byte(fmt.Sprint(response.body()))
-		case "application/json":
-			fallthrough
-		default:
-			body, err = json.Marshal(response.body())
-		}
-
-		if err != nil {
-			if router.hooks.ResponseBodyMarshalFailed != nil {
-				router.hooks.ResponseBodyMarshalFailed(w, r, "PostCallbacksCallbackType", err)
-			}
-
-			return
-		}
-
-		if router.hooks.ResponseBodyMarshalCompleted != nil {
-			router.hooks.ResponseBodyMarshalCompleted(r, "PostCallbacksCallbackType")
-		}
-	} else if len(response.bodyRaw()) > 0 {
-		body = response.bodyRaw()
-	}
-
-	if len(body) > 0 {
-		count, err := w.Write(body)
-		if err != nil {
-			if router.hooks.ResponseBodyWriteFailed != nil {
-				router.hooks.ResponseBodyWriteFailed(r, "PostCallbacksCallbackType", count, err)
-			}
-
-			if router.hooks.ResponseBodyWriteCompleted != nil {
-				router.hooks.ResponseBodyWriteCompleted(r, "PostCallbacksCallbackType", count)
-			}
-
-			return
-		}
-
-		if router.hooks.ResponseBodyWriteCompleted != nil {
-			router.hooks.ResponseBodyWriteCompleted(r, "PostCallbacksCallbackType", count)
-		}
-	}
-
-	if router.hooks.ServiceCompleted != nil {
-		router.hooks.ServiceCompleted(r, "PostCallbacksCallbackType")
-	}
+	respond(w, r, router.hooks, "PostCallbacksCallbackType", result.inner(), true)
 }
 
 func TransactionsHandler(impl TransactionsService, r chi.Router, hooks *Hooks, securitySchemas SecuritySchemas) http.Handler {
-	if hooks == nil {
-		hooks = &Hooks{}
-	}
+	hooks = ensureHooks(hooks)
 
 	router := &transactionsRouter{router: r, service: impl, hooks: hooks}
 
@@ -877,16 +540,19 @@ func TransactionsHandler(impl TransactionsService, r chi.Router, hooks *Hooks, s
 		},
 	}
 
+	router.deleteTransactionsUUIDSecurityReqs = [][]securityProcessor{{router.securityHandlers[SecuritySchemeBearer]}, {router.securityHandlers[SecuritySchemeCookie]}}
+
 	router.mount()
 
 	return router.router
 }
 
 type transactionsRouter struct {
-	router           chi.Router
-	service          TransactionsService
-	hooks            *Hooks
-	securityHandlers map[SecurityScheme]securityProcessor
+	router                             chi.Router
+	service                            TransactionsService
+	hooks                              *Hooks
+	securityHandlers                   map[SecurityScheme]securityProcessor
+	deleteTransactionsUUIDSecurityReqs [][]securityProcessor
 }
 
 func (router *transactionsRouter) mount() {
@@ -896,30 +562,24 @@ func (router *transactionsRouter) mount() {
 }
 
 func (router *transactionsRouter) parsePostTransactionRequest(r *http.Request) (request PostTransactionRequest) {
-	request.ProcessingResult = RequestProcessingResult{typee: ParseSucceed}
-
 	headerXSignature := r.Header.Get("x-signature")
 	request.Header.XSignature = headerXSignature
 
 	headerXFingerprint := r.Header.Get("x-fingerprint")
 	if headerXFingerprint == "" {
-		err := fmt.Errorf("x-fingerprint is empty")
+		err := errXFingerprintIsEmpty
 
 		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderParseFailed}
-		if router.hooks.RequestHeaderParseFailed != nil {
-			router.hooks.RequestHeaderParseFailed(r, "PostTransaction", "x-fingerprint", request.ProcessingResult)
-		}
+		router.hooks.RequestHeaderParseFailed(r, "PostTransaction", "x-fingerprint", request.ProcessingResult)
 
 		return
 	}
 
 	if !xFingerprintRegex.MatchString(headerXFingerprint) {
-		err := fmt.Errorf("x-fingerprint not matched by the '[0-9a-fA-F]+' regex")
+		err := errXFingerprintNotMatchedByThe09aFAFRegex
 
 		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderParseFailed}
-		if router.hooks.RequestHeaderParseFailed != nil {
-			router.hooks.RequestHeaderParseFailed(r, "PostTransaction", "x-fingerprint", request.ProcessingResult)
-		}
+		router.hooks.RequestHeaderParseFailed(r, "PostTransaction", "x-fingerprint", request.ProcessingResult)
 
 		return
 	}
@@ -928,16 +588,12 @@ func (router *transactionsRouter) parsePostTransactionRequest(r *http.Request) (
 
 	if err := request.Header.Validate(); err != nil {
 		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderValidationFailed}
-		if router.hooks.RequestHeaderValidationFailed != nil {
-			router.hooks.RequestHeaderValidationFailed(r, "PostTransaction", request.ProcessingResult)
-		}
+		router.hooks.RequestHeaderValidationFailed(r, "PostTransaction", request.ProcessingResult)
 
 		return
 	}
 
-	if router.hooks.RequestHeaderParseCompleted != nil {
-		router.hooks.RequestHeaderParseCompleted(r, "PostTransaction")
-	}
+	router.hooks.RequestHeaderParseCompleted(r, "PostTransaction")
 
 	var (
 		body      CreateTransactionRequest
@@ -946,160 +602,57 @@ func (router *transactionsRouter) parsePostTransactionRequest(r *http.Request) (
 	decodeErr = json.NewDecoder(r.Body).Decode(&body)
 	if decodeErr != nil {
 		request.ProcessingResult = RequestProcessingResult{error: decodeErr, typee: BodyUnmarshalFailed}
-		if router.hooks.RequestBodyUnmarshalFailed != nil {
-			router.hooks.RequestBodyUnmarshalFailed(r, "PostTransaction", request.ProcessingResult)
-
-			return
-		}
+		router.hooks.RequestBodyUnmarshalFailed(r, "PostTransaction", request.ProcessingResult)
 
 		return
 	}
 
 	request.Body = body
 
-	if router.hooks.RequestBodyUnmarshalCompleted != nil {
-		router.hooks.RequestBodyUnmarshalCompleted(r, "PostTransaction")
-	}
+	router.hooks.RequestBodyUnmarshalCompleted(r, "PostTransaction")
 
 	if err := request.Body.Validate(); err != nil {
 		request.ProcessingResult = RequestProcessingResult{error: err, typee: BodyValidationFailed}
-		if router.hooks.RequestBodyValidationFailed != nil {
-			router.hooks.RequestBodyValidationFailed(r, "PostTransaction", request.ProcessingResult)
-		}
+		router.hooks.RequestBodyValidationFailed(r, "PostTransaction", request.ProcessingResult)
 
 		return
 	}
 
-	if router.hooks.RequestParseCompleted != nil {
-		router.hooks.RequestParseCompleted(r, "PostTransaction")
-	}
+	router.hooks.RequestParseCompleted(r, "PostTransaction")
 
 	return
 }
 
 func (router *transactionsRouter) PostTransaction(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-
-	response := router.service.PostTransaction(r.Context(), router.parsePostTransactionRequest(r))
-
-	for header, value := range response.headers() {
-		w.Header().Set(header, value)
-	}
-
-	for _, c := range response.cookies() {
-		cookie := c
-		http.SetCookie(w, &cookie)
-	}
-
-	if slices.Contains([]int{301, 302, 303, 307, 308}, response.statusCode()) && response.redirectURL() != "" {
-		if router.hooks.RequestRedirectStarted != nil {
-			router.hooks.RequestRedirectStarted(r, "PostTransaction", response.redirectURL())
-		}
-
-		http.Redirect(w, r, response.redirectURL(), response.statusCode())
-
-		if router.hooks.ServiceCompleted != nil {
-			router.hooks.ServiceCompleted(r, "PostTransaction")
-		}
-
+	result := router.service.PostTransaction(r.Context(), router.parsePostTransactionRequest(r))
+	if isNilResponse(result) {
+		router.hooks.ResponseBodyMarshalFailed(w, r, "PostTransaction", errServiceReturnedANilResponse)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-
-	if router.hooks.RequestProcessingCompleted != nil {
-		router.hooks.RequestProcessingCompleted(r, "PostTransaction")
-	}
-
-	if len(response.contentType()) > 0 {
-		w.Header().Set("content-type", response.contentType())
-	}
-
-	w.WriteHeader(response.statusCode())
-
-	var body []byte
-
-	if response.body() != nil {
-		var err error
-
-		switch response.contentType() {
-		case "application/xml":
-			body, err = xml.Marshal(response.body())
-		case "application/octet-stream":
-			var ok bool
-			if body, ok = (response.body()).([]byte); !ok {
-				err = errors.New("body is not []byte")
-			}
-		case "text/html":
-			body = []byte(fmt.Sprint(response.body()))
-		case "application/json":
-			fallthrough
-		default:
-			body, err = json.Marshal(response.body())
-		}
-
-		if err != nil {
-			if router.hooks.ResponseBodyMarshalFailed != nil {
-				router.hooks.ResponseBodyMarshalFailed(w, r, "PostTransaction", err)
-			}
-
-			return
-		}
-
-		if router.hooks.ResponseBodyMarshalCompleted != nil {
-			router.hooks.ResponseBodyMarshalCompleted(r, "PostTransaction")
-		}
-	} else if len(response.bodyRaw()) > 0 {
-		body = response.bodyRaw()
-	}
-
-	if len(body) > 0 {
-		count, err := w.Write(body)
-		if err != nil {
-			if router.hooks.ResponseBodyWriteFailed != nil {
-				router.hooks.ResponseBodyWriteFailed(r, "PostTransaction", count, err)
-			}
-
-			if router.hooks.ResponseBodyWriteCompleted != nil {
-				router.hooks.ResponseBodyWriteCompleted(r, "PostTransaction", count)
-			}
-
-			return
-		}
-
-		if router.hooks.ResponseBodyWriteCompleted != nil {
-			router.hooks.ResponseBodyWriteCompleted(r, "PostTransaction", count)
-		}
-	}
-
-	if router.hooks.ServiceCompleted != nil {
-		router.hooks.ServiceCompleted(r, "PostTransaction")
-	}
+	respond(w, r, router.hooks, "PostTransaction", result.inner(), true)
 }
 
 func (router *transactionsRouter) parsePutTransactionRequest(r *http.Request) (request PutTransactionRequest) {
-	request.ProcessingResult = RequestProcessingResult{typee: ParseSucceed}
-
 	headerXSignature := r.Header.Get("x-signature")
 	request.Header.XSignature = headerXSignature
 
 	headerXFingerprint := r.Header.Get("x-fingerprint")
 	if headerXFingerprint == "" {
-		err := fmt.Errorf("x-fingerprint is empty")
+		err := errXFingerprintIsEmpty
 
 		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderParseFailed}
-		if router.hooks.RequestHeaderParseFailed != nil {
-			router.hooks.RequestHeaderParseFailed(r, "PutTransaction", "x-fingerprint", request.ProcessingResult)
-		}
+		router.hooks.RequestHeaderParseFailed(r, "PutTransaction", "x-fingerprint", request.ProcessingResult)
 
 		return
 	}
 
 	if !xFingerprintRegex.MatchString(headerXFingerprint) {
-		err := fmt.Errorf("x-fingerprint not matched by the '[0-9a-fA-F]+' regex")
+		err := errXFingerprintNotMatchedByThe09aFAFRegex
 
 		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderParseFailed}
-		if router.hooks.RequestHeaderParseFailed != nil {
-			router.hooks.RequestHeaderParseFailed(r, "PutTransaction", "x-fingerprint", request.ProcessingResult)
-		}
+		router.hooks.RequestHeaderParseFailed(r, "PutTransaction", "x-fingerprint", request.ProcessingResult)
 
 		return
 	}
@@ -1108,16 +661,12 @@ func (router *transactionsRouter) parsePutTransactionRequest(r *http.Request) (r
 
 	if err := request.Header.Validate(); err != nil {
 		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderValidationFailed}
-		if router.hooks.RequestHeaderValidationFailed != nil {
-			router.hooks.RequestHeaderValidationFailed(r, "PutTransaction", request.ProcessingResult)
-		}
+		router.hooks.RequestHeaderValidationFailed(r, "PutTransaction", request.ProcessingResult)
 
 		return
 	}
 
-	if router.hooks.RequestHeaderParseCompleted != nil {
-		router.hooks.RequestHeaderParseCompleted(r, "PutTransaction")
-	}
+	router.hooks.RequestHeaderParseCompleted(r, "PutTransaction")
 
 	var (
 		body      UpdateTransactionRequest
@@ -1126,206 +675,65 @@ func (router *transactionsRouter) parsePutTransactionRequest(r *http.Request) (r
 	decodeErr = json.NewDecoder(r.Body).Decode(&body)
 	if decodeErr != nil {
 		request.ProcessingResult = RequestProcessingResult{error: decodeErr, typee: BodyUnmarshalFailed}
-		if router.hooks.RequestBodyUnmarshalFailed != nil {
-			router.hooks.RequestBodyUnmarshalFailed(r, "PutTransaction", request.ProcessingResult)
-
-			return
-		}
+		router.hooks.RequestBodyUnmarshalFailed(r, "PutTransaction", request.ProcessingResult)
 
 		return
 	}
 
 	request.Body = body
 
-	if router.hooks.RequestBodyUnmarshalCompleted != nil {
-		router.hooks.RequestBodyUnmarshalCompleted(r, "PutTransaction")
-	}
+	router.hooks.RequestBodyUnmarshalCompleted(r, "PutTransaction")
 
-	if router.hooks.RequestParseCompleted != nil {
-		router.hooks.RequestParseCompleted(r, "PutTransaction")
-	}
+	router.hooks.RequestParseCompleted(r, "PutTransaction")
 
 	return
 }
 
 func (router *transactionsRouter) PutTransaction(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-
-	response := router.service.PutTransaction(r.Context(), router.parsePutTransactionRequest(r))
-
-	for header, value := range response.headers() {
-		w.Header().Set(header, value)
-	}
-
-	for _, c := range response.cookies() {
-		cookie := c
-		http.SetCookie(w, &cookie)
-	}
-
-	if slices.Contains([]int{301, 302, 303, 307, 308}, response.statusCode()) && response.redirectURL() != "" {
-		if router.hooks.RequestRedirectStarted != nil {
-			router.hooks.RequestRedirectStarted(r, "PutTransaction", response.redirectURL())
-		}
-
-		http.Redirect(w, r, response.redirectURL(), response.statusCode())
-
-		if router.hooks.ServiceCompleted != nil {
-			router.hooks.ServiceCompleted(r, "PutTransaction")
-		}
-
+	result := router.service.PutTransaction(r.Context(), router.parsePutTransactionRequest(r))
+	if isNilResponse(result) {
+		router.hooks.ResponseBodyMarshalFailed(w, r, "PutTransaction", errServiceReturnedANilResponse)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-
-	if router.hooks.RequestProcessingCompleted != nil {
-		router.hooks.RequestProcessingCompleted(r, "PutTransaction")
-	}
-
-	if len(response.contentType()) > 0 {
-		w.Header().Set("content-type", response.contentType())
-	}
-
-	w.WriteHeader(response.statusCode())
-
-	var body []byte
-
-	if response.body() != nil {
-		var err error
-
-		switch response.contentType() {
-		case "application/xml":
-			body, err = xml.Marshal(response.body())
-		case "application/octet-stream":
-			var ok bool
-			if body, ok = (response.body()).([]byte); !ok {
-				err = errors.New("body is not []byte")
-			}
-		case "text/html":
-			body = []byte(fmt.Sprint(response.body()))
-		case "application/json":
-			fallthrough
-		default:
-			body, err = json.Marshal(response.body())
-		}
-
-		if err != nil {
-			if router.hooks.ResponseBodyMarshalFailed != nil {
-				router.hooks.ResponseBodyMarshalFailed(w, r, "PutTransaction", err)
-			}
-
-			return
-		}
-
-		if router.hooks.ResponseBodyMarshalCompleted != nil {
-			router.hooks.ResponseBodyMarshalCompleted(r, "PutTransaction")
-		}
-	} else if len(response.bodyRaw()) > 0 {
-		body = response.bodyRaw()
-	}
-
-	if len(body) > 0 {
-		count, err := w.Write(body)
-		if err != nil {
-			if router.hooks.ResponseBodyWriteFailed != nil {
-				router.hooks.ResponseBodyWriteFailed(r, "PutTransaction", count, err)
-			}
-
-			if router.hooks.ResponseBodyWriteCompleted != nil {
-				router.hooks.ResponseBodyWriteCompleted(r, "PutTransaction", count)
-			}
-
-			return
-		}
-
-		if router.hooks.ResponseBodyWriteCompleted != nil {
-			router.hooks.ResponseBodyWriteCompleted(r, "PutTransaction", count)
-		}
-	}
-
-	if router.hooks.ServiceCompleted != nil {
-		router.hooks.ServiceCompleted(r, "PutTransaction")
-	}
+	respond(w, r, router.hooks, "PutTransaction", result.inner(), true)
 }
 
 func (router *transactionsRouter) parseDeleteTransactionsUUIDRequest(r *http.Request) (request DeleteTransactionsUUIDRequest) {
-	request.ProcessingResult = RequestProcessingResult{typee: ParseSucceed}
+	query := r.URL.Query()
 
-	isSecurityCheckPassed := false
-	for _, processors := range [][]securityProcessor{{router.securityHandlers[SecuritySchemeBearer]}, {router.securityHandlers[SecuritySchemeCookie]}} {
-		isLinkedChecksValid := true
-
-		for _, processor := range processors {
-			name, value, isExtracted := processor.extract(r)
-
-			if !isExtracted {
-				isLinkedChecksValid = false
-				break
-			}
-
-			if err := processor.handle(r, processor.scheme, name, value); err != nil {
-				if router.hooks.RequestSecurityCheckFailed != nil {
-					router.hooks.RequestSecurityCheckFailed(r, "DeleteTransactionsUUID", string(processor.scheme), RequestProcessingResult{error: err, typee: SecurityCheckFailed})
-				}
-
-				isLinkedChecksValid = false
-
-				break
-			}
-
-			if router.hooks.RequestSecurityCheckCompleted != nil {
-				router.hooks.RequestSecurityCheckCompleted(r, "DeleteTransactionsUUID", string(processor.scheme))
-			}
-
-			if len(request.SecurityCheckResults) == 0 {
-				request.SecurityCheckResults = map[SecurityScheme]string{}
-			}
-
-			request.SecurityCheckResults[processor.scheme] = value
+	results, passed, checkErr := extractSecurity(r, router.hooks, "DeleteTransactionsUUID", router.deleteTransactionsUUIDSecurityReqs, false)
+	request.SecurityCheckResults = results
+	if !passed {
+		if checkErr != nil {
+			request.ProcessingResult = RequestProcessingResult{error: checkErr, typee: SecurityCheckFailed}
+			return
 		}
-
-		if isLinkedChecksValid {
-			isSecurityCheckPassed = true
-			break
-		}
-	}
-
-	if !isSecurityCheckPassed {
-		err := fmt.Errorf("failed passing security checks")
-
-		request.ProcessingResult = RequestProcessingResult{error: err, typee: SecurityParseFailed}
-
-		if router.hooks.RequestSecurityParseFailed != nil {
-			router.hooks.RequestSecurityParseFailed(r, "DeleteTransactionsUUID", request.ProcessingResult)
-		}
-
+		request.ProcessingResult = RequestProcessingResult{error: errFailedPassingSecurityChecks, typee: SecurityParseFailed}
+		router.hooks.RequestSecurityParseFailed(r, "DeleteTransactionsUUID", request.ProcessingResult)
 		return
 	}
-
-	if router.hooks.RequestSecurityParseCompleted != nil {
-		router.hooks.RequestSecurityParseCompleted(r, "DeleteTransactionsUUID")
-	}
+	router.hooks.RequestSecurityParseCompleted(r, "DeleteTransactionsUUID")
 
 	headerXSignature := r.Header.Get("x-signature")
 	request.Header.XSignature = headerXSignature
 
 	headerXFingerprint := r.Header.Get("x-fingerprint")
 	if headerXFingerprint == "" {
-		err := fmt.Errorf("x-fingerprint is empty")
+		err := errXFingerprintIsEmpty
 
 		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderParseFailed}
-		if router.hooks.RequestHeaderParseFailed != nil {
-			router.hooks.RequestHeaderParseFailed(r, "DeleteTransactionsUUID", "x-fingerprint", request.ProcessingResult)
-		}
+		router.hooks.RequestHeaderParseFailed(r, "DeleteTransactionsUUID", "x-fingerprint", request.ProcessingResult)
 
 		return
 	}
 
 	if !xFingerprintRegex.MatchString(headerXFingerprint) {
-		err := fmt.Errorf("x-fingerprint not matched by the '[0-9a-fA-F]+' regex")
+		err := errXFingerprintNotMatchedByThe09aFAFRegex
 
 		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderParseFailed}
-		if router.hooks.RequestHeaderParseFailed != nil {
-			router.hooks.RequestHeaderParseFailed(r, "DeleteTransactionsUUID", "x-fingerprint", request.ProcessingResult)
-		}
+		router.hooks.RequestHeaderParseFailed(r, "DeleteTransactionsUUID", "x-fingerprint", request.ProcessingResult)
 
 		return
 	}
@@ -1334,25 +742,19 @@ func (router *transactionsRouter) parseDeleteTransactionsUUIDRequest(r *http.Req
 
 	if err := request.Header.Validate(); err != nil {
 		request.ProcessingResult = RequestProcessingResult{error: err, typee: HeaderValidationFailed}
-		if router.hooks.RequestHeaderValidationFailed != nil {
-			router.hooks.RequestHeaderValidationFailed(r, "DeleteTransactionsUUID", request.ProcessingResult)
-		}
+		router.hooks.RequestHeaderValidationFailed(r, "DeleteTransactionsUUID", request.ProcessingResult)
 
 		return
 	}
 
-	if router.hooks.RequestHeaderParseCompleted != nil {
-		router.hooks.RequestHeaderParseCompleted(r, "DeleteTransactionsUUID")
-	}
+	router.hooks.RequestHeaderParseCompleted(r, "DeleteTransactionsUUID")
 
 	pathUUID := chi.URLParam(r, "uuid")
 	if pathUUID == "" {
-		err := fmt.Errorf("uuid is empty")
+		err := errUUIDIsEmpty
 
 		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathParseFailed}
-		if router.hooks.RequestPathParseFailed != nil {
-			router.hooks.RequestPathParseFailed(r, "DeleteTransactionsUUID", "uuid", request.ProcessingResult)
-		}
+		router.hooks.RequestPathParseFailed(r, "DeleteTransactionsUUID", "uuid", request.ProcessingResult)
 
 		return
 	}
@@ -1361,23 +763,19 @@ func (router *transactionsRouter) parseDeleteTransactionsUUIDRequest(r *http.Req
 
 	pathRegexParam := chi.URLParam(r, "regexParam")
 	if pathRegexParam == "" {
-		err := fmt.Errorf("regexParam is empty")
+		err := errRegexParamIsEmpty
 
 		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathParseFailed}
-		if router.hooks.RequestPathParseFailed != nil {
-			router.hooks.RequestPathParseFailed(r, "DeleteTransactionsUUID", "regexParam", request.ProcessingResult)
-		}
+		router.hooks.RequestPathParseFailed(r, "DeleteTransactionsUUID", "regexParam", request.ProcessingResult)
 
 		return
 	}
 
 	if !regexParamRegex.MatchString(pathRegexParam) {
-		err := fmt.Errorf("regexParam not matched by the '^[.?\\d]+$' regex")
+		err := errRegexParamNotMatchedByTheDRegex
 
 		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathParseFailed}
-		if router.hooks.RequestPathParseFailed != nil {
-			router.hooks.RequestPathParseFailed(r, "DeleteTransactionsUUID", "regexParam", request.ProcessingResult)
-		}
+		router.hooks.RequestPathParseFailed(r, "DeleteTransactionsUUID", "regexParam", request.ProcessingResult)
 
 		return
 	}
@@ -1386,25 +784,19 @@ func (router *transactionsRouter) parseDeleteTransactionsUUIDRequest(r *http.Req
 
 	if err := request.Path.Validate(); err != nil {
 		request.ProcessingResult = RequestProcessingResult{error: err, typee: PathValidationFailed}
-		if router.hooks.RequestPathValidationFailed != nil {
-			router.hooks.RequestPathValidationFailed(r, "DeleteTransactionsUUID", request.ProcessingResult)
-		}
+		router.hooks.RequestPathValidationFailed(r, "DeleteTransactionsUUID", request.ProcessingResult)
 
 		return
 	}
 
-	if router.hooks.RequestPathParseCompleted != nil {
-		router.hooks.RequestPathParseCompleted(r, "DeleteTransactionsUUID")
-	}
+	router.hooks.RequestPathParseCompleted(r, "DeleteTransactionsUUID")
 
-	queryTimeParamStr := r.URL.Query().Get("timeParam")
+	queryTimeParamStr := query.Get("timeParam")
 	if queryTimeParamStr != "" {
 		queryTimeParam, err := cast.ToTimeE(queryTimeParamStr)
 		if err != nil {
 			request.ProcessingResult = RequestProcessingResult{error: err, typee: QueryParseFailed}
-			if router.hooks.RequestQueryParseFailed != nil {
-				router.hooks.RequestQueryParseFailed(r, "DeleteTransactionsUUID", "timeParam", request.ProcessingResult)
-			}
+			router.hooks.RequestQueryParseFailed(r, "DeleteTransactionsUUID", "timeParam", request.ProcessingResult)
 
 			return
 		}
@@ -1414,120 +806,27 @@ func (router *transactionsRouter) parseDeleteTransactionsUUIDRequest(r *http.Req
 
 	if err := request.Query.Validate(); err != nil {
 		request.ProcessingResult = RequestProcessingResult{error: err, typee: QueryValidationFailed}
-		if router.hooks.RequestQueryValidationFailed != nil {
-			router.hooks.RequestQueryValidationFailed(r, "DeleteTransactionsUUID", request.ProcessingResult)
-		}
+		router.hooks.RequestQueryValidationFailed(r, "DeleteTransactionsUUID", request.ProcessingResult)
 
 		return
 	}
 
-	if router.hooks.RequestQueryParseCompleted != nil {
-		router.hooks.RequestQueryParseCompleted(r, "DeleteTransactionsUUID")
-	}
+	router.hooks.RequestQueryParseCompleted(r, "DeleteTransactionsUUID")
 
-	if router.hooks.RequestParseCompleted != nil {
-		router.hooks.RequestParseCompleted(r, "DeleteTransactionsUUID")
-	}
+	router.hooks.RequestParseCompleted(r, "DeleteTransactionsUUID")
 
 	return
 }
 
 func (router *transactionsRouter) DeleteTransactionsUUID(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-
-	response := router.service.DeleteTransactionsUUID(r.Context(), router.parseDeleteTransactionsUUIDRequest(r))
-
-	for header, value := range response.headers() {
-		w.Header().Set(header, value)
-	}
-
-	for _, c := range response.cookies() {
-		cookie := c
-		http.SetCookie(w, &cookie)
-	}
-
-	if slices.Contains([]int{301, 302, 303, 307, 308}, response.statusCode()) && response.redirectURL() != "" {
-		if router.hooks.RequestRedirectStarted != nil {
-			router.hooks.RequestRedirectStarted(r, "DeleteTransactionsUUID", response.redirectURL())
-		}
-
-		http.Redirect(w, r, response.redirectURL(), response.statusCode())
-
-		if router.hooks.ServiceCompleted != nil {
-			router.hooks.ServiceCompleted(r, "DeleteTransactionsUUID")
-		}
-
+	result := router.service.DeleteTransactionsUUID(r.Context(), router.parseDeleteTransactionsUUIDRequest(r))
+	if isNilResponse(result) {
+		router.hooks.ResponseBodyMarshalFailed(w, r, "DeleteTransactionsUUID", errServiceReturnedANilResponse)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-
-	if router.hooks.RequestProcessingCompleted != nil {
-		router.hooks.RequestProcessingCompleted(r, "DeleteTransactionsUUID")
-	}
-
-	if len(response.contentType()) > 0 {
-		w.Header().Set("content-type", response.contentType())
-	}
-
-	w.WriteHeader(response.statusCode())
-
-	var body []byte
-
-	if response.body() != nil {
-		var err error
-
-		switch response.contentType() {
-		case "application/xml":
-			body, err = xml.Marshal(response.body())
-		case "application/octet-stream":
-			var ok bool
-			if body, ok = (response.body()).([]byte); !ok {
-				err = errors.New("body is not []byte")
-			}
-		case "text/html":
-			body = []byte(fmt.Sprint(response.body()))
-		case "application/json":
-			fallthrough
-		default:
-			body, err = json.Marshal(response.body())
-		}
-
-		if err != nil {
-			if router.hooks.ResponseBodyMarshalFailed != nil {
-				router.hooks.ResponseBodyMarshalFailed(w, r, "DeleteTransactionsUUID", err)
-			}
-
-			return
-		}
-
-		if router.hooks.ResponseBodyMarshalCompleted != nil {
-			router.hooks.ResponseBodyMarshalCompleted(r, "DeleteTransactionsUUID")
-		}
-	} else if len(response.bodyRaw()) > 0 {
-		body = response.bodyRaw()
-	}
-
-	if len(body) > 0 {
-		count, err := w.Write(body)
-		if err != nil {
-			if router.hooks.ResponseBodyWriteFailed != nil {
-				router.hooks.ResponseBodyWriteFailed(r, "DeleteTransactionsUUID", count, err)
-			}
-
-			if router.hooks.ResponseBodyWriteCompleted != nil {
-				router.hooks.ResponseBodyWriteCompleted(r, "DeleteTransactionsUUID", count)
-			}
-
-			return
-		}
-
-		if router.hooks.ResponseBodyWriteCompleted != nil {
-			router.hooks.ResponseBodyWriteCompleted(r, "DeleteTransactionsUUID", count)
-		}
-	}
-
-	if router.hooks.ServiceCompleted != nil {
-		router.hooks.ServiceCompleted(r, "DeleteTransactionsUUID")
-	}
+	respond(w, r, router.hooks, "DeleteTransactionsUUID", result.inner(), true)
 }
 
 type response struct {
@@ -1541,13 +840,102 @@ type response struct {
 }
 
 type responseInterface interface {
-	statusCode() int
-	body() interface{}
-	bodyRaw() []byte
-	contentType() string
-	redirectURL() string
-	cookies() []http.Cookie
-	headers() map[string]string
+	inner() *response
+}
+
+var (
+	_ = xml.Marshal
+	_ = json.Marshal
+	_ = errors.New
+	_ = fmt.Sprint
+	_ = reflect.ValueOf
+)
+
+func respond(w http.ResponseWriter, r *http.Request, hooks *Hooks, name string, resp *response, hasContent bool) {
+	for header, value := range resp.headers {
+		w.Header().Set(header, value)
+	}
+
+	cookies := resp.cookies
+	for i := range cookies {
+		http.SetCookie(w, &cookies[i])
+	}
+
+	if url := resp.redirectURL; url != "" {
+		switch resp.statusCode {
+		case 301, 302, 303, 307, 308:
+			hooks.RequestRedirectStarted(r, name, url)
+			http.Redirect(w, r, url, resp.statusCode)
+			hooks.ServiceCompleted(r, name)
+			return
+		}
+	}
+
+	hooks.RequestProcessingCompleted(r, name)
+
+	if !hasContent {
+		w.WriteHeader(resp.statusCode)
+		hooks.ServiceCompleted(r, name)
+		return
+	}
+
+	// Marshal BEFORE writing the status code so a serialization failure can
+	// still surface as a clean 500 instead of a 2xx with a truncated body —
+	// once WriteHeader fires, headers/status are committed to the wire and
+	// we can no longer signal the error to the client.
+	var body []byte
+	if resp.body != nil {
+		var err error
+		switch resp.contentType {
+		case "application/xml":
+			body, err = xml.Marshal(resp.body)
+		case "application/octet-stream":
+			// Fast path for []byte and its aliases (e.g. type X = []byte).
+			// Fall back to reflect for named types whose underlying type is
+			// []byte (type X []byte) — the plain type assertion above would
+			// fail those since Go checks type identity, not underlying type.
+			if b, ok := (resp.body).([]byte); ok {
+				body = b
+			} else {
+				rv := reflect.ValueOf(resp.body)
+				if rv.Kind() == reflect.Slice && rv.Type().Elem().Kind() == reflect.Uint8 {
+					body = rv.Bytes()
+				} else {
+					err = errors.New("body is not []byte")
+				}
+			}
+		case "text/html":
+			body = []byte(fmt.Sprint(resp.body))
+		case "application/json":
+			fallthrough
+		default:
+			body, err = json.Marshal(resp.body)
+		}
+		if err != nil {
+			hooks.ResponseBodyMarshalFailed(w, r, name, err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		hooks.ResponseBodyMarshalCompleted(r, name)
+	} else if len(resp.bodyRaw) > 0 {
+		body = resp.bodyRaw
+	}
+
+	if ct := resp.contentType; ct != "" {
+		w.Header().Set("Content-Type", ct)
+	}
+	w.WriteHeader(resp.statusCode)
+
+	if len(body) > 0 {
+		count, err := w.Write(body)
+		if err != nil {
+			hooks.ResponseBodyWriteFailed(r, name, count, err)
+			return
+		}
+		hooks.ResponseBodyWriteCompleted(r, name, count)
+	}
+
+	hooks.ServiceCompleted(r, name)
 }
 
 type PostBearerEndpointResponse interface {
@@ -1559,34 +947,10 @@ type postBearerEndpointResponse struct {
 	response
 }
 
-func (postBearerEndpointResponse) postBearerEndpointResponse() {}
+func (*postBearerEndpointResponse) postBearerEndpointResponse() {}
 
-func (response postBearerEndpointResponse) statusCode() int {
-	return response.response.statusCode
-}
-
-func (response postBearerEndpointResponse) body() interface{} {
-	return response.response.body
-}
-
-func (response postBearerEndpointResponse) bodyRaw() []byte {
-	return response.response.bodyRaw
-}
-
-func (response postBearerEndpointResponse) contentType() string {
-	return response.response.contentType
-}
-
-func (response postBearerEndpointResponse) redirectURL() string {
-	return response.response.redirectURL
-}
-
-func (response postBearerEndpointResponse) headers() map[string]string {
-	return response.response.headers
-}
-
-func (response postBearerEndpointResponse) cookies() []http.Cookie {
-	return response.response.cookies
+func (r *postBearerEndpointResponse) inner() *response {
+	return &r.response
 }
 
 type PostCallbacksCallbackTypeResponse interface {
@@ -1598,34 +962,10 @@ type postCallbacksCallbackTypeResponse struct {
 	response
 }
 
-func (postCallbacksCallbackTypeResponse) postCallbacksCallbackTypeResponse() {}
+func (*postCallbacksCallbackTypeResponse) postCallbacksCallbackTypeResponse() {}
 
-func (response postCallbacksCallbackTypeResponse) statusCode() int {
-	return response.response.statusCode
-}
-
-func (response postCallbacksCallbackTypeResponse) body() interface{} {
-	return response.response.body
-}
-
-func (response postCallbacksCallbackTypeResponse) bodyRaw() []byte {
-	return response.response.bodyRaw
-}
-
-func (response postCallbacksCallbackTypeResponse) contentType() string {
-	return response.response.contentType
-}
-
-func (response postCallbacksCallbackTypeResponse) redirectURL() string {
-	return response.response.redirectURL
-}
-
-func (response postCallbacksCallbackTypeResponse) headers() map[string]string {
-	return response.response.headers
-}
-
-func (response postCallbacksCallbackTypeResponse) cookies() []http.Cookie {
-	return response.response.cookies
+func (r *postCallbacksCallbackTypeResponse) inner() *response {
+	return &r.response
 }
 
 type GetSecureEndpointResponse interface {
@@ -1637,34 +977,10 @@ type getSecureEndpointResponse struct {
 	response
 }
 
-func (getSecureEndpointResponse) getSecureEndpointResponse() {}
+func (*getSecureEndpointResponse) getSecureEndpointResponse() {}
 
-func (response getSecureEndpointResponse) statusCode() int {
-	return response.response.statusCode
-}
-
-func (response getSecureEndpointResponse) body() interface{} {
-	return response.response.body
-}
-
-func (response getSecureEndpointResponse) bodyRaw() []byte {
-	return response.response.bodyRaw
-}
-
-func (response getSecureEndpointResponse) contentType() string {
-	return response.response.contentType
-}
-
-func (response getSecureEndpointResponse) redirectURL() string {
-	return response.response.redirectURL
-}
-
-func (response getSecureEndpointResponse) headers() map[string]string {
-	return response.response.headers
-}
-
-func (response getSecureEndpointResponse) cookies() []http.Cookie {
-	return response.response.cookies
+func (r *getSecureEndpointResponse) inner() *response {
+	return &r.response
 }
 
 type GetSemiSecureEndpointResponse interface {
@@ -1676,34 +992,10 @@ type getSemiSecureEndpointResponse struct {
 	response
 }
 
-func (getSemiSecureEndpointResponse) getSemiSecureEndpointResponse() {}
+func (*getSemiSecureEndpointResponse) getSemiSecureEndpointResponse() {}
 
-func (response getSemiSecureEndpointResponse) statusCode() int {
-	return response.response.statusCode
-}
-
-func (response getSemiSecureEndpointResponse) body() interface{} {
-	return response.response.body
-}
-
-func (response getSemiSecureEndpointResponse) bodyRaw() []byte {
-	return response.response.bodyRaw
-}
-
-func (response getSemiSecureEndpointResponse) contentType() string {
-	return response.response.contentType
-}
-
-func (response getSemiSecureEndpointResponse) redirectURL() string {
-	return response.response.redirectURL
-}
-
-func (response getSemiSecureEndpointResponse) headers() map[string]string {
-	return response.response.headers
-}
-
-func (response getSemiSecureEndpointResponse) cookies() []http.Cookie {
-	return response.response.cookies
+func (r *getSemiSecureEndpointResponse) inner() *response {
+	return &r.response
 }
 
 type PostTransactionResponse interface {
@@ -1715,34 +1007,10 @@ type postTransactionResponse struct {
 	response
 }
 
-func (postTransactionResponse) postTransactionResponse() {}
+func (*postTransactionResponse) postTransactionResponse() {}
 
-func (response postTransactionResponse) statusCode() int {
-	return response.response.statusCode
-}
-
-func (response postTransactionResponse) body() interface{} {
-	return response.response.body
-}
-
-func (response postTransactionResponse) bodyRaw() []byte {
-	return response.response.bodyRaw
-}
-
-func (response postTransactionResponse) contentType() string {
-	return response.response.contentType
-}
-
-func (response postTransactionResponse) redirectURL() string {
-	return response.response.redirectURL
-}
-
-func (response postTransactionResponse) headers() map[string]string {
-	return response.response.headers
-}
-
-func (response postTransactionResponse) cookies() []http.Cookie {
-	return response.response.cookies
+func (r *postTransactionResponse) inner() *response {
+	return &r.response
 }
 
 type PutTransactionResponse interface {
@@ -1754,34 +1022,10 @@ type putTransactionResponse struct {
 	response
 }
 
-func (putTransactionResponse) putTransactionResponse() {}
+func (*putTransactionResponse) putTransactionResponse() {}
 
-func (response putTransactionResponse) statusCode() int {
-	return response.response.statusCode
-}
-
-func (response putTransactionResponse) body() interface{} {
-	return response.response.body
-}
-
-func (response putTransactionResponse) bodyRaw() []byte {
-	return response.response.bodyRaw
-}
-
-func (response putTransactionResponse) contentType() string {
-	return response.response.contentType
-}
-
-func (response putTransactionResponse) redirectURL() string {
-	return response.response.redirectURL
-}
-
-func (response putTransactionResponse) headers() map[string]string {
-	return response.response.headers
-}
-
-func (response putTransactionResponse) cookies() []http.Cookie {
-	return response.response.cookies
+func (r *putTransactionResponse) inner() *response {
+	return &r.response
 }
 
 type DeleteTransactionsUUIDResponse interface {
@@ -1793,34 +1037,10 @@ type deleteTransactionsUUIDResponse struct {
 	response
 }
 
-func (deleteTransactionsUUIDResponse) deleteTransactionsUUIDResponse() {}
+func (*deleteTransactionsUUIDResponse) deleteTransactionsUUIDResponse() {}
 
-func (response deleteTransactionsUUIDResponse) statusCode() int {
-	return response.response.statusCode
-}
-
-func (response deleteTransactionsUUIDResponse) body() interface{} {
-	return response.response.body
-}
-
-func (response deleteTransactionsUUIDResponse) bodyRaw() []byte {
-	return response.response.bodyRaw
-}
-
-func (response deleteTransactionsUUIDResponse) contentType() string {
-	return response.response.contentType
-}
-
-func (response deleteTransactionsUUIDResponse) redirectURL() string {
-	return response.response.redirectURL
-}
-
-func (response deleteTransactionsUUIDResponse) headers() map[string]string {
-	return response.response.headers
-}
-
-func (response deleteTransactionsUUIDResponse) cookies() []http.Cookie {
-	return response.response.cookies
+func (r *deleteTransactionsUUIDResponse) inner() *response {
+	return &r.response
 }
 
 type postBearerEndpointStatusCodeResponseBuilder struct {
@@ -1846,7 +1066,7 @@ type PostBearerEndpoint200ApplicationJsonResponseBuilder struct {
 }
 
 func (builder *PostBearerEndpoint200ApplicationJsonResponseBuilder) Build() PostBearerEndpointResponse {
-	return postBearerEndpointResponse{response: builder.response}
+	return &postBearerEndpointResponse{response: builder.response}
 }
 
 func (builder *postBearerEndpoint200ContentTypeBuilder) ApplicationJson() *postBearerEndpoint200ApplicationJsonBodyBuilder {
@@ -1875,7 +1095,7 @@ func (builder *postBearerEndpoint200ApplicationJsonBodyBuilder) BodyBytes(body [
 	return &PostBearerEndpoint200ApplicationJsonResponseBuilder{response: builder.response}
 }
 
-func (builder *postBearerEndpoint200ApplicationJsonBodyBuilder) Body(body PostBearerEndpointApplicationjson) *PostBearerEndpoint200ApplicationJsonResponseBuilder {
+func (builder *postBearerEndpoint200ApplicationJsonBodyBuilder) Body(body PostBearerEndpoint200ApplicationJson) *PostBearerEndpoint200ApplicationJsonResponseBuilder {
 	builder.response.body = body
 
 	return &PostBearerEndpoint200ApplicationJsonResponseBuilder{response: builder.response}
@@ -1892,7 +1112,7 @@ type PostBearerEndpoint401ResponseBuilder struct {
 }
 
 func (builder *PostBearerEndpoint401ResponseBuilder) Build() PostBearerEndpointResponse {
-	return postBearerEndpointResponse{response: builder.response}
+	return &postBearerEndpointResponse{response: builder.response}
 }
 
 type postCallbacksCallbackTypeStatusCodeResponseBuilder struct {
@@ -1945,7 +1165,7 @@ type PostCallbacksCallbackType200ApplicationOctetStreamResponseBuilder struct {
 }
 
 func (builder *PostCallbacksCallbackType200ApplicationOctetStreamResponseBuilder) Build() PostCallbacksCallbackTypeResponse {
-	return postCallbacksCallbackTypeResponse{response: builder.response}
+	return &postCallbacksCallbackTypeResponse{response: builder.response}
 }
 
 func (builder *postCallbacksCallbackType200ContentTypeBuilder) ApplicationOctetStream() *postCallbacksCallbackType200ApplicationOctetStreamBodyBuilder {
@@ -2010,7 +1230,7 @@ type PostCallbacksCallbackType307ResponseBuilder struct {
 }
 
 func (builder *PostCallbacksCallbackType307ResponseBuilder) Build() PostCallbacksCallbackTypeResponse {
-	return postCallbacksCallbackTypeResponse{response: builder.response}
+	return &postCallbacksCallbackTypeResponse{response: builder.response}
 }
 
 type getSecureEndpointStatusCodeResponseBuilder struct {
@@ -2036,7 +1256,7 @@ type GetSecureEndpoint200ApplicationJsonResponseBuilder struct {
 }
 
 func (builder *GetSecureEndpoint200ApplicationJsonResponseBuilder) Build() GetSecureEndpointResponse {
-	return getSecureEndpointResponse{response: builder.response}
+	return &getSecureEndpointResponse{response: builder.response}
 }
 
 func (builder *getSecureEndpoint200ContentTypeBuilder) ApplicationJson() *getSecureEndpoint200ApplicationJsonBodyBuilder {
@@ -2065,7 +1285,7 @@ func (builder *getSecureEndpoint200ApplicationJsonBodyBuilder) BodyBytes(body []
 	return &GetSecureEndpoint200ApplicationJsonResponseBuilder{response: builder.response}
 }
 
-func (builder *getSecureEndpoint200ApplicationJsonBodyBuilder) Body(body GetSecureEndpointApplicationjson) *GetSecureEndpoint200ApplicationJsonResponseBuilder {
+func (builder *getSecureEndpoint200ApplicationJsonBodyBuilder) Body(body GetSecureEndpoint200ApplicationJson) *GetSecureEndpoint200ApplicationJsonResponseBuilder {
 	builder.response.body = body
 
 	return &GetSecureEndpoint200ApplicationJsonResponseBuilder{response: builder.response}
@@ -2082,7 +1302,7 @@ type GetSecureEndpoint401ResponseBuilder struct {
 }
 
 func (builder *GetSecureEndpoint401ResponseBuilder) Build() GetSecureEndpointResponse {
-	return getSecureEndpointResponse{response: builder.response}
+	return &getSecureEndpointResponse{response: builder.response}
 }
 
 type getSemiSecureEndpointStatusCodeResponseBuilder struct {
@@ -2108,7 +1328,7 @@ type GetSemiSecureEndpoint200ApplicationJsonResponseBuilder struct {
 }
 
 func (builder *GetSemiSecureEndpoint200ApplicationJsonResponseBuilder) Build() GetSemiSecureEndpointResponse {
-	return getSemiSecureEndpointResponse{response: builder.response}
+	return &getSemiSecureEndpointResponse{response: builder.response}
 }
 
 func (builder *getSemiSecureEndpoint200ContentTypeBuilder) ApplicationJson() *getSemiSecureEndpoint200ApplicationJsonBodyBuilder {
@@ -2137,7 +1357,7 @@ func (builder *getSemiSecureEndpoint200ApplicationJsonBodyBuilder) BodyBytes(bod
 	return &GetSemiSecureEndpoint200ApplicationJsonResponseBuilder{response: builder.response}
 }
 
-func (builder *getSemiSecureEndpoint200ApplicationJsonBodyBuilder) Body(body GetSemiSecureEndpointApplicationjson) *GetSemiSecureEndpoint200ApplicationJsonResponseBuilder {
+func (builder *getSemiSecureEndpoint200ApplicationJsonBodyBuilder) Body(body GetSemiSecureEndpoint200ApplicationJson) *GetSemiSecureEndpoint200ApplicationJsonResponseBuilder {
 	builder.response.body = body
 
 	return &GetSemiSecureEndpoint200ApplicationJsonResponseBuilder{response: builder.response}
@@ -2154,7 +1374,7 @@ type GetSemiSecureEndpoint400ResponseBuilder struct {
 }
 
 func (builder *GetSemiSecureEndpoint400ResponseBuilder) Build() GetSemiSecureEndpointResponse {
-	return getSemiSecureEndpointResponse{response: builder.response}
+	return &getSemiSecureEndpointResponse{response: builder.response}
 }
 
 type postTransactionStatusCodeResponseBuilder struct {
@@ -2180,7 +1400,7 @@ type PostTransaction201ApplicationJsonResponseBuilder struct {
 }
 
 func (builder *PostTransaction201ApplicationJsonResponseBuilder) Build() PostTransactionResponse {
-	return postTransactionResponse{response: builder.response}
+	return &postTransactionResponse{response: builder.response}
 }
 
 func (builder *postTransaction201ContentTypeBuilder) ApplicationJson() *postTransaction201ApplicationJsonBodyBuilder {
@@ -2230,7 +1450,7 @@ type PostTransaction400ApplicationJsonResponseBuilder struct {
 }
 
 func (builder *PostTransaction400ApplicationJsonResponseBuilder) Build() PostTransactionResponse {
-	return postTransactionResponse{response: builder.response}
+	return &postTransactionResponse{response: builder.response}
 }
 
 func (builder *postTransaction400ContentTypeBuilder) ApplicationJson() *postTransaction400ApplicationJsonBodyBuilder {
@@ -2280,7 +1500,7 @@ type PostTransaction500ApplicationJsonResponseBuilder struct {
 }
 
 func (builder *PostTransaction500ApplicationJsonResponseBuilder) Build() PostTransactionResponse {
-	return postTransactionResponse{response: builder.response}
+	return &postTransactionResponse{response: builder.response}
 }
 
 func (builder *postTransaction500ContentTypeBuilder) ApplicationJson() *postTransaction500ApplicationJsonBodyBuilder {
@@ -2338,7 +1558,7 @@ type PutTransaction200ApplicationJsonResponseBuilder struct {
 }
 
 func (builder *PutTransaction200ApplicationJsonResponseBuilder) Build() PutTransactionResponse {
-	return putTransactionResponse{response: builder.response}
+	return &putTransactionResponse{response: builder.response}
 }
 
 func (builder *putTransaction200ContentTypeBuilder) ApplicationJson() *putTransaction200ApplicationJsonBodyBuilder {
@@ -2388,7 +1608,7 @@ type PutTransaction400ApplicationJsonResponseBuilder struct {
 }
 
 func (builder *PutTransaction400ApplicationJsonResponseBuilder) Build() PutTransactionResponse {
-	return putTransactionResponse{response: builder.response}
+	return &putTransactionResponse{response: builder.response}
 }
 
 func (builder *putTransaction400ContentTypeBuilder) ApplicationJson() *putTransaction400ApplicationJsonBodyBuilder {
@@ -2438,7 +1658,7 @@ type PutTransaction500ApplicationJsonResponseBuilder struct {
 }
 
 func (builder *PutTransaction500ApplicationJsonResponseBuilder) Build() PutTransactionResponse {
-	return putTransactionResponse{response: builder.response}
+	return &putTransactionResponse{response: builder.response}
 }
 
 func (builder *putTransaction500ContentTypeBuilder) ApplicationJson() *putTransaction500ApplicationJsonBodyBuilder {
@@ -2496,7 +1716,7 @@ type DeleteTransactionsUUID200ApplicationJsonResponseBuilder struct {
 }
 
 func (builder *DeleteTransactionsUUID200ApplicationJsonResponseBuilder) Build() DeleteTransactionsUUIDResponse {
-	return deleteTransactionsUUIDResponse{response: builder.response}
+	return &deleteTransactionsUUIDResponse{response: builder.response}
 }
 
 func (builder *deleteTransactionsUUID200ContentTypeBuilder) ApplicationJson() *deleteTransactionsUUID200ApplicationJsonBodyBuilder {
@@ -2546,7 +1766,7 @@ type DeleteTransactionsUUID400ApplicationJsonResponseBuilder struct {
 }
 
 func (builder *DeleteTransactionsUUID400ApplicationJsonResponseBuilder) Build() DeleteTransactionsUUIDResponse {
-	return deleteTransactionsUUIDResponse{response: builder.response}
+	return &deleteTransactionsUUIDResponse{response: builder.response}
 }
 
 func (builder *deleteTransactionsUUID400ContentTypeBuilder) ApplicationJson() *deleteTransactionsUUID400ApplicationJsonBodyBuilder {
@@ -2659,8 +1879,8 @@ func (header PostTransactionRequestHeader) GetXSignature() string {
 
 func (header PostTransactionRequestHeader) Validate() error {
 	return validation.ValidateStruct(&header,
-		validation.Field(&header.XFingerprint, validation.Required, validation.RuneLength(32, 32)),
-		validation.Field(&header.XSignature, validation.RuneLength(0, 5)))
+		validation.Field(&header.XFingerprint, validation.Required, validation.RuneLength(32, 32), validation.Match(xFingerprintRegex)),
+		validation.Field(&header.XSignature, validation.Skip.When(header.XSignature == ""), validation.RuneLength(0, 5)))
 }
 
 type PostTransactionRequest struct {
@@ -2684,8 +1904,8 @@ func (header PutTransactionRequestHeader) GetXSignature() string {
 
 func (header PutTransactionRequestHeader) Validate() error {
 	return validation.ValidateStruct(&header,
-		validation.Field(&header.XFingerprint, validation.Required, validation.RuneLength(32, 32)),
-		validation.Field(&header.XSignature, validation.RuneLength(0, 5)))
+		validation.Field(&header.XFingerprint, validation.Required, validation.RuneLength(32, 32), validation.Match(xFingerprintRegex)),
+		validation.Field(&header.XSignature, validation.Skip.When(header.XSignature == ""), validation.RuneLength(0, 5)))
 }
 
 type PutTransactionRequest struct {
@@ -2709,8 +1929,8 @@ func (header DeleteTransactionsUUIDRequestHeader) GetXSignature() string {
 
 func (header DeleteTransactionsUUIDRequestHeader) Validate() error {
 	return validation.ValidateStruct(&header,
-		validation.Field(&header.XFingerprint, validation.Required, validation.RuneLength(32, 32)),
-		validation.Field(&header.XSignature, validation.RuneLength(0, 5)))
+		validation.Field(&header.XFingerprint, validation.Required, validation.RuneLength(32, 32), validation.Match(xFingerprintRegex)),
+		validation.Field(&header.XSignature, validation.Skip.When(header.XSignature == ""), validation.RuneLength(0, 5)))
 }
 
 type DeleteTransactionsUUIDRequestPath struct {
@@ -2728,7 +1948,7 @@ func (path DeleteTransactionsUUIDRequestPath) GetUUID() string {
 
 func (path DeleteTransactionsUUIDRequestPath) Validate() error {
 	return validation.ValidateStruct(&path,
-		validation.Field(&path.RegexParam, validation.Required, validation.RuneLength(5, 0)))
+		validation.Field(&path.RegexParam, validation.Required, validation.RuneLength(5, 0), validation.Match(regexParamRegex)))
 }
 
 type DeleteTransactionsUUIDRequestQuery struct {

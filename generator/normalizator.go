@@ -5,9 +5,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/ahmetb/go-linq"
 	"github.com/dave/jennifer/jen"
-	"github.com/spf13/cast"
 )
 
 type Normalizer struct{}
@@ -17,7 +15,10 @@ func (normalizer *Normalizer) decapitalize(str string) string {
 }
 
 func (normalizer *Normalizer) normalize(str string) string {
-	separators := "-#@!$&=.+:;_~ (){}[]"
+	// '/' is a separator so "application/json" → "ApplicationJson", matching
+	// what contentType() produces — diverging here breaks inline response
+	// type-name reconstruction in the generator.
+	separators := "-#@!$&=.+:;_~ (){}[]/"
 	s := strings.Trim(str, " ")
 
 	n := ""
@@ -63,27 +64,31 @@ func (normalizer *Normalizer) normalizeOperationName(path string, method string)
 	return normalizer.normalize(strings.ReplaceAll(strings.ToLower(method)+path, "/", "-"))
 }
 
-func (normalizer *Normalizer) doubleLineAfterEachElement(from ...jen.Code) (result []jen.Code) {
-	linq.From(from).SelectManyT(func(code jen.Code) linq.Query {
-		if reflect.DeepEqual(code, jen.Null()) || reflect.DeepEqual(code, jen.Line()) {
-			return linq.From([]jen.Code{})
-		}
-
-		return linq.From([]jen.Code{code, jen.Line(), jen.Line()})
-	}).ToSlice(&result)
-
-	return
+// isEmptyCode reports whether code is the no-op jen.Null() / jen.Line()
+// sentinel — used to skip them when interleaving blank lines.
+func isEmptyCode(code jen.Code) bool {
+	return reflect.DeepEqual(code, jen.Null()) || reflect.DeepEqual(code, jen.Line())
 }
 
-func (normalizer *Normalizer) lineAfterEachElement(from ...jen.Code) (result []jen.Code) {
-	linq.From(from).SelectManyT(func(code jen.Code) linq.Query {
-		if reflect.DeepEqual(code, jen.Null()) || reflect.DeepEqual(code, jen.Line()) {
-			return linq.From([]jen.Code{})
+func (normalizer *Normalizer) doubleLineAfterEachElement(from ...jen.Code) []jen.Code {
+	result := make([]jen.Code, 0, len(from)*3)
+	for _, code := range from {
+		if isEmptyCode(code) {
+			continue
 		}
+		result = append(result, code, jen.Line(), jen.Line())
+	}
+	return result
+}
 
-		return linq.From([]jen.Code{code, jen.Line()})
-	}).ToSlice(&result)
-
+func (normalizer *Normalizer) lineAfterEachElement(from ...jen.Code) []jen.Code {
+	result := make([]jen.Code, 0, len(from)*2)
+	for _, code := range from {
+		if isEmptyCode(code) {
+			continue
+		}
+		result = append(result, code, jen.Line())
+	}
 	return result
 }
 
@@ -100,10 +105,15 @@ func (normalizer *Normalizer) contentType(str string) string {
 		return ""
 	}
 
-	var split = func(r rune) bool {
-		return r == '/' || r == '-'
+	// Treat every non-alphanumeric rune as a word boundary so structured
+	// MIME suffixes (application/problem+json, application/vnd.api+json)
+	// produce valid Go identifiers instead of leaking `+`/`.` into the name.
+	split := func(r rune) bool {
+		return !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9'))
 	}
-
-	return cast.ToString(linq.From(strings.FieldsFunc(str, split)).
-		AggregateWithSeedT("", func(accumulator, str string) string { return accumulator + strings.Title(str) }))
+	var sb strings.Builder
+	for _, part := range strings.FieldsFunc(str, split) {
+		sb.WriteString(strings.Title(part))
+	}
+	return sb.String()
 }

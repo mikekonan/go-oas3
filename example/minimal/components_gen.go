@@ -2,4 +2,10 @@
 
 package minimal
 
+import "errors"
+
+var (
+	errServiceReturnedANilResponse = errors.New("service returned a nil response")
+)
+
 type TestArray = []string

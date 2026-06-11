@@ -12,7 +12,11 @@ import (
 )
 
 type Writer struct {
-	config *configurator.Config `di.inject:"config"`
+	config *configurator.Config
+}
+
+func New(config *configurator.Config) *Writer {
+	return &Writer{config: config}
 }
 
 func (writer *Writer) Write(result *generator.Result) error {

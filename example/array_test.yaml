@@ -32,6 +32,11 @@ components:
             type: string
             minLength: 1
           maxItems: 5
+        optionalMinArray:
+          type: array
+          items:
+            type: string
+          minItems: 2
         requiredIntArray:
           type: array
           items:

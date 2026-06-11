@@ -2,7 +2,15 @@
 
 package simplearray
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"errors"
+	validation "github.com/go-ozzo/ozzo-validation/v4"
+)
+
+var (
+	errServiceReturnedANilResponse = errors.New("service returned a nil response")
+)
 
 type simpleArrayTest struct {
 	OptionalArray []string `json:"optionalArray"`
@@ -23,5 +31,6 @@ func (body *SimpleArrayTest) UnmarshalJSON(data []byte) error {
 	return nil
 }
 func (body SimpleArrayTest) Validate() error {
-	return nil
+	return validation.ValidateStruct(&body,
+		validation.Field(&body.OptionalArray, validation.Skip.When(body.OptionalArray == nil), validation.Required, validation.Length(1, 5)))
 }

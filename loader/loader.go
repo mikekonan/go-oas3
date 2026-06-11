@@ -10,7 +10,11 @@ import (
 )
 
 type Loader struct {
-	config *configurator.Config `di.inject:"config"`
+	config *configurator.Config
+}
+
+func New(config *configurator.Config) *Loader {
+	return &Loader{config: config}
 }
 
 func (loader *Loader) Load() (*openapi3.T, error) {

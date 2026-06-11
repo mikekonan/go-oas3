@@ -11,6 +11,7 @@ A powerful, modern code generator that creates clean server boilerplate from Ope
 - [Complete Workflow Example](#complete-workflow-example)
 - [OpenAPI Features](#openapi-features)
 - [Extensions Reference](#extensions-reference)
+- [Generic Response Mode](#generic-response-mode)
 - [Limitations](#limitations)
 - [Questions or Feature Requests](#questions-or-feature-requests)
 - [Contributing](#contributing)
@@ -73,6 +74,7 @@ paths:
 | `-authorization` | string | Headers for remote swagger files (`key1:value1,key2:value2`) | - |
 | `-prioritize-x-go-type` | bool | Prioritize `x-go-type` over schema properties | `false` |
 | `-pass-raw-request` | bool | Pass raw HTTP request to handler functions | `false` |
+| `-default-generics` | bool | Generate every operation in generic mode by default (see [Generic Response Mode](#generic-response-mode)); can be overridden per-operation with `x-go-generics`. | `false` |
 
 ### Examples
 
@@ -334,6 +336,29 @@ large_payload:
   x-go-skip-validation: true
 ```
 
+### Generic Mode Extension
+
+#### `x-go-generics` - Per-Operation Generic Response Mode
+Opt an operation into generic-mode generation. The response builder cascade
+(20+ types per operation) is replaced by a single shared `*Response[B]`. See
+[Generic Response Mode](#generic-response-mode) for the full picture.
+
+```yaml
+paths:
+  /widgets:
+    post:
+      x-go-generics: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Widget'
+```
+
+Use `-default-generics` on the CLI to flip the default for the whole spec; then
+`x-go-generics: false` can opt individual operations back to classic.
+
 ### Security Extensions
 
 #### `x-go-skip-security-check` - Skip Security Validation
@@ -402,6 +427,129 @@ components:
         x-go-type: github.com/google/uuid.UUID
         x-go-type-string-parse: github.com/google/uuid.Parse
 ```
+
+## Generic Response Mode
+
+By default the generator emits a dedicated response-builder cascade for every
+operation: `XxxResponseBuilder`, `XxxStatusCodeBuilder`, `Xxx200ContentTypeBuilder`,
+`Xxx200ApplicationJsonResponseBuilder`, plus their methods. For a spec with
+several status codes per endpoint that's ~20 types and ~280 lines of generated
+code *per operation*.
+
+**Generic mode** collapses this into a single shared `*Response[B]` type per
+package. Opt in by marking the operation with `x-go-generics: true` (or flip
+the global default via `-default-generics`).
+
+### What changes
+
+- The service-interface return type becomes `*Response[BodyT]` where `BodyT`
+  is inferred from the 2xx response's `application/json` schema (`any` if no
+  body is declared).
+- The per-operation builder cascade is **not** emitted.
+- The request struct embeds `RequestMeta` (shared `ProcessingResult` +
+  `SecurityCheckResults`) and gains a `GetHeader() any` accessor, so it
+  satisfies the package-level `Request` interface.
+
+### Generated helpers in every package
+
+When at least one operation uses `x-go-generics`, the generator emits these
+one-time symbols:
+
+```go
+// Implemented by every generic request — application helpers can accept any
+// generic request as a single parameter.
+type Request interface {
+    GetProcessingResult() RequestProcessingResult
+    GetSecurityCheckResults() map[SecurityScheme]string
+    GetHeader() any
+}
+
+type RequestMeta struct {
+    ProcessingResult     RequestProcessingResult
+    SecurityCheckResults map[SecurityScheme]string
+}
+
+// Single shared response type — replaces the per-operation cascade.
+type Response[B any] struct { /* ... */ }
+type ResponseBuilder[B any] struct { /* ... */ }
+
+func NewResponse[B any]() *ResponseBuilder[B]
+
+// Fluent setters on ResponseBuilder[B]:
+//   .Status(code int)
+//   .ContentType(ct string)          // default "application/json"
+//   .ApplicationJson()
+//   .ApplicationXml()
+//   .ApplicationOctetStream()
+//   .TextHtml() / .TextPlain() / .TextCsv()
+//   .Body(B)                          // typed success body
+//   .BodyAny(any)                     // error body of a different type
+//   .BodyRaw([]byte)
+//   .Header(key, value string)
+//   .Cookie(c http.Cookie)
+//   .Redirect(url string)
+//   .Build() *Response[B]
+```
+
+### Other shared helpers (emitted for all modes)
+
+These were extracted to keep per-operation code small regardless of generic
+mode:
+
+- `respond(w, r, hooks, name, response, hasContent)` — single shared HTTP
+  writer. Per-operation handlers become 4 lines.
+- `ensureHooks(*Hooks) *Hooks` — fills every nil hook with a no-op stub, so
+  generated code calls hooks unconditionally.
+- `extractSecurity(r, hooks, name, requirements, skipCheck)` — runs the
+  OR-of-AND security matrix; replaces ~80 inlined lines per operation.
+
+### Example
+
+```yaml
+paths:
+  /widgets:
+    post:
+      tags: [widgets]
+      x-go-generics: true
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWidgetRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Widget'
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+```
+
+Service implementation:
+
+```go
+func (s *widgetsService) PostWidgets(ctx context.Context, req PostWidgetsRequest) *Response[Widget] {
+    if err := req.ProcessingResult.Err(); err != nil {
+        return NewResponse[Widget]().Status(400).
+            BodyAny(ErrorBody{Code: "bad_request", Message: err.Error()}).
+            Build()
+    }
+    return NewResponse[Widget]().Status(200).
+        Body(Widget{ID: "w-1", Name: req.Body.Name}).
+        Build()
+}
+```
+
+### Coexistence with classic mode
+
+Generic and classic operations live side-by-side in the same generated
+package — only operations marked with `x-go-generics: true` (or covered by
+`-default-generics`) use the new shape. Migration can be done one operation
+at a time without touching the rest of the codebase.
 
 ## Limitations
 

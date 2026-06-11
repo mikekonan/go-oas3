@@ -24,6 +24,7 @@ type Config struct {
 
 	PassRawRequest    bool `config:"pass-raw-request,description=pass raw request to handler"`
 	PrioritizeXGoType bool `config:"prioritize-x-go-type,description=prioritize x-go-type declaration over schema type, if both are provided"`
+	DefaultGenerics   bool `config:"default-generics,description=emit generic response builder per operation by default (can be overridden per-operation with x-go-generics)"`
 }
 
 func (config *Config) Defaults() *Config {
@@ -49,10 +50,17 @@ func (config *Config) Headers() (http.Header, error) {
 }
 
 type Configurator struct {
-	config *Config `di.inject:"config"`
+	config *Config
+}
+
+func New(config *Config) *Configurator {
+	return &Configurator{config: config}
 }
 
 func (configurator *Configurator) concatPaths(filePath string) (string, error) {
+	if filePath == "" {
+		return "", nil
+	}
 	if filePath[0] == '.' {
 		wd, err := os.Getwd()
 		if err != nil {
@@ -65,7 +73,7 @@ func (configurator *Configurator) concatPaths(filePath string) (string, error) {
 	return filePath, nil
 }
 
-func (configurator *Configurator) PostConstruct() (err error) {
+func (configurator *Configurator) LoadFlags() (err error) {
 	if err := confita.NewLoader(flags.NewBackend()).Load(context.Background(), configurator.config); err != nil {
 		return err
 	}
@@ -74,16 +82,18 @@ func (configurator *Configurator) PostConstruct() (err error) {
 		return err
 	}
 
-	if configurator.config.Package, err = configurator.concatPaths(configurator.config.Path); err != nil {
-		return err
-	}
-
 	if configurator.config.ComponentsPackage == "" {
 		configurator.config.ComponentsPackage = configurator.config.Package
 	}
 
+	// ComponentsPath must go through the same cwd-prepending as Path:
+	// errVarsPackagesShared compares the two as strings, so a mismatch like
+	// "./out" vs "/cwd/out" splits the err-var declarations into both files
+	// and breaks compilation.
 	if configurator.config.ComponentsPath == "" {
 		configurator.config.ComponentsPath = configurator.config.Path
+	} else if configurator.config.ComponentsPath, err = configurator.concatPaths(configurator.config.ComponentsPath); err != nil {
+		return err
 	}
 
 	return nil

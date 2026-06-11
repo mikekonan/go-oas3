@@ -10,208 +10,173 @@ import (
 
 type transactionsService struct{}
 
-func (t transactionsService) PostTransaction(ctx context.Context, request *PostTransactionRequest) *PostTransactionResponse {
+func (t transactionsService) PostTransaction(ctx context.Context, request PostTransactionRequest) PostTransactionResponse {
 	log.Printf("processing create transaction request...\n")
 
 	if err := request.ProcessingResult.Err(); err != nil {
-		return &PostTransactionResponse{
-			response: &response{
-				statusCode: 400,
-				body:       GenericResponse{Result: ResultFailed},
-				headers:    map[string]string{"Content-Type": "application/json"},
-			},
-		}
+		return PostTransactionResponseBuilder().
+			StatusCode400().
+			ApplicationJson().
+			Body(GenericResponse{Result: GenericResponseResultEnumFailed}).
+			Build()
 	}
 
-	log.Printf("creating transaction - '%v'\n", request.body)
+	log.Printf("creating transaction - '%v'\n", request.Body)
 
-	res := GenericResponse{Result: ResultSuccess}
+	res := GenericResponse{Result: GenericResponseResultEnumSuccess}
 	if err := res.Validate(); err != nil {
-		return &PostTransactionResponse{
-			response: &response{
-				statusCode: 500,
-				body:       GenericResponse{Result: ResultFailed},
-				headers:    map[string]string{"Content-Type": "application/json"},
-			},
-		}
+		return PostTransactionResponseBuilder().
+			StatusCode500().
+			ApplicationJson().
+			Body(GenericResponse{Result: GenericResponseResultEnumFailed}).
+			Build()
 	}
 
-	return &PostTransactionResponse{
-		response: &response{
-			statusCode: 201,
-			body:       res,
-			headers:    map[string]string{"Content-Type": "application/json"},
-		},
-	}
+	return PostTransactionResponseBuilder().
+		StatusCode201().
+		ApplicationJson().
+		Body(res).
+		Build()
 }
 
-func (t transactionsService) PutTransaction(ctx context.Context, request *PutTransactionRequest) *PutTransactionResponse {
+func (t transactionsService) PutTransaction(ctx context.Context, request PutTransactionRequest) PutTransactionResponse {
 	log.Printf("processing update transaction request...\n")
 
 	if err := request.ProcessingResult.Err(); err != nil {
-		return &PutTransactionResponse{
-			response: &response{
-				statusCode: 400,
-				body:       GenericResponse{Result: ResultFailed},
-				headers:    map[string]string{"Content-Type": "application/json"},
-			},
-		}
+		return PutTransactionResponseBuilder().
+			StatusCode400().
+			ApplicationJson().
+			Body(GenericResponse{Result: GenericResponseResultEnumFailed}).
+			Build()
 	}
 
-	log.Printf("updating transaction - '%v'\n", request.body)
+	log.Printf("updating transaction - '%v'\n", request.Body)
 
-	res := GenericResponse{Result: ResultSuccess}
+	res := GenericResponse{Result: GenericResponseResultEnumSuccess}
 	if err := res.Validate(); err != nil {
-		return &PutTransactionResponse{
-			response: &response{
-				statusCode: 500,
-				body:       GenericResponse{Result: ResultFailed},
-				headers:    map[string]string{"Content-Type": "application/json"},
-			},
-		}
+		return PutTransactionResponseBuilder().
+			StatusCode500().
+			ApplicationJson().
+			Body(GenericResponse{Result: GenericResponseResultEnumFailed}).
+			Build()
 	}
 
-	return &PutTransactionResponse{
-		response: &response{
-			statusCode: 200,
-			body:       res,
-			headers:    map[string]string{"Content-Type": "application/json"},
-		},
-	}
+	return PutTransactionResponseBuilder().
+		StatusCode200().
+		ApplicationJson().
+		Body(res).
+		Build()
 }
 
-func (t transactionsService) DeleteTransactionsUUID(ctx context.Context, request *DeleteTransactionsUUIDRequest) *DeleteTransactionsUUIDResponse {
+func (t transactionsService) DeleteTransactionsUUID(ctx context.Context, request DeleteTransactionsUUIDRequest) DeleteTransactionsUUIDResponse {
 	log.Printf("processing delete transaction request...\n")
 
 	if err := request.ProcessingResult.Err(); err != nil {
-		return &DeleteTransactionsUUIDResponse{
-			response: &response{
-				statusCode: 400,
-				body:       GenericResponse{Result: ResultFailed},
-				headers:    map[string]string{"Content-Type": "application/json"},
-			},
-		}
+		return DeleteTransactionsUUIDResponseBuilder().
+			StatusCode400().
+			ApplicationJson().
+			Body(GenericResponse{Result: GenericResponseResultEnumFailed}).
+			Build()
 	}
 
-	log.Printf("deleting transaction with UUID: %s\n", request.path.UUID)
+	log.Printf("deleting transaction with UUID: %s\n", request.Path.UUID)
 
-	res := GenericResponse{Result: ResultSuccess}
-	return &DeleteTransactionsUUIDResponse{
-		response: &response{
-			statusCode: 200,
-			body:       res,
-			headers: map[string]string{
-				"Content-Type":     "application/json",
-				"Content-Encoding": "gzip",
-			},
-		},
-	}
+	// The 200 response declares a Content-Encoding header, which the generator
+	// treats specially: it's plumbed via BodyBytesWithEncoding rather than the
+	// per-response Headers struct. For an ordinary in-process body we just
+	// emit the JSON without compression and skip the encoding header.
+	return DeleteTransactionsUUIDResponseBuilder().
+		StatusCode200().
+		ApplicationJson().
+		Body(GenericResponse{Result: GenericResponseResultEnumSuccess}).
+		Build()
 }
 
 type authService struct{}
 
-func (a authService) GetSecureEndpoint(ctx context.Context, request *GetSecureEndpointRequest) *GetSecureEndpointResponse {
-	return &GetSecureEndpointResponse{
-		response: &response{
-			statusCode: 200,
-			body:       map[string]string{"message": "Hello from secure endpoint"},
-			headers:    map[string]string{"Content-Type": "application/json"},
-		},
-	}
+func (a authService) GetSecureEndpoint(ctx context.Context, request GetSecureEndpointRequest) GetSecureEndpointResponse {
+	return GetSecureEndpointResponseBuilder().
+		StatusCode200().
+		ApplicationJson().
+		Body(GetSecureEndpoint200ApplicationJson{Message: "Hello from secure endpoint"}).
+		Build()
 }
 
-func (a authService) GetSemiSecureEndpoint(ctx context.Context, request *GetSemiSecureEndpointRequest) *GetSemiSecureEndpointResponse {
-	return &GetSemiSecureEndpointResponse{
-		response: &response{
-			statusCode: 200,
-			body: map[string]string{
-				"message": "Hello from semi-secure endpoint",
-				"apiKey":  "received",
-			},
-			headers: map[string]string{"Content-Type": "application/json"},
-		},
-	}
+func (a authService) GetSemiSecureEndpoint(ctx context.Context, request GetSemiSecureEndpointRequest) GetSemiSecureEndpointResponse {
+	return GetSemiSecureEndpointResponseBuilder().
+		StatusCode200().
+		ApplicationJson().
+		Body(GetSemiSecureEndpoint200ApplicationJson{
+			Message: "Hello from semi-secure endpoint",
+			ApiKey:  "received",
+		}).
+		Build()
 }
 
-func (a authService) PostBearerEndpoint(ctx context.Context, request *PostBearerEndpointRequest) *PostBearerEndpointResponse {
-	return &PostBearerEndpointResponse{
-		response: &response{
-			statusCode: 200,
-			body:       map[string]string{"message": "Hello from bearer endpoint"},
-			headers:    map[string]string{"Content-Type": "application/json"},
-		},
-	}
+func (a authService) PostBearerEndpoint(ctx context.Context, request PostBearerEndpointRequest) PostBearerEndpointResponse {
+	return PostBearerEndpointResponseBuilder().
+		StatusCode200().
+		ApplicationJson().
+		Body(PostBearerEndpoint200ApplicationJson{Message: "Hello from bearer endpoint"}).
+		Build()
 }
 
 type callbacksService struct{}
 
-func (c callbacksService) PostCallbacksCallbackType(ctx context.Context, request *PostCallbacksCallbackTypeRequest) *PostCallbacksCallbackTypeResponse {
-	log.Printf("processing callback of type: %s\n", request.path.CallbackType)
-	
-	return &PostCallbacksCallbackTypeResponse{
-		response: &response{
-			statusCode: 200,
-			body:       request.body, // Echo back the raw payload
-			headers: map[string]string{
-				"Content-Type":     "application/octet-stream",
-				"Set-Cookie":       "JSESSIONID=example123; Path=/; HttpOnly",
-				"x-jws-signature":  "example-signature",
-			},
-		},
-	}
+func (c callbacksService) PostCallbacksCallbackType(ctx context.Context, request PostCallbacksCallbackTypeRequest) PostCallbacksCallbackTypeResponse {
+	log.Printf("processing callback of type: %s\n", request.Path.CallbackType)
+
+	return PostCallbacksCallbackTypeResponseBuilder().
+		StatusCode200().
+		Headers(PostCallbacksCallbackType200Headers{XJwsSignature: "example-signature"}).
+		SetCookie(http.Cookie{
+			Name:     "JSESSIONID",
+			Value:    "example123",
+			Path:     "/",
+			HttpOnly: true,
+		}).
+		ApplicationOctetStream().
+		Body(request.Body). // echo back the raw payload
+		Build()
 }
 
+type securitySchemas struct{}
+
+func (securitySchemas) SecuritySchemeBearer(r *http.Request, scheme SecurityScheme, name, value string) error {
+	return nil
+}
+
+func (securitySchemas) SecuritySchemeApiKeyAuth(r *http.Request, scheme SecurityScheme, name, value string) error {
+	return nil
+}
+
+func (securitySchemas) SecuritySchemeBasic(r *http.Request, scheme SecurityScheme, name, value string) error {
+	return nil
+}
+
+func (securitySchemas) SecuritySchemeCookie(r *http.Request, scheme SecurityScheme, name, value string) error {
+	return nil
+}
+
+// NewApp wires the example service implementations into a chi router via the
+// generated Handler constructors. Mirrors the pattern recommended in README
+// for production use.
 func NewApp() *http.Server {
-	// Create services
-	transactionsService := &transactionsService{}
-	authService := &authService{}
-	callbacksService := &callbacksService{}
+	r := chi.NewRouter()
 
-	// Create routers
-	transactionsRouter := NewTransactionsRouter(transactionsService)
-	authRouter := NewAuthRouter(authService)
-	callbacksRouter := NewCallbacksRouter(callbacksService)
+	schemas := securitySchemas{}
+	TransactionsHandler(transactionsService{}, r, nil, schemas)
+	AuthHandler(authService{}, r, nil, schemas)
+	CallbacksHandler(callbacksService{}, r, nil, schemas)
 
-	// Main router
-	mainRouter := chi.NewRouter()
-
-	// Manually register routes (since generated code doesn't auto-register)
-	// Transaction routes
-	mainRouter.Post("/transaction", func(w http.ResponseWriter, r *http.Request) {
-		transactionsRouter.postTransaction(w, r)
-	})
-	mainRouter.Put("/transaction", func(w http.ResponseWriter, r *http.Request) {
-		transactionsRouter.putTransaction(w, r)
-	})
-	mainRouter.Delete("/transactions/{uuid}", func(w http.ResponseWriter, r *http.Request) {
-		transactionsRouter.deleteTransactionsUUID(w, r)
-	})
-
-	// Auth routes  
-	mainRouter.Get("/secure-endpoint", func(w http.ResponseWriter, r *http.Request) {
-		authRouter.getSecureEndpoint(w, r)
-	})
-	mainRouter.Get("/semi-secure-endpoint", func(w http.ResponseWriter, r *http.Request) {
-		authRouter.getSemiSecureEndpoint(w, r)
-	})
-	mainRouter.Post("/bearer-endpoint", func(w http.ResponseWriter, r *http.Request) {
-		authRouter.postBearerEndpoint(w, r)
-	})
-
-	// Callback routes
-	mainRouter.Post("/callbacks/{callbackType}", func(w http.ResponseWriter, r *http.Request) {
-		callbacksRouter.postCallbacksCallbackType(w, r)
-	})
-
-	// Health check endpoint
-	mainRouter.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status": "ok"}`))
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 
 	return &http.Server{
 		Addr:    ":8080",
-		Handler: mainRouter,
+		Handler: r,
 	}
 }

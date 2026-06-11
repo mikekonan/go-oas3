@@ -5,11 +5,23 @@ package arraytest
 import (
 	"context"
 	"encoding/json"
+	"encoding/xml"
+	"errors"
+	"fmt"
 	chi "github.com/go-chi/chi/v5"
 	"net/http"
-	"slices"
+	"reflect"
 )
 
+// Hooks are observability callbacks fired by the generated routing layer.
+// Any field may be left nil — ensureHooks() at handler-init time fills the
+// nil entries with no-op stubs, so call sites never need to nil-check.
+//
+// Contract: hooks are for observability (logging, metrics, tracing). The
+// runtime owns the response. ResponseBodyMarshalFailed receives an
+// http.ResponseWriter for inspection only — the runtime calls http.Error
+// immediately after the hook returns, so writing to w from the hook will
+// produce a duplicate-WriteHeader warning. Read headers/r.Context() at most.
 type Hooks struct {
 	RequestSecurityParseFailed    func(*http.Request, string, RequestProcessingResult)
 	RequestSecurityParseCompleted func(*http.Request, string)
@@ -37,10 +49,157 @@ type Hooks struct {
 	ServiceCompleted              func(*http.Request, string)
 }
 
+func ensureHooks(h *Hooks) *Hooks {
+	if h == nil {
+		h = &Hooks{}
+	}
+	if h.RequestSecurityParseFailed == nil {
+		h.RequestSecurityParseFailed = func(*http.Request, string, RequestProcessingResult) {}
+	}
+	if h.RequestSecurityParseCompleted == nil {
+		h.RequestSecurityParseCompleted = func(*http.Request, string) {}
+	}
+	if h.RequestSecurityCheckFailed == nil {
+		h.RequestSecurityCheckFailed = func(*http.Request, string, string, RequestProcessingResult) {}
+	}
+	if h.RequestSecurityCheckCompleted == nil {
+		h.RequestSecurityCheckCompleted = func(*http.Request, string, string) {}
+	}
+	if h.RequestBodyUnmarshalFailed == nil {
+		h.RequestBodyUnmarshalFailed = func(*http.Request, string, RequestProcessingResult) {}
+	}
+	if h.RequestHeaderParseFailed == nil {
+		h.RequestHeaderParseFailed = func(*http.Request, string, string, RequestProcessingResult) {}
+	}
+	if h.RequestPathParseFailed == nil {
+		h.RequestPathParseFailed = func(*http.Request, string, string, RequestProcessingResult) {}
+	}
+	if h.RequestQueryParseFailed == nil {
+		h.RequestQueryParseFailed = func(*http.Request, string, string, RequestProcessingResult) {}
+	}
+	if h.RequestBodyValidationFailed == nil {
+		h.RequestBodyValidationFailed = func(*http.Request, string, RequestProcessingResult) {}
+	}
+	if h.RequestHeaderValidationFailed == nil {
+		h.RequestHeaderValidationFailed = func(*http.Request, string, RequestProcessingResult) {}
+	}
+	if h.RequestPathValidationFailed == nil {
+		h.RequestPathValidationFailed = func(*http.Request, string, RequestProcessingResult) {}
+	}
+	if h.RequestQueryValidationFailed == nil {
+		h.RequestQueryValidationFailed = func(*http.Request, string, RequestProcessingResult) {}
+	}
+	if h.RequestBodyUnmarshalCompleted == nil {
+		h.RequestBodyUnmarshalCompleted = func(*http.Request, string) {}
+	}
+	if h.RequestHeaderParseCompleted == nil {
+		h.RequestHeaderParseCompleted = func(*http.Request, string) {}
+	}
+	if h.RequestPathParseCompleted == nil {
+		h.RequestPathParseCompleted = func(*http.Request, string) {}
+	}
+	if h.RequestQueryParseCompleted == nil {
+		h.RequestQueryParseCompleted = func(*http.Request, string) {}
+	}
+	if h.RequestParseCompleted == nil {
+		h.RequestParseCompleted = func(*http.Request, string) {}
+	}
+	if h.RequestProcessingCompleted == nil {
+		h.RequestProcessingCompleted = func(*http.Request, string) {}
+	}
+	if h.RequestRedirectStarted == nil {
+		h.RequestRedirectStarted = func(*http.Request, string, string) {}
+	}
+	if h.ResponseBodyMarshalCompleted == nil {
+		h.ResponseBodyMarshalCompleted = func(*http.Request, string) {}
+	}
+	if h.ResponseBodyWriteCompleted == nil {
+		h.ResponseBodyWriteCompleted = func(*http.Request, string, int) {}
+	}
+	if h.ResponseBodyMarshalFailed == nil {
+		h.ResponseBodyMarshalFailed = func(http.ResponseWriter, *http.Request, string, error) {}
+	}
+	if h.ResponseBodyWriteFailed == nil {
+		h.ResponseBodyWriteFailed = func(*http.Request, string, int, error) {}
+	}
+	if h.ServiceCompleted == nil {
+		h.ServiceCompleted = func(*http.Request, string) {}
+	}
+	return h
+}
+
+func extractSecurity(
+	r *http.Request,
+	hooks *Hooks,
+	name string,
+	requirements [][]securityProcessor,
+	skipCheck bool,
+) (results map[SecurityScheme]string, passed bool, checkErr error) {
+	if skipCheck {
+		// Expose every extractable credential across all OR-branches so the
+		// handler can decide. Validation is skipped by contract.
+		for _, processors := range requirements {
+			for _, processor := range processors {
+				_, value, isExtracted := processor.extract(r)
+				if !isExtracted {
+					continue
+				}
+				if results == nil {
+					results = map[SecurityScheme]string{}
+				}
+				results[processor.scheme] = value
+			}
+		}
+		return results, true, nil
+	}
+
+	for _, processors := range requirements {
+		// Per-branch buffer: a partially-extracted branch must not leak its
+		// credentials into the final results. Allocated lazily on the first
+		// extracted credential so failed branches cost no allocation.
+		var branchResults map[SecurityScheme]string
+		linkedChecksValid := true
+		attemptCheckErr := error(nil)
+		for _, processor := range processors {
+			schemeName, value, isExtracted := processor.extract(r)
+			if !isExtracted {
+				linkedChecksValid = false
+				break
+			}
+			if err := processor.handle(r, processor.scheme, schemeName, value); err != nil {
+				hooks.RequestSecurityCheckFailed(r, name, string(processor.scheme),
+					RequestProcessingResult{error: err, typee: SecurityCheckFailed})
+				linkedChecksValid = false
+				attemptCheckErr = err
+				break
+			}
+			hooks.RequestSecurityCheckCompleted(r, name, string(processor.scheme))
+			if branchResults == nil {
+				branchResults = make(map[SecurityScheme]string, len(processors))
+			}
+			branchResults[processor.scheme] = value
+		}
+		if linkedChecksValid {
+			if len(branchResults) > 0 {
+				results = branchResults
+			}
+			return results, true, nil
+		}
+		// Preserve the first real handle() error across OR-branches. A later
+		// branch that fails only on extract (attemptCheckErr stays nil) must
+		// NOT overwrite a real auth-handler error from an earlier branch.
+		if checkErr == nil {
+			checkErr = attemptCheckErr
+		}
+	}
+	return results, false, checkErr
+}
+
 type requestProcessingResultType uint8
 
 const (
-	BodyUnmarshalFailed requestProcessingResultType = iota + 1
+	ParseSucceed requestProcessingResultType = iota
+	BodyUnmarshalFailed
 	BodyValidationFailed
 	HeaderParseFailed
 	HeaderValidationFailed
@@ -50,7 +209,6 @@ const (
 	PathValidationFailed
 	SecurityParseFailed
 	SecurityCheckFailed
-	ParseSucceed
 )
 
 type RequestProcessingResult struct {
@@ -73,10 +231,24 @@ func (r RequestProcessingResult) Err() error {
 	return r.error
 }
 
-func DefaultHandler(impl DefaultService, r chi.Router, hooks *Hooks) http.Handler {
-	if hooks == nil {
-		hooks = &Hooks{}
+var (
+	_ = reflect.ValueOf
+)
+
+func isNilResponse(v responseInterface) bool {
+	if v == nil {
+		return true
 	}
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+	case reflect.Pointer, reflect.Interface, reflect.Chan, reflect.Func, reflect.Map, reflect.Slice:
+		return rv.IsNil()
+	}
+	return false
+}
+
+func DefaultHandler(impl DefaultService, r chi.Router, hooks *Hooks) http.Handler {
+	hooks = ensureHooks(hooks)
 
 	router := &defaultRouter{router: r, service: impl, hooks: hooks}
 
@@ -96,8 +268,6 @@ func (router *defaultRouter) mount() {
 }
 
 func (router *defaultRouter) parsePostTestRequest(r *http.Request) (request PostTestRequest) {
-	request.ProcessingResult = RequestProcessingResult{typee: ParseSucceed}
-
 	var (
 		body      ArrayTestRequest
 		decodeErr error
@@ -105,74 +275,36 @@ func (router *defaultRouter) parsePostTestRequest(r *http.Request) (request Post
 	decodeErr = json.NewDecoder(r.Body).Decode(&body)
 	if decodeErr != nil {
 		request.ProcessingResult = RequestProcessingResult{error: decodeErr, typee: BodyUnmarshalFailed}
-		if router.hooks.RequestBodyUnmarshalFailed != nil {
-			router.hooks.RequestBodyUnmarshalFailed(r, "PostTest", request.ProcessingResult)
-
-			return
-		}
+		router.hooks.RequestBodyUnmarshalFailed(r, "PostTest", request.ProcessingResult)
 
 		return
 	}
 
 	request.Body = body
 
-	if router.hooks.RequestBodyUnmarshalCompleted != nil {
-		router.hooks.RequestBodyUnmarshalCompleted(r, "PostTest")
-	}
+	router.hooks.RequestBodyUnmarshalCompleted(r, "PostTest")
 
 	if err := request.Body.Validate(); err != nil {
 		request.ProcessingResult = RequestProcessingResult{error: err, typee: BodyValidationFailed}
-		if router.hooks.RequestBodyValidationFailed != nil {
-			router.hooks.RequestBodyValidationFailed(r, "PostTest", request.ProcessingResult)
-		}
+		router.hooks.RequestBodyValidationFailed(r, "PostTest", request.ProcessingResult)
 
 		return
 	}
 
-	if router.hooks.RequestParseCompleted != nil {
-		router.hooks.RequestParseCompleted(r, "PostTest")
-	}
+	router.hooks.RequestParseCompleted(r, "PostTest")
 
 	return
 }
 
 func (router *defaultRouter) PostTest(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-
-	response := router.service.PostTest(r.Context(), router.parsePostTestRequest(r))
-
-	for header, value := range response.headers() {
-		w.Header().Set(header, value)
-	}
-
-	for _, c := range response.cookies() {
-		cookie := c
-		http.SetCookie(w, &cookie)
-	}
-
-	if slices.Contains([]int{301, 302, 303, 307, 308}, response.statusCode()) && response.redirectURL() != "" {
-		if router.hooks.RequestRedirectStarted != nil {
-			router.hooks.RequestRedirectStarted(r, "PostTest", response.redirectURL())
-		}
-
-		http.Redirect(w, r, response.redirectURL(), response.statusCode())
-
-		if router.hooks.ServiceCompleted != nil {
-			router.hooks.ServiceCompleted(r, "PostTest")
-		}
-
+	result := router.service.PostTest(r.Context(), router.parsePostTestRequest(r))
+	if isNilResponse(result) {
+		router.hooks.ResponseBodyMarshalFailed(w, r, "PostTest", errServiceReturnedANilResponse)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-
-	if router.hooks.RequestProcessingCompleted != nil {
-		router.hooks.RequestProcessingCompleted(r, "PostTest")
-	}
-
-	w.WriteHeader(response.statusCode())
-
-	if router.hooks.ServiceCompleted != nil {
-		router.hooks.ServiceCompleted(r, "PostTest")
-	}
+	respond(w, r, router.hooks, "PostTest", result.inner(), false)
 }
 
 type response struct {
@@ -186,13 +318,102 @@ type response struct {
 }
 
 type responseInterface interface {
-	statusCode() int
-	body() interface{}
-	bodyRaw() []byte
-	contentType() string
-	redirectURL() string
-	cookies() []http.Cookie
-	headers() map[string]string
+	inner() *response
+}
+
+var (
+	_ = xml.Marshal
+	_ = json.Marshal
+	_ = errors.New
+	_ = fmt.Sprint
+	_ = reflect.ValueOf
+)
+
+func respond(w http.ResponseWriter, r *http.Request, hooks *Hooks, name string, resp *response, hasContent bool) {
+	for header, value := range resp.headers {
+		w.Header().Set(header, value)
+	}
+
+	cookies := resp.cookies
+	for i := range cookies {
+		http.SetCookie(w, &cookies[i])
+	}
+
+	if url := resp.redirectURL; url != "" {
+		switch resp.statusCode {
+		case 301, 302, 303, 307, 308:
+			hooks.RequestRedirectStarted(r, name, url)
+			http.Redirect(w, r, url, resp.statusCode)
+			hooks.ServiceCompleted(r, name)
+			return
+		}
+	}
+
+	hooks.RequestProcessingCompleted(r, name)
+
+	if !hasContent {
+		w.WriteHeader(resp.statusCode)
+		hooks.ServiceCompleted(r, name)
+		return
+	}
+
+	// Marshal BEFORE writing the status code so a serialization failure can
+	// still surface as a clean 500 instead of a 2xx with a truncated body —
+	// once WriteHeader fires, headers/status are committed to the wire and
+	// we can no longer signal the error to the client.
+	var body []byte
+	if resp.body != nil {
+		var err error
+		switch resp.contentType {
+		case "application/xml":
+			body, err = xml.Marshal(resp.body)
+		case "application/octet-stream":
+			// Fast path for []byte and its aliases (e.g. type X = []byte).
+			// Fall back to reflect for named types whose underlying type is
+			// []byte (type X []byte) — the plain type assertion above would
+			// fail those since Go checks type identity, not underlying type.
+			if b, ok := (resp.body).([]byte); ok {
+				body = b
+			} else {
+				rv := reflect.ValueOf(resp.body)
+				if rv.Kind() == reflect.Slice && rv.Type().Elem().Kind() == reflect.Uint8 {
+					body = rv.Bytes()
+				} else {
+					err = errors.New("body is not []byte")
+				}
+			}
+		case "text/html":
+			body = []byte(fmt.Sprint(resp.body))
+		case "application/json":
+			fallthrough
+		default:
+			body, err = json.Marshal(resp.body)
+		}
+		if err != nil {
+			hooks.ResponseBodyMarshalFailed(w, r, name, err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		hooks.ResponseBodyMarshalCompleted(r, name)
+	} else if len(resp.bodyRaw) > 0 {
+		body = resp.bodyRaw
+	}
+
+	if ct := resp.contentType; ct != "" {
+		w.Header().Set("Content-Type", ct)
+	}
+	w.WriteHeader(resp.statusCode)
+
+	if len(body) > 0 {
+		count, err := w.Write(body)
+		if err != nil {
+			hooks.ResponseBodyWriteFailed(r, name, count, err)
+			return
+		}
+		hooks.ResponseBodyWriteCompleted(r, name, count)
+	}
+
+	hooks.ServiceCompleted(r, name)
 }
 
 type PostTestResponse interface {
@@ -204,34 +425,10 @@ type postTestResponse struct {
 	response
 }
 
-func (postTestResponse) postTestResponse() {}
+func (*postTestResponse) postTestResponse() {}
 
-func (response postTestResponse) statusCode() int {
-	return response.response.statusCode
-}
-
-func (response postTestResponse) body() interface{} {
-	return response.response.body
-}
-
-func (response postTestResponse) bodyRaw() []byte {
-	return response.response.bodyRaw
-}
-
-func (response postTestResponse) contentType() string {
-	return response.response.contentType
-}
-
-func (response postTestResponse) redirectURL() string {
-	return response.response.redirectURL
-}
-
-func (response postTestResponse) headers() map[string]string {
-	return response.response.headers
-}
-
-func (response postTestResponse) cookies() []http.Cookie {
-	return response.response.cookies
+func (r *postTestResponse) inner() *response {
+	return &r.response
 }
 
 type postTestStatusCodeResponseBuilder struct {
@@ -253,7 +450,7 @@ type PostTest200ResponseBuilder struct {
 }
 
 func (builder *PostTest200ResponseBuilder) Build() PostTestResponse {
-	return postTestResponse{response: builder.response}
+	return &postTestResponse{response: builder.response}
 }
 
 type DefaultService interface {

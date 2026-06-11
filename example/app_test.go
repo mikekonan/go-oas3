@@ -48,10 +48,10 @@ func TestValidation(t *testing.T) {
 }
 
 func TestGenericResponse(t *testing.T) {
-	// Test valid enum values - note: GenericResponse.Result is of type Result enum
+	// Test valid enum values — the property is typed as GenericResponseResultEnum.
 	validResponses := []GenericResponse{
-		{Result: ResultSuccess},
-		{Result: ResultFailed},
+		{Result: GenericResponseResultEnumSuccess},
+		{Result: GenericResponseResultEnumFailed},
 	}
 
 	for _, resp := range validResponses {
@@ -60,23 +60,22 @@ func TestGenericResponse(t *testing.T) {
 		}
 	}
 
-	// Test Result enum validation directly since GenericResponse.Validate() returns nil
-	// Valid enum values should validate correctly
-	validResults := []Result{
-		ResultSuccess,
-		ResultFailed,
+	// The enum's own membership check is exposed via Check(), not Validate().
+	validResults := []GenericResponseResultEnum{
+		GenericResponseResultEnumSuccess,
+		GenericResponseResultEnumFailed,
 	}
 
 	for _, result := range validResults {
-		if err := result.Validate(); err != nil {
-			t.Errorf("expected valid result %v to pass validation, got error: %v", result, err)
+		if err := result.Check(); err != nil {
+			t.Errorf("expected valid result %v to pass Check, got error: %v", result, err)
 		}
 	}
 
-	// Test invalid enum value
-	invalidResult := Result("invalid")
-	if err := invalidResult.Validate(); err == nil {
-		t.Error("expected invalid result to fail validation")
+	// Test invalid enum value.
+	invalidResult := GenericResponseResultEnum("invalid")
+	if err := invalidResult.Check(); err == nil {
+		t.Error("expected invalid result to fail Check")
 	}
 }
 
@@ -108,7 +107,7 @@ func TestCreateTransactionRequest(t *testing.T) {
 	// Test invalid request - amount too small
 	invalidAmountRequest := CreateTransactionRequest{
 		Description: "Test transaction description that meets minimum length",
-		Title:       "Test Title", 
+		Title:       "Test Title",
 		Amount:      0.005, // Below minimum exclusive 0.009
 		Currency:    "USD",
 	}

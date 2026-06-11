@@ -7,9 +7,13 @@ import (
 )
 
 type Application struct {
-	loader    *loader.Loader       `di.inject:"loader"`
-	generator *generator.Generator `di.inject:"generator"`
-	writer    *writer.Writer       `di.inject:"writer"`
+	loader    *loader.Loader
+	generator *generator.Generator
+	writer    *writer.Writer
+}
+
+func New(l *loader.Loader, g *generator.Generator, w *writer.Writer) *Application {
+	return &Application{loader: l, generator: g, writer: w}
 }
 
 func (app *Application) Run() error {
