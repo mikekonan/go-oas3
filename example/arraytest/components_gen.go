@@ -18,6 +18,7 @@ var (
 type arrayTestRequest struct {
 	EmptyAllowedArray   []string       `json:"emptyAllowedArray"`
 	ObjectArray         []NestedObject `json:"objectArray"`
+	OptionalMinArray    []string       `json:"optionalMinArray"`
 	OptionalStringArray []string       `json:"optionalStringArray"`
 	RequiredIntArray    *[]int         `json:"requiredIntArray"`
 	RequiredStringArray *[]string      `json:"requiredStringArray"`
@@ -26,6 +27,7 @@ type arrayTestRequest struct {
 type ArrayTestRequest struct {
 	EmptyAllowedArray   []string       `json:"emptyAllowedArray"`
 	ObjectArray         []NestedObject `json:"objectArray"`
+	OptionalMinArray    []string       `json:"optionalMinArray"`
 	OptionalStringArray []string       `json:"optionalStringArray"`
 	RequiredIntArray    []int          `json:"requiredIntArray"`
 	RequiredStringArray []string       `json:"requiredStringArray"`
@@ -39,6 +41,7 @@ func (body *ArrayTestRequest) UnmarshalJSON(data []byte) error {
 
 	body.EmptyAllowedArray = value.EmptyAllowedArray
 	body.ObjectArray = value.ObjectArray
+	body.OptionalMinArray = value.OptionalMinArray
 	body.OptionalStringArray = value.OptionalStringArray
 
 	if value.RequiredIntArray == nil {
@@ -58,6 +61,7 @@ func (body *ArrayTestRequest) UnmarshalJSON(data []byte) error {
 func (body ArrayTestRequest) Validate() error {
 	return validation.ValidateStruct(&body,
 		validation.Field(&body.EmptyAllowedArray, validation.Length(0, 3)),
+		validation.Field(&body.OptionalMinArray, validation.Skip.When(body.OptionalMinArray == nil), validation.Required, validation.Length(2, 0)),
 		validation.Field(&body.OptionalStringArray, validation.Length(0, 5)),
 		validation.Field(&body.RequiredIntArray, validation.Required, validation.Length(2, 0)),
 		validation.Field(&body.RequiredStringArray, validation.Required, validation.Length(1, 10)))

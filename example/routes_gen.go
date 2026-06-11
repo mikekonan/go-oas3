@@ -164,8 +164,9 @@ func extractSecurity(
 
 	for _, processors := range requirements {
 		// Per-branch buffer: a partially-extracted branch must not leak its
-		// credentials into the final results.
-		branchResults := map[SecurityScheme]string{}
+		// credentials into the final results. Allocated lazily on the first
+		// extracted credential so failed branches cost no allocation.
+		var branchResults map[SecurityScheme]string
 		linkedChecksValid := true
 		attemptCheckErr := error(nil)
 		for _, processor := range processors {
@@ -182,6 +183,9 @@ func extractSecurity(
 				break
 			}
 			hooks.RequestSecurityCheckCompleted(r, name, string(processor.scheme))
+			if branchResults == nil {
+				branchResults = make(map[SecurityScheme]string, len(processors))
+			}
 			branchResults[processor.scheme] = value
 		}
 		if linkedChecksValid {

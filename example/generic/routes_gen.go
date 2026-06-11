@@ -156,8 +156,9 @@ func extractSecurity(
 
 	for _, processors := range requirements {
 		// Per-branch buffer: a partially-extracted branch must not leak its
-		// credentials into the final results.
-		branchResults := map[SecurityScheme]string{}
+		// credentials into the final results. Allocated lazily on the first
+		// extracted credential so failed branches cost no allocation.
+		var branchResults map[SecurityScheme]string
 		linkedChecksValid := true
 		attemptCheckErr := error(nil)
 		for _, processor := range processors {
@@ -174,6 +175,9 @@ func extractSecurity(
 				break
 			}
 			hooks.RequestSecurityCheckCompleted(r, name, string(processor.scheme))
+			if branchResults == nil {
+				branchResults = make(map[SecurityScheme]string, len(processors))
+			}
 			branchResults[processor.scheme] = value
 		}
 		if linkedChecksValid {
@@ -890,6 +894,9 @@ func (b *ResponseBuilder[B]) Cookie(c http.Cookie) *ResponseBuilder[B] {
 	return b
 }
 
+// Redirect sets the Location target. It only takes effect when the response
+// status code is 301, 302, 303, 307 or 308; respond() silently ignores the
+// redirect URL for any other status, so pair it with a matching Status call.
 func (b *ResponseBuilder[B]) Redirect(url string) *ResponseBuilder[B] {
 	b.response.redirectURL = url
 	return b

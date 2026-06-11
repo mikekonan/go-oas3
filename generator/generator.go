@@ -311,11 +311,7 @@ func (generator *Generator) requestParameters(paths map[string]*openapi3.PathIte
 		}
 	}
 
-	tags := make([]string, 0, len(codeByTag))
-	for tag := range codeByTag {
-		tags = append(tags, tag)
-	}
-	slices.Sort(tags)
+	tags := sortedMapKeys(codeByTag)
 
 	out := jen.Null()
 	for _, tag := range tags {
@@ -610,11 +606,7 @@ func (generator *Generator) requestParameterStruct(name string, contentType stri
 	for _, p := range operation.Parameters {
 		paramsByIn[p.Value.In] = append(paramsByIn[p.Value.In], p)
 	}
-	ins := make([]string, 0, len(paramsByIn))
-	for in := range paramsByIn {
-		ins = append(ins, in)
-	}
-	slices.Sort(ins)
+	ins := sortedMapKeys(paramsByIn)
 	for _, group := range paramsByIn {
 		slices.SortFunc(group, func(a, b *openapi3.ParameterRef) int {
 			return strings.Compare(a.Value.Name, b.Value.Name)
@@ -919,6 +911,14 @@ func (generator *Generator) fieldValidationRuleFromSchema(receiverName string, p
 			params := []jen.Code{jen.Op("&").Id(receiverName).Dot(propertyName)}
 			if v.MinItems > 0 && required {
 				params = append(params, jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "Required"))
+			} else if v.MinItems > 0 {
+				// Optional array: an absent field (nil slice) passes, but a
+				// present-but-empty [] must still respect minItems. Unlike
+				// strings, nil and empty are distinguishable for slices, so
+				// skip when nil and require non-empty otherwise.
+				params = append(params,
+					jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "Skip").Dot("When").Call(jen.Id(receiverName).Dot(propertyName).Op("==").Nil()),
+					jen.Qual("github.com/go-ozzo/ozzo-validation/v4", "Required"))
 			}
 			var maxItems uint64
 			if v.MaxItems != nil {
@@ -1616,8 +1616,9 @@ func extractSecurity(
 
 	for _, processors := range requirements {
 		// Per-branch buffer: a partially-extracted branch must not leak its
-		// credentials into the final results.
-		branchResults := map[SecurityScheme]string{}
+		// credentials into the final results. Allocated lazily on the first
+		// extracted credential so failed branches cost no allocation.
+		var branchResults map[SecurityScheme]string
 		linkedChecksValid := true
 		attemptCheckErr := error(nil)
 		for _, processor := range processors {
@@ -1634,6 +1635,9 @@ func extractSecurity(
 				break
 			}
 			hooks.RequestSecurityCheckCompleted(r, name, string(processor.scheme))
+			if branchResults == nil {
+				branchResults = make(map[SecurityScheme]string, len(processors))
+			}
 			branchResults[processor.scheme] = value
 		}
 		if linkedChecksValid {
@@ -1861,11 +1865,7 @@ func (generator *Generator) groupedOperations(swagger *openapi3.T) []groupedOper
 		}
 	}
 
-	tags := make([]string, 0, len(byTag))
-	for tag := range byTag {
-		tags = append(tags, tag)
-	}
-	slices.Sort(tags)
+	tags := sortedMapKeys(byTag)
 
 	result := make([]groupedOperations, 0, len(tags))
 	for _, tag := range tags {
@@ -1937,11 +1937,7 @@ func (generator *Generator) handler(name string, serviceName string, routerName 
 			var reqValues []jen.Code
 			for _, requirement := range *op.operation.Security {
 				var handlerLookups []jen.Code
-				keys := make([]string, 0, len(requirement))
-				for k := range requirement {
-					keys = append(keys, k)
-				}
-				slices.Sort(keys)
+				keys := sortedMapKeys(requirement)
 				for _, k := range keys {
 					handlerLookups = append(handlerLookups, jen.Id("router").Dot("securityHandlers").Index(jen.Id("SecurityScheme"+strings.Title(k))))
 				}
@@ -2899,11 +2895,7 @@ func (generator *Generator) handlersInterfaces(swagger *openapi3.T) jen.Code {
 		}
 	}
 
-	tags := make([]string, 0, len(methodsByTag))
-	for t := range methodsByTag {
-		tags = append(tags, t)
-	}
-	slices.Sort(tags)
+	tags := sortedMapKeys(methodsByTag)
 
 	result := make([]jen.Code, 0, len(tags))
 	for _, tag := range tags {
@@ -3042,6 +3034,9 @@ func (b *ResponseBuilder[B]) Cookie(c http.Cookie) *ResponseBuilder[B] {
 	return b
 }
 
+// Redirect sets the Location target. It only takes effect when the response
+// status code is 301, 302, 303, 307 or 308; respond() silently ignores the
+// redirect URL for any other status, so pair it with a matching Status call.
 func (b *ResponseBuilder[B]) Redirect(url string) *ResponseBuilder[B] {
 	b.response.redirectURL = url
 	return b

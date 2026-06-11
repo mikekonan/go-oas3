@@ -32,5 +32,5 @@ func (body *SimpleArrayTest) UnmarshalJSON(data []byte) error {
 }
 func (body SimpleArrayTest) Validate() error {
 	return validation.ValidateStruct(&body,
-		validation.Field(&body.OptionalArray, validation.Length(1, 5)))
+		validation.Field(&body.OptionalArray, validation.Skip.When(body.OptionalArray == nil), validation.Required, validation.Length(1, 5)))
 }
