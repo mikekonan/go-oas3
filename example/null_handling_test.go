@@ -19,14 +19,14 @@ func TestNullHandling(t *testing.T) {
 			name:        "required field null",
 			json:        `{"description": null, "title": "test title", "regexParam": "123"}`,
 			expectError: true,
-			errorMsg:    "field 'Description' is required but was null or missing",
+			errorMsg:    "Description is required",
 			description: "Required field set to null should produce descriptive error",
 		},
 		{
 			name:        "required field missing",
 			json:        `{"title": "test title", "regexParam": "123"}`,
 			expectError: true,
-			errorMsg:    "field 'Description' is required but was null or missing",
+			errorMsg:    "Description is required",
 			description: "Missing required field should produce descriptive error",
 		},
 		{
@@ -142,14 +142,14 @@ func TestUpdateTransactionNullHandling(t *testing.T) {
 			name:        "required description field null",
 			json:        `{"description": null, "title": "test title"}`,
 			expectError: true,
-			errorMsg:    "field 'Description' is required but was null or missing",
+			errorMsg:    "Description is required",
 			description: "Required field set to null should produce descriptive error",
 		},
 		{
 			name:        "required description field missing",
 			json:        `{"title": "test title"}`,
 			expectError: true,
-			errorMsg:    "field 'Description' is required but was null or missing",
+			errorMsg:    "Description is required",
 			description: "Missing required field should produce descriptive error",
 		},
 		{
@@ -198,7 +198,7 @@ func TestNullSemanticsCorrectness(t *testing.T) {
 				expected: "missing",
 			},
 			{
-				name:     "field null", 
+				name:     "field null",
 				json:     `{"description": "test desc", "details": null, "regexParam": "123"}`,
 				expected: "null",
 			},
@@ -259,11 +259,11 @@ func BenchmarkUnmarshalJSON(b *testing.B) {
 
 func BenchmarkValidation(b *testing.B) {
 	req := CreateTransactionRequest{
-		Description:   "test description",
-		Title:         "test title",
-		Amount:        100.0,
-		AmountCents:   50,
-		RegexParam:    "123",
+		Description: "test description",
+		Title:       "test title",
+		Amount:      100.0,
+		AmountCents: 50,
+		RegexParam:  "123",
 	}
 
 	b.ResetTimer()
