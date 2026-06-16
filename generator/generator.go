@@ -1023,7 +1023,7 @@ func (generator *Generator) componentFromSchema(name string, parentSchema *opena
 		}
 
 		code := jen.If(jen.Id("value").Dot(propertyName).Op("==").Id("nil")).
-			Block(jen.Return().Id(generator.errVar(fmt.Sprintf("field '%s' is required but was null or missing", propertyName), errFileComponents))).
+			Block(jen.Return().Id(generator.errVar(fmt.Sprintf("%s is required", property), errFileComponents))).
 			Line().Line()
 
 		isTrimmable := generator.getXGoStringTrimmable(schema)
@@ -1583,10 +1583,10 @@ func isNilResponse(v responseInterface) bool {
 }
 
 // extractSecurityFunc emits the extractSecurity helper that walks the
-// OR-of-AND security matrix. Return shape: passed=true ⇒ one branch
-// satisfied; passed=false + checkErr ⇒ handle() rejected (hook already
-// fired, caller must NOT fire RequestSecurityParseFailed); passed=false +
-// nil checkErr ⇒ no credentials extracted (caller fires it).
+// OR-of-AND security matrix. passed=true ⇒ one branch satisfied;
+// passed=false ⇒ no branch satisfied. A handle() rejection fires
+// RequestSecurityCheckFailed inside the helper with the real error; the
+// caller always reports a generic SecurityParseFailed on any failure.
 func (generator *Generator) extractSecurityFunc() jen.Code {
 	const src = `
 func extractSecurity(
@@ -1595,7 +1595,7 @@ func extractSecurity(
 	name string,
 	requirements [][]securityProcessor,
 	skipCheck bool,
-) (results map[SecurityScheme]string, passed bool, checkErr error) {
+) (results map[SecurityScheme]string, passed bool) {
 	if skipCheck {
 		// Expose every extractable credential across all OR-branches so the
 		// handler can decide. Validation is skipped by contract.
@@ -1611,7 +1611,7 @@ func extractSecurity(
 				results[processor.scheme] = value
 			}
 		}
-		return results, true, nil
+		return results, true
 	}
 
 	for _, processors := range requirements {
@@ -1620,7 +1620,6 @@ func extractSecurity(
 		// extracted credential so failed branches cost no allocation.
 		var branchResults map[SecurityScheme]string
 		linkedChecksValid := true
-		attemptCheckErr := error(nil)
 		for _, processor := range processors {
 			schemeName, value, isExtracted := processor.extract(r)
 			if !isExtracted {
@@ -1631,7 +1630,6 @@ func extractSecurity(
 				hooks.RequestSecurityCheckFailed(r, name, string(processor.scheme),
 					RequestProcessingResult{error: err, typee: SecurityCheckFailed})
 				linkedChecksValid = false
-				attemptCheckErr = err
 				break
 			}
 			hooks.RequestSecurityCheckCompleted(r, name, string(processor.scheme))
@@ -1644,16 +1642,10 @@ func extractSecurity(
 			if len(branchResults) > 0 {
 				results = branchResults
 			}
-			return results, true, nil
-		}
-		// Preserve the first real handle() error across OR-branches. A later
-		// branch that fails only on extract (attemptCheckErr stays nil) must
-		// NOT overwrite a real auth-handler error from an earlier branch.
-		if checkErr == nil {
-			checkErr = attemptCheckErr
+			return results, true
 		}
 	}
-	return results, false, checkErr
+	return results, false
 }
 `
 	return jen.Op(src)
@@ -2388,12 +2380,12 @@ func (generator *Generator) wrapperSecurity(name string, operation *openapi3.Ope
 	skipCheckLit := jen.Lit(skipSecurityCheck)
 	securityFailedErr := generator.errVar("failed passing security checks", errFileRoutes)
 
-	// checkErr from extractSecurity carries a handle() failure; the hook for
-	// it was already fired inside extractSecurity, so we only fire
-	// RequestSecurityParseFailed on the no-credentials branch.
+	// A handle() rejection fires RequestSecurityCheckFailed inside
+	// extractSecurity with the real error; here we always surface a generic
+	// SecurityParseFailed in ProcessingResult regardless of the failure cause.
 	return jen.Null().
 		Add(jen.Line()).
-		Add(jen.List(jen.Id("results"), jen.Id("passed"), jen.Id("checkErr")).Op(":=").
+		Add(jen.List(jen.Id("results"), jen.Id("passed")).Op(":=").
 			Id("extractSecurity").Call(
 			jen.Id("r"),
 			jen.Id("router").Dot("hooks"),
@@ -2405,13 +2397,6 @@ func (generator *Generator) wrapperSecurity(name string, operation *openapi3.Ope
 		Add(jen.Id("request").Dot("SecurityCheckResults").Op("=").Id("results")).
 		Add(jen.Line()).
 		Add(jen.If(jen.Op("!").Id("passed")).Block(
-			jen.If(jen.Id("checkErr").Op("!=").Nil()).Block(
-				jen.Id("request").Dot("ProcessingResult").Op("=").Id("RequestProcessingResult").Values(
-					jen.Id("error").Op(":").Id("checkErr"),
-					jen.Id("typee").Op(":").Id("SecurityCheckFailed"),
-				),
-				jen.Return(),
-			),
 			jen.Id("request").Dot("ProcessingResult").Op("=").Id("RequestProcessingResult").Values(
 				jen.Id("error").Op(":").Id(securityFailedErr),
 				jen.Id("typee").Op(":").Id("SecurityParseFailed"),

@@ -9,12 +9,12 @@ import (
 )
 
 var (
-	errFailedPassingSecurityChecks               = errors.New("failed passing security checks")
-	errFieldCodeIsRequiredButWasNullOrMissing    = errors.New("field 'Code' is required but was null or missing")
-	errFieldIDIsRequiredButWasNullOrMissing      = errors.New("field 'ID' is required but was null or missing")
-	errFieldMessageIsRequiredButWasNullOrMissing = errors.New("field 'Message' is required but was null or missing")
-	errFieldNameIsRequiredButWasNullOrMissing    = errors.New("field 'Name' is required but was null or missing")
-	errServiceReturnedANilResponse               = errors.New("service returned a nil response")
+	errCodeIsRequired              = errors.New("code is required")
+	errFailedPassingSecurityChecks = errors.New("failed passing security checks")
+	errIDIsRequired                = errors.New("id is required")
+	errMessageIsRequired           = errors.New("message is required")
+	errNameIsRequired              = errors.New("name is required")
+	errServiceReturnedANilResponse = errors.New("service returned a nil response")
 )
 
 type createWidgetRequest struct {
@@ -32,7 +32,7 @@ func (body *CreateWidgetRequest) UnmarshalJSON(data []byte) error {
 	}
 
 	if value.Name == nil {
-		return errFieldNameIsRequiredButWasNullOrMissing
+		return errNameIsRequired
 	}
 
 	body.Name = *value.Name
@@ -61,13 +61,13 @@ func (body *ErrorBody) UnmarshalJSON(data []byte) error {
 	}
 
 	if value.Code == nil {
-		return errFieldCodeIsRequiredButWasNullOrMissing
+		return errCodeIsRequired
 	}
 
 	body.Code = *value.Code
 
 	if value.Message == nil {
-		return errFieldMessageIsRequiredButWasNullOrMissing
+		return errMessageIsRequired
 	}
 
 	body.Message = *value.Message
@@ -95,13 +95,13 @@ func (body *Widget) UnmarshalJSON(data []byte) error {
 	}
 
 	if value.ID == nil {
-		return errFieldIDIsRequiredButWasNullOrMissing
+		return errIDIsRequired
 	}
 
 	body.ID = *value.ID
 
 	if value.Name == nil {
-		return errFieldNameIsRequiredButWasNullOrMissing
+		return errNameIsRequired
 	}
 
 	body.Name = *value.Name

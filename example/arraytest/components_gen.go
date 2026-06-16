@@ -9,10 +9,10 @@ import (
 )
 
 var (
-	errFieldIDIsRequiredButWasNullOrMissing                  = errors.New("field 'ID' is required but was null or missing")
-	errFieldRequiredIntArrayIsRequiredButWasNullOrMissing    = errors.New("field 'RequiredIntArray' is required but was null or missing")
-	errFieldRequiredStringArrayIsRequiredButWasNullOrMissing = errors.New("field 'RequiredStringArray' is required but was null or missing")
-	errServiceReturnedANilResponse                           = errors.New("service returned a nil response")
+	errIDIsRequired                  = errors.New("id is required")
+	errRequiredIntArrayIsRequired    = errors.New("requiredIntArray is required")
+	errRequiredStringArrayIsRequired = errors.New("requiredStringArray is required")
+	errServiceReturnedANilResponse   = errors.New("service returned a nil response")
 )
 
 type arrayTestRequest struct {
@@ -45,13 +45,13 @@ func (body *ArrayTestRequest) UnmarshalJSON(data []byte) error {
 	body.OptionalStringArray = value.OptionalStringArray
 
 	if value.RequiredIntArray == nil {
-		return errFieldRequiredIntArrayIsRequiredButWasNullOrMissing
+		return errRequiredIntArrayIsRequired
 	}
 
 	body.RequiredIntArray = *value.RequiredIntArray
 
 	if value.RequiredStringArray == nil {
-		return errFieldRequiredStringArrayIsRequiredButWasNullOrMissing
+		return errRequiredStringArrayIsRequired
 	}
 
 	body.RequiredStringArray = *value.RequiredStringArray
@@ -86,7 +86,7 @@ func (body *NestedObject) UnmarshalJSON(data []byte) error {
 	body.Name = value.Name
 
 	if value.ID == nil {
-		return errFieldIDIsRequiredButWasNullOrMissing
+		return errIDIsRequired
 	}
 
 	body.ID = *value.ID

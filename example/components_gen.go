@@ -19,17 +19,17 @@ import (
 var regexParamRegex = regexp.MustCompile("^[.?\\d]+$")
 
 var (
-	errCallbackTypeIsEmpty                           = errors.New("callbackType is empty")
-	errFailedPassingSecurityChecks                   = errors.New("failed passing security checks")
-	errFieldDescriptionIsRequiredButWasNullOrMissing = errors.New("field 'Description' is required but was null or missing")
-	errInvalidGenericResponseResultEnumEnumValue     = errors.New("invalid GenericResponseResultEnum enum value")
-	errInvalidWithEnumEnumValue                      = errors.New("invalid WithEnum enum value")
-	errRegexParamIsEmpty                             = errors.New("regexParam is empty")
-	errRegexParamNotMatchedByTheDRegex               = errors.New("regexParam not matched by the '^[.?\\d]+$' regex")
-	errServiceReturnedANilResponse                   = errors.New("service returned a nil response")
-	errUUIDIsEmpty                                   = errors.New("uuid is empty")
-	errXFingerprintIsEmpty                           = errors.New("x-fingerprint is empty")
-	errXFingerprintNotMatchedByThe09aFAFRegex        = errors.New("x-fingerprint not matched by the '[0-9a-fA-F]+' regex")
+	errCallbackTypeIsEmpty                       = errors.New("callbackType is empty")
+	errDescriptionIsRequired                     = errors.New("Description is required")
+	errFailedPassingSecurityChecks               = errors.New("failed passing security checks")
+	errInvalidGenericResponseResultEnumEnumValue = errors.New("invalid GenericResponseResultEnum enum value")
+	errInvalidWithEnumEnumValue                  = errors.New("invalid WithEnum enum value")
+	errRegexParamIsEmpty                         = errors.New("regexParam is empty")
+	errRegexParamNotMatchedByTheDRegex           = errors.New("regexParam not matched by the '^[.?\\d]+$' regex")
+	errServiceReturnedANilResponse               = errors.New("service returned a nil response")
+	errUUIDIsEmpty                               = errors.New("uuid is empty")
+	errXFingerprintIsEmpty                       = errors.New("x-fingerprint is empty")
+	errXFingerprintNotMatchedByThe09aFAFRegex    = errors.New("x-fingerprint not matched by the '[0-9a-fA-F]+' regex")
 )
 
 type Boolean = bool
@@ -80,7 +80,7 @@ func (body *CreateTransactionRequest) UnmarshalJSON(data []byte) error {
 	body.TransactionID = value.TransactionID
 
 	if value.Description == nil {
-		return errFieldDescriptionIsRequiredButWasNullOrMissing
+		return errDescriptionIsRequired
 	}
 
 	body.Description = strings.TrimSpace(*value.Description)
@@ -152,7 +152,7 @@ func (body *UpdateTransactionRequest) UnmarshalJSON(data []byte) error {
 	body.Title = strings.TrimSpace(value.Title)
 
 	if value.Description == nil {
-		return errFieldDescriptionIsRequiredButWasNullOrMissing
+		return errDescriptionIsRequired
 	}
 
 	body.Description = strings.TrimSpace(*value.Description)

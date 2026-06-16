@@ -134,7 +134,7 @@ func extractSecurity(
 	name string,
 	requirements [][]securityProcessor,
 	skipCheck bool,
-) (results map[SecurityScheme]string, passed bool, checkErr error) {
+) (results map[SecurityScheme]string, passed bool) {
 	if skipCheck {
 		// Expose every extractable credential across all OR-branches so the
 		// handler can decide. Validation is skipped by contract.
@@ -150,7 +150,7 @@ func extractSecurity(
 				results[processor.scheme] = value
 			}
 		}
-		return results, true, nil
+		return results, true
 	}
 
 	for _, processors := range requirements {
@@ -159,7 +159,6 @@ func extractSecurity(
 		// extracted credential so failed branches cost no allocation.
 		var branchResults map[SecurityScheme]string
 		linkedChecksValid := true
-		attemptCheckErr := error(nil)
 		for _, processor := range processors {
 			schemeName, value, isExtracted := processor.extract(r)
 			if !isExtracted {
@@ -170,7 +169,6 @@ func extractSecurity(
 				hooks.RequestSecurityCheckFailed(r, name, string(processor.scheme),
 					RequestProcessingResult{error: err, typee: SecurityCheckFailed})
 				linkedChecksValid = false
-				attemptCheckErr = err
 				break
 			}
 			hooks.RequestSecurityCheckCompleted(r, name, string(processor.scheme))
@@ -183,16 +181,10 @@ func extractSecurity(
 			if len(branchResults) > 0 {
 				results = branchResults
 			}
-			return results, true, nil
-		}
-		// Preserve the first real handle() error across OR-branches. A later
-		// branch that fails only on extract (attemptCheckErr stays nil) must
-		// NOT overwrite a real auth-handler error from an earlier branch.
-		if checkErr == nil {
-			checkErr = attemptCheckErr
+			return results, true
 		}
 	}
-	return results, false, checkErr
+	return results, false
 }
 
 type requestProcessingResultType uint8
