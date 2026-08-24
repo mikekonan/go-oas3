@@ -1,6 +1,6 @@
 # Go OpenAPI v3 Server Code Generator
 
-A powerful, modern code generator that creates clean server boilerplate from OpenAPI v3 specifications. Built with Go 1.22+ and the latest dependencies, featuring enhanced error handling and extensive customization options.
+Generates Go server boilerplate from an OpenAPI v3 specification: a chi router, request parsing, validation, and response builders that only let a handler answer with what the spec declares.
 
 ## Table of Contents
 
@@ -19,7 +19,7 @@ A powerful, modern code generator that creates clean server boilerplate from Ope
 ## Quick Start
 
 ### Prerequisites
-- **Go 1.22+** (updated for latest language features)
+- **Go 1.22+**
 - Valid OpenAPI 3.0+ specification file
 - Basic understanding of Go modules
 
@@ -47,7 +47,7 @@ go-oas3 -swagger-addr https://example.com/api/swagger.yaml -package myapi -path 
 - **Security**: Automatic security middleware generation from OpenAPI security schemes
 
 **Note:** Path stub generation relies on the **first tag** from your paths. While tags are not required, they are **strongly recommended** for better organization:
-- **With tags**: Creates separate service interfaces per tag (e.g., `UserService`, `OrderService`)
+- **With tags**: Creates separate service interfaces per tag (e.g., `UsersService`, `OrdersService`)
 - **Without tags**: All operations are grouped under a single `DefaultService` interface
 
 Example with tags:
@@ -55,10 +55,10 @@ Example with tags:
 paths:
   /users:
     get:
-      tags: [users]  # Creates UserService interface
+      tags: [users]  # Creates UsersService interface
   /orders:
     post:
-      tags: [orders]  # Creates OrderService interface
+      tags: [orders]  # Creates OrdersService interface
 ```
 ## Usage
 
@@ -67,14 +67,22 @@ paths:
 | Flag | Type | Description | Default |
 |------|------|-------------|---------|
 | `-swagger-addr` | string | Path or URL to OpenAPI specification | `swagger.yaml` |
-| `-package` | string | **Required.** Go package name for generated code | - |
+| `-package` | string | **Required.** Import path of the generated router package (e.g. `myproject/api`) | - |
 | `-path` | string | **Required.** Output directory for generated files | - |
-| `-componentsPackage` | string | Package name for components (if different from main) | Same as `-package` |
+| `-componentsPackage` | string | Import path of the components package — a full import path, not a bare name | Same as `-package` |
 | `-componentsPath` | string | Path for components (if different from main) | Same as `-path` |
 | `-authorization` | string | Headers for remote swagger files (`key1:value1,key2:value2`) | - |
 | `-prioritize-x-go-type` | bool | Prioritize `x-go-type` over schema properties | `false` |
 | `-pass-raw-request` | bool | Pass raw HTTP request to handler functions | `false` |
 | `-default-generics` | bool | Generate every operation in generic mode by default (see [Generic Response Mode](#generic-response-mode)); can be overridden per-operation with `x-go-generics`. | `false` |
+| `-version` | bool | Print version, Go version and build info, then exit | `false` |
+
+**`-package` is an import path, not a package name.** The `package X` clause of the
+generated files always follows the *output directory* name — `-path ./api/v1/gen`
+produces `package gen`. `-package` / `-componentsPackage` are what the generated
+code uses to `import` across packages, so they must be resolvable import paths
+(`myproject/api/models`, not `models`) whenever `-componentsPath` differs from
+`-path`.
 
 ### Examples
 
@@ -85,9 +93,9 @@ go-oas3 -swagger-addr swagger.yaml -package api -path ./generated
 # Remote file with custom components
 go-oas3 \
   -swagger-addr https://petstore3.swagger.io/api/v3/openapi.json \
-  -package petstore \
+  -package myproject/api \
   -path ./api \
-  -componentsPackage models \
+  -componentsPackage myproject/api/models \
   -componentsPath ./api/models
 
 # With authorization headers
@@ -118,7 +126,7 @@ paths:
           required: true
           schema:
             type: string
-            x-go-type: github.com/google/uuid.UUID
+            format: uuid
       responses:
         '200':
           description: User found
@@ -147,53 +155,75 @@ components:
 
 ### 2. Generate Code
 ```bash
-go-oas3 -swagger-addr api.yaml -package userapi -path ./generated
+go mod init myproject
+go-oas3 -swagger-addr api.yaml -package myproject/generated -path ./generated
 ```
 
+The generated files land in `./generated` as `package generated` (the directory
+name), and `spec_gen.go` embeds the spec itself.
+
 ### 3. Implement Handlers
+
+The generator emits one `<Tag>Service` interface and one `<Tag>Handler`
+constructor per first tag. Responses are built through a typed cascade, so a
+handler can only answer with a status code and content type the spec declares.
+
 ```go
 package main
 
 import (
     "context"
+    "log"
     "net/http"
+
     "github.com/go-chi/chi/v5"
-    userapi "./generated"
+
+    userapi "myproject/generated"
 )
 
-type UsersService struct{}
+type usersService struct{}
 
-func (s *UsersService) GetUsersId(ctx context.Context, request userapi.GetUsersIdRequestObject) userapi.GetUsersIdResponseObject {
-    // Your business logic here
-    user := userapi.User{
-        Id:    request.Id,
-        Email: "user@example.com",
-        Name:  "John Doe",
+func (usersService) GetUsersID(ctx context.Context, request userapi.GetUsersIDRequest) userapi.GetUsersIDResponse {
+    // Parsing and validation already happened — this reports the outcome.
+    if err := request.ProcessingResult.Err(); err != nil {
+        return userapi.GetUsersIDResponseBuilder().StatusCode404().Build()
     }
-    
-    return userapi.GetUsersId200JSONResponse{
-        Body: user,
-    }
+
+    return userapi.GetUsersIDResponseBuilder().
+        StatusCode200().
+        ApplicationJson().
+        Body(userapi.User{
+            ID:    request.Path.ID, // uuid.UUID, already parsed
+            Email: "user@example.com",
+            Name:  "John Doe",
+        }).
+        Build()
 }
 
 func main() {
-    service := &UsersService{}
-    
     r := chi.NewRouter()
-    userapi.HandlerFromMux(service, r)
-    
-    http.ListenAndServe(":8080", r)
+
+    // hooks (*userapi.Hooks) is optional — nil installs no-op stubs.
+    userapi.UsersHandler(usersService{}, r, nil)
+
+    log.Fatal(http.ListenAndServe(":8080", r))
 }
 ```
 
+Naming follows the spec: `GET /users/{id}` with `tags: [users]` becomes
+`UsersService.GetUsersID`, taking `GetUsersIDRequest` and returning
+`GetUsersIDResponse`. Path, query and header parameters arrive as
+`request.Path`, `request.Query`, `request.Header`.
+
+When the spec declares security schemes, `UsersHandler` takes one extra
+argument — a `SecuritySchemas` implementation that validates each credential.
+
 ### 4. Set Up Your Project
 ```bash
-# Initialize Go module
-go mod init myproject
-
-# Add dependencies and run
+# Pull in the libraries the generated code needs (chi, ozzo-validation, uuid, ...)
 go mod tidy
-go run main.go
+
+go run .
 ```
 
 ### 5. Test Your API
@@ -202,11 +232,7 @@ go run main.go
 curl http://localhost:8080/users/550e8400-e29b-41d4-a716-446655440000
 
 # Response:
-# {
-#   "id": "550e8400-e29b-41d4-a716-446655440000",
-#   "email": "user@example.com", 
-#   "name": "John Doe"
-# }
+# {"email":"user@example.com","id":"550e8400-e29b-41d4-a716-446655440000","name":"John Doe"}
 ```
 
 The generated boilerplate includes:
@@ -266,6 +292,11 @@ amount:
   type: string
   x-go-type: github.com/shopspring/decimal.Decimal
 ```
+
+On a **path, query or header parameter** of `type: string`, `x-go-type` alone is
+not enough — the generated code would assign a `string` to your type and fail to
+compile. Pair it with [`x-go-type-string-parse`](#x-go-type-string-parse---custom-parsing),
+or drop `x-go-type` and use a known `format` (see [Custom Types](#custom-types)).
 
 #### `x-go-type-string-parse` - Custom Parsing
 For string parameters that need custom parsing:
@@ -555,11 +586,12 @@ at a time without touching the rest of the codebase.
 
 ### Known Limitations
 
-#### Inline Schema Responses
-The generator currently has limited support for inline schemas in responses. For example:
+#### Nested Inline Schemas
+A *flat* inline response schema works — it becomes a named type such as
+`GetPing200ApplicationJson`:
 
 ```yaml
-# ❌ Not fully supported - may cause compilation issues
+# ✅ Works
 responses:
   '200':
     content:
@@ -567,10 +599,40 @@ responses:
         schema:
           type: object
           properties:
-            message: 
+            message:
               type: string
+```
 
-# ✅ Recommended - use $ref to components
+Nesting an anonymous object one level deeper does not. Both of these break
+generation: `components_gen.go` is written empty and the output no longer compiles.
+
+```yaml
+# ❌ Nested inline object
+schema:
+  type: object
+  properties:
+    inner:
+      type: object
+      properties:
+        deep: { type: string }
+
+# ❌ Inline array items
+schema:
+  type: object
+  properties:
+    list:
+      type: array
+      items:
+        type: object
+        properties:
+          name: { type: string }
+```
+
+**Workaround**: give every nested object its own entry in `components/schemas`
+and reference it with `$ref`.
+
+```yaml
+# ✅ Recommended
 responses:
   '200':
     content:
@@ -579,13 +641,9 @@ responses:
           $ref: '#/components/schemas/SuccessResponse'
 ```
 
-**Workaround**: Define all response schemas in `components/schemas` and reference them using `$ref`.
-
-#### Anonymous Types
-- Anonymous slice elements and map entries have limited support
-- Complex nested anonymous types may not generate correctly
-
-**Workaround**: Define explicit component schemas for complex types.
+#### Specs Without `components`
+A spec with no `components:` section at all makes the generator panic. Declare at
+least one component schema.
 
 ### Best Practices
 

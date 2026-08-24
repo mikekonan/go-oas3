@@ -1,5 +1,6 @@
 .DS_Store
 .idea
+.entire/
 
 # Binary files
 go-oas3
@@ -34,7 +35,6 @@ hive-mind-prompt-*.txt
 # Project artifacts that shouldn't be committed
 PRPs/
 doc/
-go-oas3
 validation-workspace/
 
 # Validation framework workspace (generated files and binaries)
